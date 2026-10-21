@@ -234,7 +234,7 @@ def test_join_rejected_if_session_ended_between_check_and_insert(conn, monkeypat
     s, p, _ = S.start_session(conn, "Ana", "10.0.0.1")
     stale = S.get_active_session(conn)
     S.end_session(conn, s.id, p.id)
-    monkeypatch.setattr(S, "get_active_session", lambda c: stale)   # join still believes it's active
+    monkeypatch.setattr(S, "get_active_session", lambda c, game_type="bingo": stale)   # join still believes it's active
     with pytest.raises(S.NoActiveSession):
         S.join_session(conn, "Bia", "10.0.0.2")
     assert S.count_players(conn, s.id) == 1                          # nobody was added to the ended session

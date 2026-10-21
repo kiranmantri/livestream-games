@@ -93,12 +93,13 @@ ORDER BY u.created_at, u.id
 """
 
 
-def current_session(conn: psycopg.Connection) -> S.GameSession | None:
-    """The active session, else the most recently ended one (so results stay visible), else None."""
-    active = S.get_active_session(conn)
+def current_session(conn: psycopg.Connection, game_type: str = "bingo") -> S.GameSession | None:
+    """The active session of that game, else its most recently ended one (so results stay visible), else None."""
+    active = S.get_active_session(conn, game_type)
     if active:
         return active
-    row = conn.execute(f"SELECT {S._SESSION_COLS} FROM game_sessions ORDER BY created_at DESC LIMIT 1").fetchone()
+    row = conn.execute(f"SELECT {S._SESSION_COLS} FROM game_sessions WHERE game_type = %s "
+                       "ORDER BY created_at DESC LIMIT 1", (game_type,)).fetchone()
     return S.GameSession(*row) if row else None
 
 

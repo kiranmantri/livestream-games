@@ -29,7 +29,8 @@ def test_migrations_are_idempotent(conn):
     names = [r[0] for r in conn.execute("SELECT name FROM schema_migrations")]
     assert names == ["0001_init.sql", "0002_admin_started_sessions.sql",
                      "0003_phrase_stats.sql", "0004_phrase_words_1_10.sql",
-                     "0005_phrase_words_any_source.sql", "0006_grid4_drop_videos.sql"]
+                     "0005_phrase_words_any_source.sql", "0006_grid4_drop_videos.sql",
+                     "0007_sessions_per_game.sql"]
 
 
 # ---- sessions

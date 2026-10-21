@@ -1,7 +1,8 @@
 """Session + identity services (framework-free; all functions take a psycopg connection).
 
-Rules (see AGENTS.md): one active session; first visitor starts it, others join; unique names;
-identity = random cookie token (hash stored) + source IP limit.
+Rules (see AGENTS.md): one active session PER GAME ('bingo', 'falacias'); first visitor starts it, others join; unique
+names; identity = random cookie token (hash stored, ONE cookie per game) + source IP limit. Every function that works
+on "the" session takes `game_type` (default 'bingo', so Bingo callers are unchanged).
 """
 from __future__ import annotations
 
@@ -22,7 +23,19 @@ import app.config  # noqa: F401  (loads .env)
 from app.db import ensure_autocommit
 
 MAX_NAME_LEN = 20
-COOKIE_NAME = "lg_token"
+COOKIE_NAME = "lg_token"          # the Bingo cookie (kept: players of a running game stay logged in)
+GAMES = ("bingo", "falacias")
+
+
+def check_game(game_type: str) -> str:
+    if game_type not in GAMES:
+        raise ValueError(f"unknown game {game_type!r} (expected one of {GAMES})")
+    return game_type
+
+
+def cookie_name(game_type: str = "bingo") -> str:
+    """One cookie per game: a person playing both has two independent players (same name, different tokens)."""
+    return COOKIE_NAME if check_game(game_type) == "bingo" else f"{COOKIE_NAME}_{game_type}"
 
 
 def max_users_per_ip() -> int:
@@ -139,22 +152,26 @@ def client_ip(peer: str, x_forwarded_for: str | None = None,
 
 
 # ------------------------------------------------------------------ queries
-def get_active_session(conn: psycopg.Connection) -> GameSession | None:
+def get_active_session(conn: psycopg.Connection, game_type: str = "bingo") -> GameSession | None:
+    check_game(game_type)
     with conn.cursor(row_factory=class_row(GameSession)) as cur:
-        cur.execute(f"SELECT {_SESSION_COLS} FROM game_sessions WHERE status = 'active'")
+        cur.execute(f"SELECT {_SESSION_COLS} FROM game_sessions WHERE status = 'active' AND game_type = %s",
+                    (game_type,))
         return cur.fetchone()
 
 
-def get_player_by_token(conn: psycopg.Connection, raw_token: str | None) -> Player | None:
-    """Player of the ACTIVE session owning this cookie token, or None (unknown / old session)."""
+def get_player_by_token(conn: psycopg.Connection, raw_token: str | None, game_type: str = "bingo") -> Player | None:
+    """Player of the ACTIVE session of `game_type` owning this cookie token, or None (unknown / old session /
+    a token that belongs to the other game)."""
+    check_game(game_type)
     if not raw_token:
         return None
     with conn.cursor(row_factory=class_row(Player)) as cur:
         cur.execute(
             "SELECT u.id, u.session_id, u.name, host(u.ip) AS ip, u.created_at, u.last_seen_at "
             "FROM users u JOIN game_sessions s ON s.id = u.session_id "
-            "WHERE u.token_hash = %s AND s.status = 'active'",
-            (hash_token(raw_token),),
+            "WHERE u.token_hash = %s AND s.status = 'active' AND s.game_type = %s",
+            (hash_token(raw_token), game_type),
         )
         return cur.fetchone()
 
@@ -183,10 +200,12 @@ def _count_ip(conn: psycopg.Connection, session_id: uuid.UUID, ip: str) -> int:
 
 
 # ------------------------------------------------------------------ commands
-def start_session(conn: psycopg.Connection, name: str, ip: str) -> tuple[GameSession, Player, str]:
-    """First visitor starts the bingo session and becomes its first player.
-    Returns (session, player, raw_token). Raises SessionAlreadyActive if one is running
+def start_session(conn: psycopg.Connection, name: str, ip: str,
+                  game_type: str = "bingo") -> tuple[GameSession, Player, str]:
+    """First visitor starts the session of `game_type` and becomes its first player.
+    Returns (session, player, raw_token). Raises SessionAlreadyActive if one is running for that game
     (also when a concurrent request wins the race: the DB's unique index decides)."""
+    check_game(game_type)
     name, ip = normalize_name(name), normalize_ip(ip)
     ensure_autocommit(conn)
     token = new_token()
@@ -194,40 +213,43 @@ def start_session(conn: psycopg.Connection, name: str, ip: str) -> tuple[GameSes
     try:
         with conn.transaction():
             # both rows in one transaction; the circular FKs are deferred (see migration 0001)
-            conn.execute("INSERT INTO game_sessions (id, created_by) VALUES (%s, %s)", (sid, uid))
+            conn.execute("INSERT INTO game_sessions (id, game_type, created_by) VALUES (%s, %s, %s)",
+                         (sid, game_type, uid))
             conn.execute(
                 "INSERT INTO users (id, session_id, name, ip, token_hash) VALUES (%s,%s,%s,%s,%s)",
                 (uid, sid, name, ip, hash_token(token)))
     except errors.UniqueViolation as e:
-        if e.diag.constraint_name == "one_active_session":
-            raise SessionAlreadyActive("a session is already running") from e
+        if e.diag.constraint_name == "one_active_session_per_game":
+            raise SessionAlreadyActive(f"a {game_type} session is already running") from e
         raise
     return _get_session(conn, sid), _get_player(conn, uid), token
 
 
-def start_session_as_admin(conn: psycopg.Connection) -> GameSession:
-    """Admin starts a session with no players yet (created_by NULL). Players then join it.
-    Raises SessionAlreadyActive if one is running (the DB's unique index decides, also on races)."""
+def start_session_as_admin(conn: psycopg.Connection, game_type: str = "bingo") -> GameSession:
+    """Admin starts a session of `game_type` with no players yet (created_by NULL). Players then join it.
+    Raises SessionAlreadyActive if one is running for that game (the DB's unique index decides, also on races)."""
+    check_game(game_type)
     ensure_autocommit(conn)
     sid = uuid.uuid4()
     try:
-        conn.execute("INSERT INTO game_sessions (id, created_by) VALUES (%s, NULL)", (sid,))
+        conn.execute("INSERT INTO game_sessions (id, game_type, created_by) VALUES (%s, %s, NULL)", (sid, game_type))
     except errors.UniqueViolation as e:
-        if e.diag.constraint_name == "one_active_session":
-            raise SessionAlreadyActive("a session is already running") from e
+        if e.diag.constraint_name == "one_active_session_per_game":
+            raise SessionAlreadyActive(f"a {game_type} session is already running") from e
         raise
     return _get_session(conn, sid)
 
 
-def join_session(conn: psycopg.Connection, name: str, ip: str,
-                 existing_token: str | None = None) -> tuple[GameSession, Player, str]:
-    """Join the running session. If `existing_token` already identifies a player of it, that
+def join_session(conn: psycopg.Connection, name: str, ip: str, existing_token: str | None = None,
+                 game_type: str = "bingo") -> tuple[GameSession, Player, str]:
+    """Join the running session of `game_type`. If `existing_token` already identifies a player of it, that
     player is returned (resume) instead of creating a new one."""
+    check_game(game_type)
     ensure_autocommit(conn)
-    session = get_active_session(conn)
+    session = get_active_session(conn, game_type)
     if session is None:
-        raise NoActiveSession("no session is running")
-    current = get_player_by_token(conn, existing_token)
+        raise NoActiveSession(f"no {game_type} session is running")
+    current = get_player_by_token(conn, existing_token, game_type)
     if current is not None:
         touch(conn, current.id)
         return session, current, existing_token  # type: ignore[return-value]
@@ -257,9 +279,25 @@ def join_session(conn: psycopg.Connection, name: str, ip: str,
     return session, _get_player(conn, uid), token
 
 
-def resume(conn: psycopg.Connection, raw_token: str | None) -> Player | None:
-    """Identify the caller by cookie; refreshes last_seen_at. None if not a current player."""
-    player = get_player_by_token(conn, raw_token)
+def join_as_same_name(conn: psycopg.Connection, other_token: str | None, other_game: str, ip: str,
+                      game_type: str, existing_token: str | None = None) -> tuple[GameSession, Player, str] | None:
+    """A person who already plays `other_game` opens `game_type`: join it with the SAME name and a NEW token (its own
+    cookie). Returns None when `other_token` is not a current player of `other_game` (the caller shows the name
+    form). Raises NoActiveSession (target game not running), NameTaken (someone else holds the name there: ask for
+    another), IpLimitReached. With a valid `existing_token` of the target game it just resumes (idempotent)."""
+    check_game(other_game)
+    check_game(game_type)
+    if other_game == game_type:
+        raise ValueError("source and target games must be different")
+    source = get_player_by_token(conn, other_token, other_game)
+    if source is None:
+        return None
+    return join_session(conn, source.name, ip, existing_token=existing_token, game_type=game_type)
+
+
+def resume(conn: psycopg.Connection, raw_token: str | None, game_type: str = "bingo") -> Player | None:
+    """Identify the caller by cookie; refreshes last_seen_at. None if not a current player of that game."""
+    player = get_player_by_token(conn, raw_token, game_type)
     if player is not None:
         touch(conn, player.id)
     return player

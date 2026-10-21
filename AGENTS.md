@@ -37,9 +37,12 @@ https://www.youtube.com/@O_Poligrafo/streams (Portuguese, pt-BR). Design: `docs/
   not in the DB); an extracted phrase keeps its source when the admin shortens it. Never greetings ("bom dia", "tudo bem", "boa noite", ...). Sources: `transcript`, `chat`, `transcript+chat`, `manual`.
 
 ## Domain rules (decided)
-- Only ONE active game session at a time (enforced by a partial unique index in the DB).
+- Two games ('bingo', 'falacias'), each with at most ONE active session at a time (partial unique index `one_active_session_per_game`
+  on `game_type`, migration 0007); one Bingo and one Falácias session can be active together. A person playing both has two
+  `users` rows (one per session, same name) and two cookies: `lg_token` (Bingo) and `lg_token_falacias`; `users.token_hash` stays
+  globally unique. `app.sessions` functions take `game_type` (default 'bingo').
 - First visitor starts the session, OR the admin starts it from /admin (then `created_by` is NULL and nobody is
-  the starter); others join it. Nobody can create a second session while one is active.
+  the starter); others join it. Nobody can create a second session of the same game while one is active.
 - Phrases: the DB is the source of truth. `corpus/phrases.csv` is only the initial seed (`corpus load` seeds an
   EMPTY table; `--force` re-imports and overwrites). Admin manages them at `/admin/phrases` (add / edit / delete).
   Manual phrases start at score 99 (max) and are "frozen" (counters grow, score does not move) until the admin
@@ -329,6 +332,26 @@ Also state what the agent itself already ran and its real output; never claim su
     # Phrases are edited in the cloud (/admin/phrases); the seed file only fills an EMPTY table. To bring the cloud phrases to
     #   local: dump `COPY (SELECT * FROM phrases ORDER BY 1) TO STDOUT WITH (FORMAT csv, HEADER, NULL '\N')` via fly ssh into
     #   data/backup/cloud_phrases.csv, then `uv run python -m deploy.make_seed --from-dump data/backup` (see the Fly section above).
+
+### Validation for Task 1c (one active session per game, migration 0007, app/sessions.py)
+    uv run pytest tests/test_sessions_per_game.py -q   # expect: 23 passed
+    uv run pytest -q                                   # expect: 424 passed, 1 skipped (Bingo behaviour unchanged; 3 old tests were adapted:
+                                                       #   migration-name list, one lambda taking game_type, none changed in meaning)
+    uv run migrate                                     # YOU run it on the dev DB: expect "applied: 0007_sessions_per_game.sql" (then "up to date")
+    docker compose exec db psql -U livegames -c '\d game_sessions'   # expect index one_active_session_per_game (game_type) WHERE status='active'
+                                                                     #   and CHECK game_type IN ('bingo','falacias')
+    uv run python -c "
+    from app.db import connect; from app import sessions as S
+    c = connect()
+    b,p,tb = S.start_session(c,'Ana','10.0.0.1'); f = S.start_session_as_admin(c,'falacias')
+    print('both active:', S.get_active_session(c).game_type, S.get_active_session(c,'falacias').game_type)
+    s,q,tf = S.join_as_same_name(c, tb, 'bingo', '10.0.0.1', 'falacias'); print('same name:', q.name, '| tokens differ:', tb != tf)
+    try: S.start_session_as_admin(c,'falacias')
+    except S.SessionAlreadyActive as e: print('2nd falacias refused:', e.code)
+    "
+    docker compose exec db psql -U livegames -c "TRUNCATE game_sessions, users CASCADE"    # clean up dev rows
+    # Mutation check (repo COPY, never the real code): 20/20 mutants killed (script kept in the scratch dir, mutate_1c.py).
+    # Fly: schema change -> follow "Deploying to Fly.io - checklist" (no active game, backup first). Nothing is deployed yet.
 
 ## Conventions log
 (Append new conventions below as they are agreed.)
