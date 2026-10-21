@@ -353,6 +353,19 @@ Also state what the agent itself already ran and its real output; never claim su
     # Mutation check (repo COPY, never the real code): 20/20 mutants killed (script kept in the scratch dir, mutate_1c.py).
     # Fly: schema change -> follow "Deploying to Fly.io - checklist" (no active game, backup first). Nothing is deployed yet.
 
+### Validation for Task 1a (fallacy seed from pt.wikipedia, deploy/make_fallacies_seed.py)
+    uv run pytest tests/test_fallacies_seed.py -q      # expect: 18 passed (offline: parses a SAVED copy, tests/fixtures/lista_de_falacias_70610117.json)
+    uv run pytest -q                                   # expect: 442 passed, 1 skipped
+    uv run python -m deploy.make_fallacies_seed --from-file tests/fixtures/lista_de_falacias_70610117.json
+                                                       # expect: "97 fallacies -> deploy/seed/fallacies_seed.sql (77 enabled)", counts per
+                                                       #   category, "without article link: 33", missing must-haves: deus das lacunas, onus da prova invertido
+    uv run python -m deploy.make_fallacies_seed        # same, but fetches revision 70610117 from the MediaWiki API (needs network)
+    head -c 600 deploy/seed/fallacies_seed.sql         # expect: INSERT INTO fallacies (name, category, description, wikipedia_url, source, enabled) VALUES ...
+    # The `fallacies` table does not exist yet (migration 0008, Task 1b): the seed is tested against a TEMP table with the planned layout.
+    # Informal fallacies are seeded enabled, formal ones disabled. Missing must-haves are added later as source='manual'.
+    # Text (c) Wikipedia contributors, CC BY-SA 4.0: show the attribution wherever the list appears.
+    # Mutation check (repo COPY): 16/16 killed (mutate_1a.py in the scratch dir). reset: rm deploy/seed/fallacies_seed.sql
+
 ## Conventions log
 (Append new conventions below as they are agreed.)
 - DB access from services: ALWAYS use an autocommit connection (`app.db.connect()` / pool with
