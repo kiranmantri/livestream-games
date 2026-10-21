@@ -35,7 +35,39 @@ def main(argv: list[str] | None = None) -> int:
     rs.add_argument("--corpus", type=Path, default=Path("data/corpus"))
     rs.add_argument("--dry-run", action="store_true", help="compute and report, write nothing")
 
+    ri = sub.add_parser("replay-import", help="store the cleaned transcript + chat of a downloaded video in the DB (replay_events)")
+    ri.add_argument("video_id")
+    ri.add_argument("--corpus", type=Path, default=Path("data/corpus"))
+    ri.add_argument("--force", action="store_true", help="replace the rows of this video (do NOT do it during a game)")
+
+    rsd = sub.add_parser("replay-seed", help="write deploy/seed/replay_<video_id>.sql from the replay rows in the DB (for the cloud)")
+    rsd.add_argument("video_id")
+    rsd.add_argument("--out", type=Path, default=None)
+
+    rl = sub.add_parser("replay-load", help="apply the video's SQL seed, only if the DB has no rows of that video")
+    rl.add_argument("video_id", nargs="?", default=None, help="default: FALACIAS_VIDEO_ID")
+
     args = p.parse_args(argv)
+    if args.cmd in ("replay-import", "replay-seed", "replay-load"):
+        from app.db import connect
+        from corpus import replay
+        conn = connect()
+        try:
+            if args.cmd == "replay-import":
+                print("replay rows:", replay.import_video(conn, args.video_id, args.corpus, force=args.force))
+            elif args.cmd == "replay-seed":
+                from app.feed import seed_path
+                out = args.out or seed_path(args.video_id)
+                print(f"{replay.write_seed(conn, args.video_id, out)} rows -> {out} ({out.stat().st_size // 1024} KiB)")
+            else:
+                from app.feed import load_replay_seed
+                print("replay:", load_replay_seed(conn, args.video_id))
+        except (replay.ReplayImportError, ValueError) as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            return 1
+        finally:
+            conn.close()
+        return 0
     if args.cmd == "load":
         from app.db import connect
         from corpus.load import load_sql_seed

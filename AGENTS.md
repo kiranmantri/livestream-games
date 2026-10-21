@@ -385,6 +385,27 @@ Also state what the agent itself already ran and its real output; never claim su
     # Mutation check (repo COPY): 57/57 killed (mutate_1b.py in the scratch dir). Clean up dev rows: TRUNCATE game_sessions, users CASCADE (cascades marks/events).
     # Fly: migration 0008 -> follow "Deploying to Fly.io - checklist" (no active game, backup first). Nothing is deployed yet.
 
+### Validation for Task 2 (replay feed: corpus/replay.py, app/feed.py, deploy/seed/replay__nVWPIFCUzQ.sql)
+    uv run pytest tests/test_replay.py tests/test_feed.py -q   # expect: 56 passed (parsers, import, seed round trip, session clock, health, CLI)
+    uv run pytest -q                                           # expect: 563 passed, 1 skipped
+    uv run migrate                                             # YOU: dev DB must have 0008 (see Task 1b)
+    uv run corpus replay-import _nVWPIFCUzQ                    # expect: replay rows: {'chat': 2725, 'transcript': 13535}  (again: "skipped"; --force replaces)
+    docker compose exec db psql -U livegames -c "select kind, count(*), min(offset_ms), max(offset_ms) from replay_events group by 1"
+    uv run corpus replay-seed _nVWPIFCUzQ                      # rewrites deploy/seed/replay__nVWPIFCUzQ.sql (16260 rows, ~1.4 MB; tracked: the Fly image needs it)
+    uv run corpus replay-load                                  # expect: replay: {'skipped': '_nVWPIFCUzQ already has 16260 replay rows'}
+    # Rules: the session clock starts at game_sessions.created_at ("start from zero"); a line with video offset o appears at created_at + (o - START_AT)/SPEED.
+    #   Env: FALACIAS_VIDEO_ID (default _nVWPIFCUzQ), FALACIAS_SPEED (default 1; >1 = demos only, the speed bonus becomes meaningless),
+    #   FALACIAS_START_AT (seconds into the video). Lines are released LAZILY by feed.tick_throttled() (called by the feed poll in Task 3), idempotent,
+    #   fed_at = scheduled time. No Falácias session can START unless BOTH tracks exist: error "Vídeo offline ou vídeo sem transcrições", no row created.
+    #   feed.status(): ok | ended (video over: marks stay allowed) | down (a track vanished: feed.ensure_up raises FeedDown -> the pair route must refuse).
+    #   Do NOT run `replay-import --force` during a game (running sessions point at the old row ids and would show lines twice).
+    # Real data (scratch DB, dropped after): import 0.3 s; tick after 10 h of video releases 14,740 rows in 0.09 s; status() ~1.7 ms.
+    # Cleaning: [annotations] removed, HTML entities decoded, paid-message text kept, gifts/system/empty dropped, channel emoji -> :shortcut:.
+    # The first transcript line is at 59 s, the first chat line at 0 s; the longest transcript gap is 22 s.
+    # Mutation check (repo COPY): 57/58 killed. The survivor (advisory lock in tick) is redundant protection: the UNIQUE (session_id, kind, source_key)
+    #   index already makes concurrent releasers wait for each other, so no test can observe its absence.
+    # Not built yet: the pages that call tick (Task 3), the pair route that calls ensure_up (Task 4), the entrypoint/seed wiring (Task 7).
+
 ## Conventions log
 (Append new conventions below as they are agreed.)
 - DB access from services: ALWAYS use an autocommit connection (`app.db.connect()` / pool with

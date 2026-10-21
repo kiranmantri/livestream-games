@@ -111,3 +111,6 @@ PH_ACTIVATE_SELECTED = "Ativar selecionadas"
 PH_DEACTIVATE_SELECTED = "Desativar selecionadas"
 PH_ACTIVATED_N = "{n} frase(s) ativada(s)."
 PH_DEACTIVATED_N = "{n} frase(s) desativada(s)."
+
+# --- Encontre as Falácias
+FEED_UNAVAILABLE = "Vídeo offline ou vídeo sem transcrições"
