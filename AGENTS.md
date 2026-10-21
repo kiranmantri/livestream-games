@@ -406,6 +406,26 @@ Also state what the agent itself already ran and its real output; never claim su
     #   index already makes concurrent releasers wait for each other, so no test can observe its absence.
     # Not built yet: the pages that call tick (Task 3), the pair route that calls ensure_up (Task 4), the entrypoint/seed wiring (Task 7).
 
+### Validation for Task 3 (menu + the two panes: app/ui.py, app/falacias_web.py, app/static/falacias.js)
+    uv run pytest tests/test_falacias_web.py -q   # expect: 24 passed (entry, panes, poll, cross-game join, menu)
+    uv run pytest -q                              # expect: 589 passed, 1 skipped
+    uv run migrate && uv run corpus replay-import _nVWPIFCUzQ    # YOU: dev DB needs 0007, 0008 and the replay rows
+    uv run uvicorn app.main:app --port 8001       # (8000 is your --reload server) open http://127.0.0.1:8001/falacias
+    # expect: menu "Bingo | Encontre as Falácias" on both pages; /falacias shows "Começar partida" if nothing runs, else "Entrar".
+    #   After starting: two panes, transcript (left) and chat (right), both EMPTY for the first seconds (the first chat line is at 0 s,
+    #   the first transcript line at 59 s); new lines appear by themselves (poll every 2 s) and the pane stays glued to the newest line.
+    #   Scroll a pane up: it stops following and shows a "N novas · voltar ao vivo" button; click it to go back to the live edge.
+    #   FALACIAS_SPEED=60 uv run uvicorn ... makes a minute of video pass per second (demo only).
+    # Same-name join: start Bingo in one window, open /falacias in the same window -> you are in Falácias with the same name, no form
+    #   (and the other way round). If the name is taken in the other game you get the name form with an error.
+    # Two cookies: lg_token (Bingo) and lg_token_falacias (browser devtools). A Bingo cookie is NOT a Falácias identity.
+    # Menu dot: a green dot on a game that has a running session (refreshes every 30 s).
+    # End the game: uv run python -c "from app.db import connect; from app import sessions as S; c=connect(); print(S.end_session(c, S.get_active_session(c,'falacias').id, None))"
+    #   -> panes poll once, the page reloads and shows "Fim da partida de Falácias!" with the leaderboard.
+    # reset: TRUNCATE game_sessions, users CASCADE (stream_events go with it); replay_events stay.
+    # Not built yet: selecting text / flagging pairs (Task 4), admin tab (Task 5). Panes keep every line in the DOM (no trimming).
+    # Mutation check (repo COPY): 33/33 killed (mutate_3.py in the scratch dir). Not checked: falacias.js in a real browser.
+
 ## Conventions log
 (Append new conventions below as they are agreed.)
 - DB access from services: ALWAYS use an autocommit connection (`app.db.connect()` / pool with

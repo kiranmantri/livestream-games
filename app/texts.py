@@ -1,5 +1,6 @@
 """All user-facing strings (pt-BR: the audience is the Brazilian stream). Change here to translate."""
 
+FEED_UNAVAILABLE = "Vídeo offline ou vídeo sem transcrições"
 TITLE = "Bingo da Live"
 TAGLINE = "Marque as expressões que aparecerem na live!"
 START_HEADING = "Nenhuma partida em andamento"
@@ -26,6 +27,8 @@ ERRORS = {
     "session_already_active": "Alguém acabou de começar a partida. Entre nela!",
     "no_active_session": "A partida acabou ou ainda não começou.",
     "no_phrases": "Não foi possível montar sua cartela (poucas expressões cadastradas).",
+    "feed_unavailable": FEED_UNAVAILABLE,
+    "feed_down": FEED_UNAVAILABLE,
     "generic": "Algo deu errado. Tente de novo.",
 }
 
@@ -113,4 +116,19 @@ PH_ACTIVATED_N = "{n} frase(s) ativada(s)."
 PH_DEACTIVATED_N = "{n} frase(s) desativada(s)."
 
 # --- Encontre as Falácias
-FEED_UNAVAILABLE = "Vídeo offline ou vídeo sem transcrições"
+MENU_LABEL = "Jogos"
+MENU_BINGO = "Bingo"
+MENU_FALACIAS = "Encontre as Falácias"
+MENU_RUNNING = "Partida em andamento"
+
+FAL_TITLE = "Encontre as Falácias"
+FAL_TAGLINE = "Acompanhe a transcrição e o chat e aponte as falácias lógicas!"
+FAL_HOW_TO = "Acompanhe a transcrição (esquerda) e o chat (direita). As linhas novas aparecem sozinhas."
+FAL_REPLAY = "Transmissão gravada (replay): as falas aparecem na mesma velocidade da gravação."
+FAL_TRANSCRIPT = "Transcrição"
+FAL_CHAT = "Chat"
+FAL_VIDEO_END = "Fim da transmissão. A partida continua até o administrador encerrar."
+FAL_START_HEADING = "Nenhuma partida de Falácias em andamento"
+FAL_JOIN_HEADING = "Tem uma partida de Falácias rolando!"
+FAL_GAME_OVER = "Fim da partida de Falácias!"
+FAL_NO_POINTS = "Ninguém pontuou desta vez."

@@ -343,3 +343,33 @@ def test_end_to_end_feed_to_a_scored_pair(conn):
     assert m.quote == "t2" and 1_900 <= m.latency_ms < 3_500                 # fed at +3 s, submitted at +5 s
     F.review_mark(conn, s.id, m.id, "correct")
     assert F.leaderboard(conn, s.id)[0].points > 1_000
+
+
+# ================================================================ read model (Task 3)
+def test_recent_events_window_is_per_pane_oldest_first_and_per_session(conn):
+    replay(conn, ROWS)
+    s1 = started(conn, 100)
+    feed.tick(conn, s1.id)
+    S.end_session(conn, s1.id, None)
+    s2 = started(conn, 100)
+    feed._last_tick.clear()
+    feed.tick(conn, s2.id)
+    got = feed.recent_events(conn, s2.id, per_kind=1)
+    assert [(e.kind, e.text) for e in got] == [("chat", "c2"), ("transcript", "t3")]      # 1 per pane, oldest first (c2 is at 10 s, t3 at 20 s)
+    assert all(e.id in {r[0] for r in conn.execute("SELECT id FROM stream_events WHERE session_id = %s", (s2.id,))} for e in got)
+    assert len(feed.recent_events(conn, s2.id, per_kind=50)) == 6
+
+
+def test_events_after_is_exclusive_ordered_and_per_session(conn):
+    replay(conn, ROWS)
+    s1 = started(conn, 100)
+    feed.tick(conn, s1.id)
+    S.end_session(conn, s1.id, None)
+    s2 = started(conn, 100)
+    feed._last_tick.clear()
+    feed.tick(conn, s2.id)
+    ids = [e.id for e in feed.events_after(conn, s2.id, 0)]
+    assert len(ids) == 6 and ids == sorted(ids)
+    assert [e.id for e in feed.events_after(conn, s2.id, ids[2])] == ids[3:]
+    assert feed.events_after(conn, s2.id, ids[-1]) == []
+    assert feed.last_event_id(conn, s2.id) == ids[-1] and feed.last_event_id(conn, uuid.uuid4()) == 0

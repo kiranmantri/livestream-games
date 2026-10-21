@@ -140,6 +140,33 @@ def tick_throttled(conn: psycopg.Connection, session_id: UUID, min_interval: flo
     return tick(conn, session_id)
 
 
+# ------------------------------------------------------------------ what the panes show (read model)
+@dataclass(frozen=True)
+class Event:
+    id: int
+    kind: str
+    author: str | None
+    text: str
+
+
+def recent_events(conn: psycopg.Connection, session_id: UUID, per_kind: int = 120) -> list[Event]:
+    """The last `per_kind` lines of EACH pane, oldest first (what a player sees when opening the page)."""
+    rows = conn.execute(
+        "SELECT id, kind, author, text FROM (SELECT *, row_number() OVER (PARTITION BY kind ORDER BY id DESC) AS rn "
+        "FROM stream_events WHERE session_id = %s) t WHERE rn <= %s ORDER BY id", (session_id, per_kind)).fetchall()
+    return [Event(*r) for r in rows]
+
+
+def events_after(conn: psycopg.Connection, session_id: UUID, after_id: int, limit: int = 300) -> list[Event]:
+    rows = conn.execute("SELECT id, kind, author, text FROM stream_events WHERE session_id = %s AND id > %s "
+                        "ORDER BY id LIMIT %s", (session_id, after_id, limit)).fetchall()
+    return [Event(*r) for r in rows]
+
+
+def last_event_id(conn: psycopg.Connection, session_id: UUID) -> int:
+    return conn.execute("SELECT COALESCE(max(id), 0) FROM stream_events WHERE session_id = %s", (session_id,)).fetchone()[0]
+
+
 # ------------------------------------------------------------------ health
 def status(conn: psycopg.Connection, session_id: UUID, cfg: FeedConfig | None = None) -> str:
     """'down' (a track vanished), 'ended' (every replay line was shown: "fim da transmissão"), else 'ok'.
