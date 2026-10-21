@@ -37,7 +37,7 @@ def web(conn, test_db_url):
 
 
 def cells_of(html: str) -> list[str]:
-    """Texts of the 24 phrase buttons, in board order."""
+    """Texts of the 16 phrase buttons, in board order."""
     return [re.sub(r"<[^>]+>", "", re.sub(r"<small[^>]*>.*?</small>", "", m)).strip() for m in re.findall(r'<button[^>]*class="cell(?: (?:x)?long)?"[^>]*>(.*?)</button>', html, re.DOTALL)]
 
 
@@ -61,9 +61,9 @@ def test_first_visitor_starts_and_gets_card(web, conn):
     assert "lg_token=" in cookie and "httponly" in cookie and "samesite=lax" in cookie
     page = b.get("/")
     assert page.status_code == 200 and "Ana" in page.text
-    assert len(cells_of(page.text)) == 24
-    assert page.text.count('class="cell free"') == 1 and 'src="/center.jpg"' in page.text
-    assert f"{T.MARKED}: 0/24" in page.text
+    assert len(cells_of(page.text)) == 16                              # new games are 4x4: all phrases, no free cell
+    assert page.text.count('class="cell free"') == 0 and "--cols: 4" in page.text
+    assert f"{T.MARKED}: 0/16" in page.text
     assert conn.execute("SELECT count(*) FROM bingo_cards").fetchone()[0] == 1
 
 
@@ -71,7 +71,7 @@ def test_board_matches_the_card_stored_in_db(web, conn):
     b = web()
     start(b)
     db_cells = conn.execute("SELECT cells FROM bingo_cards").fetchone()[0]
-    assert cells_of(b.get("/").text) == [c["text"] for i, c in enumerate(db_cells) if i != 12]
+    assert cells_of(b.get("/").text) == [c["text"] for c in db_cells]
 
 
 def test_same_card_on_every_reload_and_in_other_tab(web):
@@ -157,16 +157,16 @@ def test_tap_marks_and_unmarks_and_persists(web, conn):
     b = web()
     start(b)
     r = b.post("/mark/3")
-    assert r.status_code == 200 and f"{T.MARKED}: 1/24" in r.text
+    assert r.status_code == 200 and f"{T.MARKED}: 1/16" in r.text
     assert r.text.count('aria-pressed="true"') == 1
     assert 'hx-post="/mark/3"' in r.text and 'id="game-board"' in r.text
-    assert f"{T.MARKED}: 1/24" in b.get("/").text                      # survives reload
+    assert f"{T.MARKED}: 1/16" in b.get("/").text                      # survives reload
     assert conn.execute("SELECT cell_index FROM bingo_marks").fetchall() == [(3,)]
     r = b.post("/mark/3")
-    assert f"{T.MARKED}: 0/24" in r.text and r.text.count('aria-pressed="true"') == 0
+    assert f"{T.MARKED}: 0/16" in r.text and r.text.count('aria-pressed="true"') == 0
 
 
-@pytest.mark.parametrize("idx", [12, 25, -1, 99])
+@pytest.mark.parametrize("idx", [16, 25, -1, 99])
 def test_bad_cells_return_400(web, idx):
     b = web()
     start(b)
@@ -184,7 +184,7 @@ def test_players_cannot_mark_each_others_cards(web, conn):
     start(a)
     b.post("/join", data={"name": "Bia"})
     a.post("/mark/5")
-    assert f"{T.MARKED}: 0/24" in b.get("/").text and f"{T.MARKED}: 1/24" in a.get("/").text
+    assert f"{T.MARKED}: 0/16" in b.get("/").text and f"{T.MARKED}: 1/16" in a.get("/").text
 
 
 # ---------------------------------------------------------------- leaderboard / end of game

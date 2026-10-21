@@ -31,7 +31,7 @@ button.primary {
 .bar .count { color: var(--accent); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 #game-board { margin: 4px 0; }
-.board { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+.board { display: grid; grid-template-columns: repeat(var(--cols, 5), 1fr); gap: 4px; }
 .cell {
   position: relative; aspect-ratio: 1 / 1; min-width: 0; padding: 3px; overflow: hidden;
   display: flex; align-items: center; justify-content: center; text-align: center;
@@ -66,7 +66,7 @@ button.danger { background: var(--warn); color: #450a0a; margin: 6px 4px; }
 table.users { width: 100%; border-collapse: collapse; font-size: .9rem; }
 table.users th, table.users td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 details.panel summary { cursor: pointer; font-weight: 600; }
-.mini { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; margin-top: 10px; max-width: 640px; }
+.mini { display: grid; grid-template-columns: repeat(var(--cols, 5), 1fr); gap: 3px; margin-top: 10px; max-width: 640px; }
 .mc { aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center; text-align: center; padding: 2px;
       border: 1px solid var(--line); border-radius: 6px; font-size: clamp(8px, 1.6vw, 12px); line-height: 1.15;
       overflow: hidden; overflow-wrap: anywhere; hyphens: auto; }
@@ -164,3 +164,39 @@ main.game { max-width: 1180px; }
 .cell.ro { cursor: default; }
 .cell.on { background: var(--ok); color: var(--ok-text); border-color: var(--ok); font-weight: 700; }
 .cell.on::after { content: "\2713"; position: absolute; top: 1px; right: 4px; font-size: .9em; }
+
+/* completed lines (full row / column / diagonal): red box over the board */
+.board, .mini { position: relative; }
+.line { position: absolute; pointer-events: none; z-index: 3; box-sizing: border-box;
+        border: 3px solid #ef4444; border-radius: 10px; box-shadow: 0 0 0 1px rgba(0,0,0,.45), 0 0 8px rgba(239,68,68,.55); }
+.cell.revoked { cursor: not-allowed; border-style: dashed; border-color: #ef4444; opacity: .75; }
+
+/* admin: unmark controls, sortable users table */
+.mc { position: relative; }
+.mc.revoked { border-style: dashed; border-color: #ef4444; }
+.mcform { margin: 2px 0 0; }
+.mcbtn { font: inherit; font-size: .75em; padding: 1px 5px; border-radius: 4px; border: 1px solid #ef4444;
+         background: transparent; color: #fca5a5; cursor: pointer; }
+.mcbtn:hover { background: #7f1d1d; color: #fff; }
+a.sortlink { color: inherit; text-decoration: none; white-space: nowrap; }
+a.sortlink:hover, a.sortlink.on { text-decoration: underline; }
+
+/* game-screen preferences (toggled by /game.js on the .game container) */
+.gamebar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
+.gamebar .muted { font-size: .85rem; }
+button.pref { font: inherit; font-size: .85rem; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line);
+              background: var(--panel); color: var(--text); cursor: pointer; }
+button.pref.icon { font-size: 1.1rem; line-height: 1; padding: 4px 9px; }
+button.pref[aria-pressed=true] { background: var(--ok); color: var(--ok-text); border-color: var(--ok); font-weight: 700; }
+.when-hidden { display: none; }
+.hide-live .when-shown { display: none; } .hide-live .when-hidden { display: inline; }
+.hide-live .leftcol { display: none; }
+.hide-live .toprow { grid-template-columns: minmax(0, 560px); justify-content: center; }
+.othershead { order: -1; }
+.cardgrid.small .cardbox.other { order: var(--o-join, 0); }
+.view-list .cardgrid.small .cardbox.other { order: var(--o-win, 0); }      /* list = ranking */
+.meter { display: none; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin-top: 4px; }
+.meter > span { display: block; height: 100%; background: var(--ok); }
+.view-list .cardgrid.small { grid-template-columns: 1fr; gap: 6px; max-width: 560px; }
+.view-list .cardbox.other .board { display: none; }
+.view-list .cardbox.other .meter { display: block; }

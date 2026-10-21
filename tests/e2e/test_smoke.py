@@ -2,7 +2,7 @@
 
     SMOKE_URL=http://127.0.0.1:8000 SMOKE_ADMIN_PASSWORD=... uv run pytest tests/e2e -q
 
-Needs a stack with NO active game and >= 24 enabled phrases. It plays one full game (start, join, mark, finish)
+Needs a stack with NO active game and >= 16 enabled phrases. It plays one full game (start, join, mark, finish)
 and leaves one ended session behind.
 """
 from __future__ import annotations
@@ -44,19 +44,19 @@ def test_full_game_flow():
         entry = ana.get("/").text
         assert "Começar partida" in entry, "a game is already active: finish it first (reset the stack)"
         home = ana.post("/start", data={"name": "Ana"}).text                       # first visitor starts the game
-        assert len(CELL.findall(home)) == 24 and "/center.jpg" in home             # 5x5 card, avatar in the centre
+        assert len(CELL.findall(home)) == 16 and "cell free" not in home           # 4x4 card, phrases only
         assert "lg_token" in ana.cookies
 
         assert "Entrar na partida" in bia.get("/").text                            # others join, never start another
         assert "Começar partida" not in bia.get("/").text
         dup = bia.post("/join", data={"name": "ANA"}).text
         assert "já está em uso" in dup                                             # unique name, case-insensitive
-        assert len(CELL.findall(bia.post("/join", data={"name": "Bia"}).text)) == 24
+        assert len(CELL.findall(bia.post("/join", data={"name": "Bia"}).text)) == 16
 
         marked = ana.post("/mark/3").text                                          # mark -> HH:MM:SS shown
         assert re.search(r'class="at"[^>]*>\d\d:\d\d:\d\d<', marked)
         assert re.search(r'class="at"', ana.get("/").text), "mark must survive a reload"
-        assert ana.post("/mark/12").status_code == 400                             # the centre cell is not markable
+        assert ana.post("/mark/16").status_code == 400                             # outside the 4x4 card
         bia.post("/mark/1")
         bia.post("/mark/1")                                                        # toggled off again
 

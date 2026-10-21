@@ -278,7 +278,7 @@ def test_my_card_is_in_the_top_row_with_the_red_box_and_is_the_only_interactive_
     top, below = html.split('class="toprow"')[1].split('class="cardgrid small"')
     assert 'class="cardbox mine"' in top and html.count('class="cardbox mine"') == 1
     assert 'class="cardbox other"' not in top and below.count('class="cardbox other"') == 1
-    assert html.count('hx-post="/mark/') == 24                                        # only MY 24 cells are buttons
+    assert html.count('hx-post="/mark/') == 16                                        # only MY 16 cells are buttons
     assert "Ana (você)" in top and re.search(r'<span class="who">Bia</span>', below)
     assert "Bia (você)" in bia.get("/").text and 'class="who">Ana</span>' in bia.get("/").text
 
@@ -311,7 +311,7 @@ def test_other_cards_show_their_marks_read_only_and_never_mine_twice(web, conn):
         return page.split('id="others"')[1].split('class="lbwrap"')[0]
 
     others = others_of(ana.get("/").text)
-    assert len(re.findall(r'class="cell ro on', others)) == 3 and "3/24" in others
+    assert len(re.findall(r'class="cell ro on', others)) == 3 and "3/16" in others
     assert "hx-post" not in others                                                     # read-only: no buttons to click
     ana.post("/mark/5")
     assert len(re.findall(r'class="cell ro on', others_of(ana.get("/").text))) == 3    # my own marks never show there
@@ -326,7 +326,7 @@ def test_cards_poll_returns_204_until_someone_elses_marks_change(web):
     assert ana.get(f"/cards?v={v}").status_code == 204
     bia.post("/mark/7")
     r = ana.get(f"/cards?v={v}")
-    assert r.status_code == 200 and 'id="others"' in r.text and "1/24" in r.text
+    assert r.status_code == 200 and 'id="others"' in r.text and "1/16" in r.text
     v2 = re.search(r'hx-get="/cards\?v=(\w+)"', r.text).group(1)
     assert v2 != v and ana.get(f"/cards?v={v2}").status_code == 204
     bia.post("/mark/7")                                                                # unmark -> changes again

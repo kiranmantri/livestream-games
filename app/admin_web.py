@@ -30,25 +30,78 @@ from starlette.responses import PlainTextResponse, RedirectResponse, Response
 
 from app import admin as A_
 from app import cards as C
+from app import marks as M
 from app import scoring as G
 from app import sessions as S
 from app import texts as T
 from app import timefmt
+from app.lines import line_boxes
 
 _ts = timefmt.dmy_hms
 
 
-def mini_card(row: A_.PlayerRow):
+def _cell_form(action: str, session_id: uuid.UUID, user_id: uuid.UUID, cell: int, token: str, label: str,
+               confirm: str | None = None):
+    return Form(Input(type="hidden", name="session_id", value=str(session_id)),
+                Input(type="hidden", name="user_id", value=str(user_id)),
+                Input(type="hidden", name="cell", value=str(cell)),
+                Input(type="hidden", name="csrf", value=token),
+                Button(label, type="submit", cls="mcbtn", title=label),
+                method="post", action=action, cls="mcform",
+                onsubmit=f"return confirm({confirm!r})" if confirm else None)
+
+
+def mini_card(row: A_.PlayerRow, session_id: uuid.UUID | None = None, token: str = "", active: bool = False):
+    """The player's card for the admin. While the game is ACTIVE every marked cell has an unmark button (illegal
+    marking) and every blocked cell a button to lift the block."""
     cells = []
-    for i in range(C.GRID * C.GRID):
-        if i == C.CENTER_INDEX:
+    for i, cell in enumerate(row.cells):
+        if "phrase_id" not in cell:
             cells.append(Div("★", cls="mc free", title=T.AVATAR_ALT))
-        else:
-            text = row.cells[i]["text"] if i < len(row.cells) else "?"
-            on = i in row.marked
-            cells.append(Div(text, Small(timefmt.hms(row.marked_at[i]), cls="at") if on else None,
-                             cls="mc on" if on else "mc"))
-    return Div(*cells, cls="mini", lang="pt-BR")
+            continue
+        on = i in row.marked
+        blocked = i in row.revoked
+        ctl = None
+        if active and session_id is not None:
+            if on:
+                ctl = _cell_form("/admin/unmark", session_id, row.user_id, i, token, "✕ " + T.ADMIN_UNMARK,
+                                 T.ADMIN_UNMARK_CONFIRM)
+            elif blocked:
+                ctl = _cell_form("/admin/unblock", session_id, row.user_id, i, token, T.ADMIN_UNBLOCK)
+        cells.append(Div(cell["text"], Small(timefmt.hms(row.marked_at[i]), cls="at") if on else None,
+                         Small(T.ADMIN_BLOCKED, cls="at") if blocked else None, ctl,
+                         cls="mc" + (" on" if on else "") + (" revoked" if blocked else "")))
+    return Div(*cells, *line_boxes(row.cells, row.marked), cls="mini", lang="pt-BR",
+               style=f"--cols: {C.grid_of(len(row.cells))}")
+
+
+# ------------------------------------------------------------------ users table: sortable columns
+SORTS = {   # column -> (header text, key function(row, rank), direction used on the first click)
+    "rank": (T.ADMIN_COL_RANK, lambda r, rank: rank.get(r.user_id, 10 ** 9), "asc"),
+    "name": (T.ADMIN_COL_NAME, lambda r, rank: r.name.casefold(), "asc"),
+    "marked": (T.ADMIN_COL_MARKED, lambda r, rank: len(r.marked), "desc"),
+    "joined": (T.ADMIN_COL_JOINED, lambda r, rank: r.joined_at, "asc"),
+    "seen": (T.ADMIN_COL_SEEN, lambda r, rank: r.last_seen_at, "desc"),
+}
+
+
+def sort_rows(rows: list[A_.PlayerRow], rank: dict, sort: str, direction: str) -> tuple[list[A_.PlayerRow], str, str]:
+    """Rows ordered by a whitelisted column (unknown values fall back to rank, ascending). -> (rows, sort, dir)."""
+    if sort not in SORTS:
+        sort, direction = "rank", "asc"
+    if direction not in ("asc", "desc"):
+        direction = SORTS[sort][2]
+    key = SORTS[sort][1]
+    return sorted(rows, key=lambda r: (key(r, rank), r.name.casefold()), reverse=direction == "desc"), sort, direction
+
+
+def sort_header(col: str, sort: str, direction: str):
+    label = SORTS[col][0]
+    if col == sort:
+        nxt = "desc" if direction == "asc" else "asc"
+        return Th(A(f"{label} {'▲' if direction == 'asc' else '▼'}", href=f"/admin?sort={col}&dir={nxt}",
+                    cls="sortlink on"), aria_sort="ascending" if direction == "asc" else "descending")
+    return Th(A(label, href=f"/admin?sort={col}&dir={SORTS[col][2]}", cls="sortlink"))
 
 
 def start_form(start_token: str):
@@ -58,8 +111,9 @@ def start_form(start_token: str):
 
 
 def admin_page(session: S.GameSession, rows: list[A_.PlayerRow], standings: list[G.Standing],
-               token: str, start_token: str):
+               token: str, start_token: str, sort: str = "rank", direction: str = "asc", open_uid: str = ""):
     rank = {s.user_id: s.rank for s in standings}
+    table_rows, sort, direction = sort_rows(rows, rank, sort, direction)
     active = session.status == "active"
     winner = next((r for r in rows if r.user_id == session.winner_user_id), None)
     head = Div(
@@ -77,12 +131,12 @@ def admin_page(session: S.GameSession, rows: list[A_.PlayerRow], standings: list
         method="post", action="/admin/finish",
         onsubmit=f"return confirm({T.ADMIN_FINISH_CONFIRM!r})") if active else None
     table = Table(
-        Thead(Tr(*[Th(h) for h in (T.ADMIN_COL_RANK, T.ADMIN_COL_NAME, T.ADMIN_COL_MARKED, "IP",
-                                   T.ADMIN_COL_JOINED, T.ADMIN_COL_SEEN)])),
-        Tbody(*[Tr(Td(str(rank.get(r.user_id, "-"))), Td(r.name), Td(str(len(r.marked))), Td(r.ip),
-                   Td(_ts(r.joined_at)), Td(_ts(r.last_seen_at))) for r in rows]),
+        Thead(Tr(*[sort_header(c, sort, direction) for c in SORTS])),
+        Tbody(*[Tr(Td(str(rank.get(r.user_id, "-"))), Td(r.name), Td(str(len(r.marked))),
+                   Td(_ts(r.joined_at)), Td(_ts(r.last_seen_at))) for r in table_rows]),
         cls="users")
-    cards = [Details(Summary(f"{r.name} - {len(r.marked)}/{C.PHRASE_CELLS}"), mini_card(r), cls="panel")
+    cards = [Details(Summary(f"{r.name} - {len(r.marked)}/{C.max_marks(r.cells)}"),
+                     mini_card(r, session.id, token, active), cls="panel", open=str(r.user_id) == open_uid or None)
              for r in rows]
     return (Title(f"{T.TITLE} - admin"),
             Main(H1(f"{T.TITLE} - admin"), head, finish or "",
@@ -104,7 +158,7 @@ def denied(request: Request):
 
 def register(rt, pool):
     @rt("/admin")
-    def admin_get(request: Request):
+    def admin_get(request: Request, sort: str = "rank", dir: str = "", open: str = ""):
         if (d := denied(request)) is not None:
             return d
         with pool.connection() as conn:
@@ -116,7 +170,7 @@ def register(rt, pool):
                             A(T.ADMIN_PHRASES_LINK, href="/admin/phrases", cls="btn small"),
                             A(T.ADMIN_REFRESH, href="/admin", cls="btn"), cls="wide")
             return admin_page(session, A_.players(conn, session.id), G.leaderboard(conn, session.id),
-                              A_.csrf_token(pw, session.id), A_.start_token(pw))
+                              A_.csrf_token(pw, session.id), A_.start_token(pw), sort, dir, open)
 
     @rt("/admin/start", methods=["POST"])
     def admin_start(request: Request, csrf: str = ""):
@@ -144,3 +198,24 @@ def register(rt, pool):
         with pool.connection() as conn:
             G.finish_session(conn, sid)        # None if already finished: harmless double click
         return RedirectResponse("/admin", status_code=303)
+
+    def _cell_action(request: Request, session_id: str, user_id: str, cell: str, csrf: str, action):
+        if (d := denied(request)) is not None:
+            return d
+        try:
+            sid, uid, idx = uuid.UUID(session_id), uuid.UUID(user_id), int(cell)
+        except ValueError:
+            return PlainTextResponse("bad request", status_code=400)
+        if not A_.csrf_ok(A_.admin_password() or "", sid, csrf):
+            return PlainTextResponse("bad csrf token", status_code=403)
+        with pool.connection() as conn:
+            action(conn, sid, uid, idx)        # False = nothing to do (game over / not marked): harmless
+        return RedirectResponse(f"/admin?open={uid}", status_code=303)
+
+    @rt("/admin/unmark", methods=["POST"])
+    def admin_unmark(request: Request, session_id: str = "", user_id: str = "", cell: str = "", csrf: str = ""):
+        return _cell_action(request, session_id, user_id, cell, csrf, M.revoke_mark)
+
+    @rt("/admin/unblock", methods=["POST"])
+    def admin_unblock(request: Request, session_id: str = "", user_id: str = "", cell: str = "", csrf: str = ""):
+        return _cell_action(request, session_id, user_id, cell, csrf, M.lift_revoke)

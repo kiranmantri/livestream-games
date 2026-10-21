@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import base64
-import csv
 import re
 
 import pytest
@@ -12,7 +11,6 @@ from app import admin as A
 from app import phrases as P
 from app.db import connect
 from app.main import create_app
-from corpus.load import load_phrases as seed_phrases
 from tests.test_cards import load_phrases
 
 PW = "s3cret-pässword"
@@ -223,61 +221,14 @@ def test_learned_score_is_visible_on_the_page_after_a_game(web, conn):
     assert "100%" in html                                                              # the marked one: 1/1
 
 
-# ------------------------------------------------------------------ loader is seed-only
-def write_csv(path, rows):
-    with path.open("w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=["text", "source", "score", "enabled"])
-        w.writeheader()
-        w.writerows(rows)
-
-
-@pytest.fixture
-def empty(conn):
-    conn.execute("TRUNCATE phrases CASCADE")
-    return conn
-
-
-ROWS = [{"text": "primeira frase boa", "source": "chat", "score": "4.5", "enabled": "1"},
-        {"text": "segunda frase boa", "source": "transcript", "score": "2", "enabled": "0"},
-        {"text": "frase manual csv", "source": "manual", "score": "0", "enabled": "1"},
-        {"text": "longa demais " + "x " * 9 + "y", "source": "chat", "score": "9", "enabled": "1"}]   # 12 words: rejected
-
-
-def test_seed_populates_an_empty_table(empty, tmp_path):
-    write_csv(tmp_path / "p.csv", ROWS)
-    stats = seed_phrases(empty, tmp_path / "p.csv")
-    assert (stats["upserted"], stats["enabled"], stats["disabled"], stats["rejected"]) == (3, 2, 1, 1)
-    got = {r[0]: r[1:] for r in empty.execute("SELECT text, score, prior_score, enabled, source FROM phrases")}
-    assert got["primeira frase boa"] == (4.5, 4.5, True, "chat")
-    assert got["segunda frase boa"][2] is False
-    assert got["frase manual csv"][:2] == (99.0, 99.0)                              # manual without score -> 99
-
-
-def test_seed_does_not_touch_a_populated_table(empty, tmp_path):
-    write_csv(tmp_path / "p.csv", ROWS)
-    seed_phrases(empty, tmp_path / "p.csv")
-    empty.execute("UPDATE phrases SET score = 7, prior_score = 7, enabled = false WHERE text='primeira frase boa'")
-    empty.execute("DELETE FROM phrases WHERE text='segunda frase boa'")
-    stats = seed_phrases(empty, tmp_path / "p.csv")
-    assert "skipped" in stats and stats["upserted"] == 0
-    assert empty.execute("SELECT score, enabled FROM phrases WHERE text='primeira frase boa'").fetchone() == (7.0, False)
-    assert empty.execute("SELECT count(*) FROM phrases WHERE text='segunda frase boa'").fetchone()[0] == 0   # stays deleted
-
-
-def test_seed_force_reimports_but_keeps_play_statistics(empty, tmp_path):
-    write_csv(tmp_path / "p.csv", ROWS)
-    seed_phrases(empty, tmp_path / "p.csv")
-    empty.execute("UPDATE phrases SET score = 7, prior_score = 7, dealt = 5, marked = 2 WHERE text='primeira frase boa'")
-    seed_phrases(empty, tmp_path / "p.csv", force=True)
-    assert empty.execute("SELECT score, prior_score, dealt, marked FROM phrases WHERE text='primeira frase boa'").fetchone() \
-        == (4.5, 4.5, 5, 2)
-
-
-def test_seed_cli_flag_exists():
+# ------------------------------------------------------------------ seed CLI
+def test_seed_cli_only_offers_the_sql_seed():
     import subprocess
     import sys
     out = subprocess.run([sys.executable, "-m", "corpus.cli", "load", "--help"], capture_output=True, text=True, check=False)
-    assert out.returncode == 0 and "--force" in out.stdout and re.search(r"EMPTY", out.stdout)
+    assert out.returncode == 0 and "--sql" in out.stdout and re.search(r"EMPTY", out.stdout)
+    assert "--force" not in out.stdout and "--new" not in out.stdout          # the CSV seed is gone
+
 
 
 def test_errors_live_inside_the_row_so_a_later_save_leaves_no_stale_message(web, conn):

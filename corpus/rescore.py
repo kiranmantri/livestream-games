@@ -1,12 +1,11 @@
-"""Recalculate corpus scores of the phrases IN THE DB from the downloaded transcripts/chat, and export the DB
-back to the seed file (the DB is the source of truth)."""
+"""Recalculate corpus scores of the phrases IN THE DB from the downloaded transcripts/chat."""
 from __future__ import annotations
 
 from pathlib import Path
 
 import psycopg
 
-from corpus.extract import FIELDS, count_targets, load_corpus, score_of, write_seed
+from corpus.extract import count_targets, load_corpus, score_of
 
 
 def compute(corpus: Path, texts: list[str]) -> tuple[dict[str, float], dict[str, dict], int]:
@@ -35,12 +34,3 @@ def rescore(conn: psycopg.Connection, corpus: Path, dry_run: bool = False) -> di
     vals = sorted(scores.values())
     return {"phrases": len(rows), "changed": changed, "not_found_in_corpus": absent, "transcripts": n_tr,
             "min": vals[0] if vals else None, "max": vals[-1] if vals else None, "dry_run": dry_run}
-
-
-def export_seed(conn: psycopg.Connection, path: Path) -> int:
-    """Write the DB phrases to the seed CSV (text, source, score, enabled). Returns rows written."""
-    rows = [{"text": t, "source": s, "score": f"{sc:.3f}".rstrip("0").rstrip("."), "enabled": "1" if e else "0"}
-            for t, s, sc, e in conn.execute("SELECT text, source, score::float8, enabled FROM phrases")]
-    write_seed(rows, path)
-    assert FIELDS == ["text", "source", "score", "enabled"]
-    return len(rows)

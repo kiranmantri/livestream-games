@@ -52,7 +52,8 @@ https://www.youtube.com/@O_Poligrafo/streams (Portuguese, pt-BR). Design: `docs/
   identity. `X-Forwarded-For` is used only when the direct peer is in `TRUSTED_PROXIES`.
   (To be revisited vs. fake users.)
 - A card is generated randomly on join, persisted, and immutable (no re-roll).
-- Card = 5x5; centre cell (index 12) is the channel avatar image (free cell, counts as marked).
+- Card: NEW sessions are 4x4 (16 phrases, no free cell; `game_sessions.grid_size`, migration 0006). Sessions created before it stay
+  5x5 (centre index 12 = channel avatar, free cell, counts as marked). Max marks 16 / 24. `ingested_videos` and `corpus/phrases.csv` are gone.
 - Marking is honour-based (players mark their own cells; no phrase detection yet).
   There is NO "declare BINGO". The admin ends the session after some time; the winner is the
   player with the MOST marked phrase cells (centre free cell not counted; max 24). Tie-break: whoever
@@ -289,6 +290,16 @@ Also state what the agent itself already ran and its real output; never claim su
     #   makes MAX_USERS_PER_IP use the real client IP (only safe behind a proxy that overwrites that header);
     #   (4) the SQL seed runs only when `phrases` is EMPTY, so a restart never resurrects deleted phrases.
     # NEVER truncate the cloud DB: it holds real games and admin edits. See docs/backlog.md for follow-ups.
+
+### Validation for 4x4 cards, admin unmark, red lines, users sort, game-screen toggles (migration 0006)
+    uv run migrate                           # expect: "applied: 0006_grid4_drop_videos.sql" (drops ingested_videos)
+    uv run pytest -q                         # expect: 397 passed, 1 skipped (tests/test_lines.py is new)
+    # Game page: new cards are 4x4. Complete a row/column/diagonal -> red box over it (visual only; winner = most marks).
+    #   Top button hides/shows video+chat (iframes unloaded while hidden); icons ▦/☰ switch the OTHER cards between grid
+    #   (join order) and list (ranked by marks, with a bar). Choices live in localStorage key `lg_prefs`.
+    # /admin: users table has no IP and sorts via header links (?sort=name|marked|joined|seen|rank&dir=asc|desc).
+    #   Each marked cell has "Desmarcar" (removes the mark AND blocks the cell, table revoked_marks); blocked cells show "Liberar".
+    # Corpus seed: `deploy/seed/phrases_seed.sql` (loaded only into an EMPTY phrases table); `suggest --write` inserts inactive rows.
 
 ## Conventions log
 (Append new conventions below as they are agreed.)

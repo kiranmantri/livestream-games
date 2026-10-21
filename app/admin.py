@@ -74,9 +74,10 @@ class PlayerRow:
     ip: str
     joined_at: datetime
     last_seen_at: datetime
-    cells: list[dict]          # 25 entries as stored on the card (immutable snapshot)
-    marked: frozenset[int]     # marked cell indexes (never contains the centre)
+    cells: list[dict]          # 16 or 25 entries as stored on the card (immutable snapshot)
+    marked: frozenset[int]     # marked cell indexes (never the avatar free cell)
     marked_at: dict[int, datetime]   # cell_index -> time it was marked
+    revoked: frozenset[int] = frozenset()   # cells the admin unmarked and blocked
 
 
 _SQL = """
@@ -103,4 +104,10 @@ def current_session(conn: psycopg.Connection) -> S.GameSession | None:
 
 def players(conn: psycopg.Connection, session_id: uuid.UUID) -> list[PlayerRow]:
     rows = conn.execute(_SQL, (session_id,)).fetchall()  # type: ignore[arg-type]
-    return [PlayerRow(r[0], r[1], r[2], r[3], r[4], r[5] or [], frozenset(r[6]), dict(zip(r[6], r[7], strict=True))) for r in rows]
+    revoked: dict[uuid.UUID, set[int]] = {}
+    for uid, idx in conn.execute(
+            "SELECT c.user_id, r.cell_index FROM revoked_marks r JOIN bingo_cards c ON c.id = r.card_id "
+            "WHERE c.session_id = %s", (session_id,)):
+        revoked.setdefault(uid, set()).add(idx)
+    return [PlayerRow(r[0], r[1], r[2], r[3], r[4], r[5] or [], frozenset(r[6]), dict(zip(r[6], r[7], strict=True)),
+                      frozenset(revoked.get(r[0], ()))) for r in rows]

@@ -1,0 +1,133 @@
+"""Completed lines (red boxes), the users-table sort, admin unmark over HTTP and the game-screen toggles."""
+from __future__ import annotations
+
+import re
+
+import pytest
+from starlette.testclient import TestClient
+
+from app import lines as L
+from app.db import connect
+from app.main import create_app
+from tests.test_admin import PW, _csrf_of, basic
+from tests.test_cards import load_phrases
+
+
+@pytest.fixture
+def conn(test_db_url):
+    c = connect(test_db_url)
+    load_phrases(c, n=60)
+    yield c
+    c.execute("TRUNCATE game_sessions, users, phrases, bingo_cards, bingo_marks CASCADE")
+    c.close()
+
+
+@pytest.fixture
+def web(conn, test_db_url, monkeypatch):
+    monkeypatch.setenv("ADMIN_PASSWORD", PW)
+    app = create_app(test_db_url)
+    with TestClient(app):
+        def browser(ip="203.0.113.10"):
+            return TestClient(app, client=(ip, 50000), follow_redirects=False)
+        yield browser
+
+
+PH4 = [{"phrase_id": i, "text": f"f{i}"} for i in range(16)]
+PH5 = [{"phrase_id": i, "text": f"f{i}"} if i != 12 else {"type": "image"} for i in range(25)]
+
+
+def test_4x4_rows_columns_and_both_diagonals():
+    assert L.complete_lines(PH4, {0, 1, 2, 3}) == [("row", 0)]
+    assert L.complete_lines(PH4, {1, 5, 9, 13}) == [("col", 1)]
+    assert L.complete_lines(PH4, {0, 5, 10, 15}) == [("diag", 0)]
+    assert L.complete_lines(PH4, {3, 6, 9, 12}) == [("diag", 1)]
+    assert L.complete_lines(PH4, {0, 1, 2}) == [] and L.complete_lines(PH4, set()) == []
+
+
+def test_several_lines_at_once():
+    marked = {0, 1, 2, 3, 4, 8, 12}                       # row 0 + column 0
+    assert L.complete_lines(PH4, marked) == [("row", 0), ("col", 0)]
+
+
+def test_5x5_avatar_counts_as_marked_for_lines():
+    assert L.complete_lines(PH5, {10, 11, 13, 14}) == [("row", 2)]
+    assert ("diag", 0) in L.complete_lines(PH5, {0, 6, 18, 24})
+    assert L.complete_lines(PH5, {10, 11, 13}) == []
+
+
+def test_line_boxes_geometry():
+    assert "width:100%" in L.line_style(("row", 1), 4) and "top:25.000%" in L.line_style(("row", 1), 4)
+    assert "rotate(45deg)" in L.line_style(("diag", 0), 4) and "rotate(-45deg)" in L.line_style(("diag", 1), 4)
+    assert len(L.line_boxes(PH4, {0, 1, 2, 3, 4, 8, 12})) == 2
+
+
+def test_player_page_draws_a_red_box_only_for_a_complete_line(web):
+    a = web("203.0.113.10")
+    a.post("/start", data={"name": "Ana"})
+    for i in (0, 1, 2):
+        a.post(f"/mark/{i}")
+    assert 'class="line row"' not in a.get("/").text
+    a.post("/mark/3")
+    assert a.get("/").text.count('class="line row"') == 1
+
+
+def test_game_page_has_the_toggles_and_no_sort_order_toggle(web):
+    a = web("203.0.113.10")
+    a.post("/start", data={"name": "Ana"})
+    html = a.get("/").text
+    assert 'data-pref="live:toggle"' in html and 'data-pref="view:grid"' in html and 'data-pref="view:list"' in html
+    assert "order:" not in html and 'src="/game.js"' in html
+    assert a.get("/game.js").status_code == 200
+
+
+def test_others_are_ranked_by_marks_for_the_list_view(web):
+    a, b, c = web("203.0.113.10"), web("203.0.113.11"), web("203.0.113.12")
+    a.post("/start", data={"name": "Ana"})
+    b.post("/join", data={"name": "Bia"})
+    c.post("/join", data={"name": "Caio"})
+    for i in (0, 1):
+        c.post(f"/mark/{i}")
+    b.post("/mark/0")
+    html = a.get("/").text                                  # Ana sees Bia (joined 1st) and Caio (2nd)
+    pos = {n: w for w, n in re.findall(r'--o-win:(\d+)">.*?<span class="who">(\w+)</span>', html, re.DOTALL)}
+    assert pos == {"Bia": "1", "Caio": "0"}                 # Caio has more marks -> first in the ranked list
+
+
+def test_users_table_sorts_by_column_and_ignores_unknown_columns(web):
+    a, b, c = web("203.0.113.10"), web("203.0.113.11"), web("203.0.113.12")
+    a.post("/start", data={"name": "Zed"})
+    b.post("/join", data={"name": "Amy"})
+    c.post("/join", data={"name": "Max"})
+    for i in (0, 1):
+        b.post(f"/mark/{i}")
+    c.post("/mark/0")
+    adm = web("203.0.113.99")
+
+    def order(q):
+        html = adm.get("/admin" + q, headers=basic()).text
+        return re.findall(r"<td>\s*(Zed|Amy|Max)\s*</td>", html)
+    assert order("?sort=name&dir=asc") == ["Amy", "Max", "Zed"]
+    assert order("?sort=name&dir=desc") == ["Zed", "Max", "Amy"]
+    assert order("?sort=marked") == ["Amy", "Max", "Zed"]            # default direction for marks: most first
+    assert order("?sort=nonsense; drop table") == order("")          # whitelisted: falls back to rank
+    assert "203.0.113.1" not in adm.get("/admin", headers=basic()).text
+
+
+def test_admin_unmark_blocks_the_cell_and_unblock_lifts_it(web, conn):
+    a, admin = web("203.0.113.10"), web("203.0.113.99")
+    a.post("/start", data={"name": "Ana"})
+    a.post("/mark/3")
+    sid, tok = _csrf_of(admin.get("/admin", headers=basic()).text)
+    uid = str(conn.execute("SELECT id FROM users WHERE name='Ana'").fetchone()[0])
+    data = {"session_id": sid, "user_id": uid, "cell": "3", "csrf": tok}
+    assert admin.post("/admin/unmark", data={**data, "csrf": "bad"}, headers=basic()).status_code == 403
+    assert conn.execute("SELECT count(*) FROM bingo_marks").fetchone()[0] == 1          # bad csrf: untouched
+    r = admin.post("/admin/unmark", data=data, headers=basic())
+    assert r.status_code == 303 and conn.execute("SELECT count(*) FROM bingo_marks").fetchone()[0] == 0
+    assert conn.execute("SELECT cell_index FROM revoked_marks").fetchall() == [(3,)]
+    a.post("/mark/3")                                                                    # the player cannot re-mark it
+    assert conn.execute("SELECT count(*) FROM bingo_marks").fetchone()[0] == 0
+    assert "revoked" in a.get("/").text
+    admin.post("/admin/unblock", data=data, headers=basic())
+    a.post("/mark/3")
+    assert conn.execute("SELECT count(*) FROM bingo_marks").fetchone()[0] == 1

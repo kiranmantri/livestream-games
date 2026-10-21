@@ -29,7 +29,7 @@ def test_migrations_are_idempotent(conn):
     names = [r[0] for r in conn.execute("SELECT name FROM schema_migrations")]
     assert names == ["0001_init.sql", "0002_admin_started_sessions.sql",
                      "0003_phrase_stats.sql", "0004_phrase_words_1_10.sql",
-                     "0005_phrase_words_any_source.sql"]
+                     "0005_phrase_words_any_source.sql", "0006_grid4_drop_videos.sql"]
 
 
 # ---- sessions
@@ -190,12 +190,14 @@ def test_one_card_per_user_per_session(conn):
         add_card(conn, sid, uid)
 
 
-def test_card_must_have_25_cells(conn):
+def test_card_must_have_16_or_25_cells(conn):
     sid, uid = new_session(conn)
-    for bad in (json.dumps([1] * 24), json.dumps([1] * 26), json.dumps({"a": 1})):
+    for bad in (json.dumps([1] * 15), json.dumps([1] * 17), json.dumps([1] * 24), json.dumps([1] * 26),
+                json.dumps({"a": 1})):
         with pytest.raises(errors.CheckViolation):
             add_card(conn, sid, uid, bad)
         conn.rollback()
+    add_card(conn, sid, uid, json.dumps([{"phrase_id": i, "text": f"frase {i}"} for i in range(16)]))   # 4x4 is fine
 
 
 def test_card_user_must_belong_to_session(conn):
@@ -223,9 +225,9 @@ def test_card_jsonb_roundtrip_keeps_centre_image(conn):
 
 
 # ---- marks
-def test_marks_reject_centre_and_out_of_range_and_duplicates(conn):
+def test_marks_reject_avatar_out_of_range_and_duplicates(conn):
     sid, uid = new_session(conn)
-    cid = add_card(conn, sid, uid)
+    cid = add_card(conn, sid, uid)                                    # 25 cells: index 12 is the avatar
     for bad in (12, -1, 25):
         with pytest.raises(errors.CheckViolation):
             conn.execute("INSERT INTO bingo_marks (card_id, cell_index) VALUES (%s,%s)", (cid, bad))
@@ -234,6 +236,30 @@ def test_marks_reject_centre_and_out_of_range_and_duplicates(conn):
     conn.commit()
     with pytest.raises(errors.UniqueViolation):
         conn.execute("INSERT INTO bingo_marks (card_id, cell_index) VALUES (%s,0)", (cid,))
+
+
+def test_marks_on_a_4x4_card_allow_12_and_reject_cells_beyond_the_card(conn):
+    sid, uid = new_session(conn)
+    cid = add_card(conn, sid, uid, json.dumps([{"phrase_id": i, "text": f"frase {i}"} for i in range(16)]))
+    conn.execute("INSERT INTO bingo_marks (card_id, cell_index) VALUES (%s,12)", (cid,))
+    conn.commit()
+    for bad in (16, 24):
+        with pytest.raises(errors.CheckViolation):
+            conn.execute("INSERT INTO bingo_marks (card_id, cell_index) VALUES (%s,%s)", (cid, bad))
+        conn.rollback()
+
+
+def test_grid_size_defaults_to_4_and_only_4_or_5_are_allowed(conn):
+    sid, _ = new_session(conn)
+    assert conn.execute("SELECT grid_size FROM game_sessions WHERE id=%s", (sid,)).fetchone() == (4,)
+    for bad in (3, 6, 0):
+        with pytest.raises(errors.CheckViolation):
+            conn.execute("UPDATE game_sessions SET grid_size=%s WHERE id=%s", (bad, sid))
+        conn.rollback()
+
+
+def test_ingested_videos_table_is_gone(conn):
+    assert conn.execute("SELECT to_regclass('ingested_videos')").fetchone() == (None,)
 
 
 def test_bingo_is_24_marks(conn):

@@ -42,13 +42,13 @@ def test_toggle_marks_then_unmarks(conn, me):
 def test_marks_are_committed_and_visible_elsewhere(conn, me, test_db_url):
     _, p, _card = me
     M.toggle_mark(conn, p.id, 0)
-    M.toggle_mark(conn, p.id, 24)
+    M.toggle_mark(conn, p.id, 15)
     with psycopg.connect(test_db_url) as other:
         rows = other.execute("SELECT cell_index FROM bingo_marks ORDER BY 1").fetchall()
-    assert rows == [(0,), (24,)]
+    assert rows == [(0,), (15,)]
 
 
-@pytest.mark.parametrize("bad", [12, -1, 25, 99, True, "3", None, 3.0])
+@pytest.mark.parametrize("bad", [-1, 16, 25, 99, True, "3", None, 3.0])     # a 4x4 card has cells 0..15
 def test_invalid_cells_rejected(conn, me, bad):
     _, p, card = me
     with pytest.raises(M.InvalidCell):
@@ -96,8 +96,7 @@ def test_marks_racing_finish_are_either_counted_or_rejected(conn, me, test_db_ur
     def marker():
         with connect(test_db_url) as c:
             barrier.wait()
-            for i in range(24):
-                idx = [x for x in range(25) if x != 12][i]
+            for idx in range(16):
                 try:
                     M.toggle_mark(c, p.id, idx)
                     outcomes.append("ok")
@@ -115,3 +114,62 @@ def test_marks_racing_finish_are_either_counted_or_rejected(conn, me, test_db_ur
     result = next(o for o in outcomes if not isinstance(o, str))
     in_db = conn.execute("SELECT count(*) FROM bingo_marks WHERE card_id=%s", (card.id,)).fetchone()[0]
     assert result.standings[0].marked == in_db == outcomes.count("ok")
+
+
+def test_cell_12_is_a_normal_cell_on_4x4(conn, me):
+    _s, p, card = me
+    assert M.toggle_mark(conn, p.id, 12) is True and M.marked_cells(conn, card.id) == {12}
+
+
+def test_cell_12_is_the_avatar_on_a_legacy_5x5_card_and_is_never_markable(conn):
+    load_phrases(conn)
+    s, p, _ = S.start_session(conn, "Bia", "10.0.0.2")
+    conn.execute("UPDATE game_sessions SET grid_size = 5 WHERE id=%s", (s.id,))
+    card = C.assign_card(conn, s.id, p.id, random.Random(1))
+    assert len(card.cells) == 25 and card.max_marks == 24
+    for bad in (12, 25):
+        with pytest.raises(M.InvalidCell):
+            M.toggle_mark(conn, p.id, bad)
+    assert M.toggle_mark(conn, p.id, 24) is True and M.toggle_mark(conn, p.id, 11) is True
+    assert M.marked_cells(conn, card.id) == {11, 24}
+
+
+def test_admin_revoke_removes_the_mark_and_blocks_the_cell_until_lifted(conn, me):
+    s, p, card = me
+    M.toggle_mark(conn, p.id, 3)
+    M.toggle_mark(conn, p.id, 4)
+    assert M.revoke_mark(conn, s.id, p.id, 3) is True                    # was marked -> now unmarked
+    assert M.marked_cells(conn, card.id) == {4} and M.revoked_cells(conn, card.id) == {3}
+    with pytest.raises(M.CellRevoked):
+        M.toggle_mark(conn, p.id, 3)                                     # the player cannot just tap it again
+    assert M.marked_cells(conn, card.id) == {4}
+    assert M.revoke_mark(conn, s.id, p.id, 3) is False                   # already unmarked: nothing to remove
+    assert M.lift_revoke(conn, s.id, p.id, 3) is True and M.lift_revoke(conn, s.id, p.id, 3) is False
+    assert M.toggle_mark(conn, p.id, 3) is True                          # allowed again
+
+
+def test_admin_revoke_can_block_an_unmarked_cell_and_ignores_bad_cells(conn, me):
+    s, p, card = me
+    assert M.revoke_mark(conn, s.id, p.id, 7) is False and M.revoked_cells(conn, card.id) == {7}
+    for bad in (-1, 16, 99, True, None):
+        assert M.revoke_mark(conn, s.id, p.id, bad) is False
+    assert M.revoked_cells(conn, card.id) == {7}
+
+
+def test_admin_cannot_revoke_after_the_game_ended_or_for_another_session(conn, me):
+    import uuid
+    s, p, card = me
+    M.toggle_mark(conn, p.id, 3)
+    assert M.revoke_mark(conn, uuid.uuid4(), p.id, 3) is False           # wrong session
+    G.finish_session(conn, s.id)
+    assert M.revoke_mark(conn, s.id, p.id, 3) is False                   # result is final
+    assert M.marked_cells(conn, card.id) == {3}
+
+
+def test_revoked_marks_are_durable_and_die_with_the_card(conn, me, test_db_url):
+    s, p, _card = me
+    M.revoke_mark(conn, s.id, p.id, 5)
+    with psycopg.connect(test_db_url) as other:
+        assert other.execute("SELECT cell_index FROM revoked_marks").fetchall() == [(5,)]
+    conn.execute("DELETE FROM game_sessions WHERE id=%s", (s.id,))
+    assert conn.execute("SELECT count(*) FROM revoked_marks").fetchone() == (0,)

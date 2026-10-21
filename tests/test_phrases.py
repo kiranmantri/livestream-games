@@ -257,13 +257,13 @@ def test_finish_counts_dealt_and_marked_per_phrase(conn):
                 exp_marked[cell["phrase_id"]] = exp_marked.get(cell["phrase_id"], 0) + (i in marks[k])
     got = {r[0]: (r[1], r[2]) for r in conn.execute("SELECT id, dealt, marked FROM phrases WHERE dealt > 0")}
     assert got == {pid: (exp_dealt[pid], exp_marked[pid]) for pid in exp_dealt}
-    assert sum(m for _, m in got.values()) == 5 and sum(d for d, _ in got.values()) == 72
+    assert sum(m for _, m in got.values()) == 5 and sum(d for d, _ in got.values()) == 48
 
 
 def test_finish_relearns_score_with_the_documented_formula(conn):
     load_phrases(conn, n=40)
     before = {r[0]: r[1] for r in conn.execute("SELECT id, score FROM phrases")}
-    play(conn, 3, [list(range(12)) + list(range(13, 25))] * 3)               # everybody marks everything
+    play(conn, 3, [list(range(16))] * 3)               # everybody marks everything
     held = conn.execute("SELECT id, prior_score, dealt, marked, score FROM phrases WHERE dealt > 0").fetchall()
     assert held
     for pid, prior, dealt, marked, score in held:
@@ -308,7 +308,7 @@ def test_stats_accumulate_across_sessions(conn):
     play(conn, 2, [[], []], seed=1)
     play(conn, 2, [[], []], seed=2)
     assert conn.execute("SELECT max(dealt) FROM phrases").fetchone()[0] >= 3
-    assert conn.execute("SELECT sum(dealt) FROM phrases").fetchone()[0] == 4 * 24
+    assert conn.execute("SELECT sum(dealt) FROM phrases").fetchone()[0] == 4 * 16
 
 
 def test_session_without_cards_changes_nothing(conn):

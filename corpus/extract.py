@@ -6,11 +6,10 @@ Candidates (all 3-10 words, never greetings) come from THREE sources:
   cliche   : expressions listed in corpus/cliches.txt (debate cliches / fallacies), found >= once
   author   : every 3-10 word sentence written in chat by the authors in corpus/cliche_authors.txt
 
-`write_phrases` appends only phrases that are NOT already in the seed file / DB, and always INACTIVE.
+`insert_candidates` inserts only phrases that are NOT already in the DB, and always INACTIVE.
 """
 from __future__ import annotations
 
-import csv
 import json
 import math
 import re
@@ -344,8 +343,7 @@ def build(corpus: Path, min_streams: int = 3, min_t_count: int = 5, min_authors:
     return rows, meta
 
 
-# ------------------------------------------------------------------ seed file
-FIELDS = ["text", "source", "score", "enabled"]      # same columns as the DB export
+# ------------------------------------------------------------------ selection / DB insert
 
 
 def select(rows: list[dict], top: int) -> list[dict]:
@@ -360,27 +358,11 @@ def select(rows: list[dict], top: int) -> list[dict]:
     return sorted(picked, key=lambda r: -r["score"])
 
 
-def read_seed(path: Path) -> list[dict]:
-    if not path.exists():
-        return []
-    with path.open(newline="", encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
-
-def write_seed(rows: list[dict], path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=FIELDS, lineterminator="\n")
-        w.writeheader()
-        for r in sorted(rows, key=lambda r: (-float(r.get("score") or 0), r["text"])):
-            w.writerow({k: r.get(k, "") for k in FIELDS})
-
-
-def write_phrases(rows: list[dict], path: Path, top: int) -> tuple[int, int]:
-    """Append NEW candidates to the seed file, always INACTIVE (enabled=0). Existing rows are never touched.
-    Takes ALL cliche + author candidates and the best `top` repeated ones. -> (added, total rows)."""
-    existing = read_seed(path)
-    known = {strip_accents(r["text"]) for r in existing}
+def insert_candidates(conn, rows: list[dict], top: int) -> tuple[int, int]:
+    """INSERT NEW candidates into the phrases table, always INACTIVE; existing rows are never touched.
+    Takes ALL cliche + author candidates and the best `top` repeated ones. -> (added, phrases in the table).
+    `conn` is an autocommit psycopg connection."""
+    known = {strip_accents(t) for (t,) in conn.execute("SELECT text FROM phrases")}
     chosen = [r for r in rows if r["kind"] != "repeated"] + select([r for r in rows if r["kind"] == "repeated"], top)
     added = 0
     for r in chosen:
@@ -388,23 +370,7 @@ def write_phrases(rows: list[dict], path: Path, top: int) -> tuple[int, int]:
         if k in known:
             continue
         known.add(k)
-        existing.append({"text": r["text"], "source": r["source"], "score": r["score"], "enabled": "0"})
-        added += 1
-    write_seed(existing, path)
-    return added, len(existing)
-
-
-def add_manual(text: str, path: Path) -> str:
-    """Add a MANUAL phrase (1-10 words) to the seed file, active, score 99."""
-    text = " ".join(text.lower().split())
-    n = len(text.split())
-    if not MANUAL_MIN_WORDS <= n <= MANUAL_MAX_WORDS:
-        raise ValueError(f"manual phrase must have {MANUAL_MIN_WORDS}-{MANUAL_MAX_WORDS} words (got {n}): {text!r}")
-    if _GREET_RE.search(text):
-        raise ValueError(f"greetings are not allowed: {text!r}")
-    existing = read_seed(path)
-    if any(r["text"] == text for r in existing):
-        return f"already present: {text!r}"
-    existing.append({"text": text, "source": "manual", "score": "99", "enabled": "1"})
-    write_seed(existing, path)
-    return f"added manual: {text!r}"
+        added += conn.execute(
+            "INSERT INTO phrases (text, source, score, prior_score, enabled) VALUES (%s, %s, %s, %s, false) "
+            "ON CONFLICT (text) DO NOTHING", (r["text"], r["source"], r["score"], r["score"])).rowcount
+    return added, conn.execute("SELECT count(*) FROM phrases").fetchone()[0]

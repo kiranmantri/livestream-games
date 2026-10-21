@@ -1,15 +1,13 @@
-"""Corpus tooling: 3-10 word extraction, cliche list/authors, seed-file rules, DB rescore, `load --new`."""
+"""Corpus tooling: 3-10 word extraction, cliche list/authors, candidate insert, DB rescore, SQL seed."""
 from __future__ import annotations
 
-import csv
 import json
 
 import pytest
 
 from app.db import connect
 from corpus import extract as X
-from corpus.load import load_phrases as seed
-from corpus.rescore import export_seed, rescore
+from corpus.rescore import rescore
 from tests.test_cards import load_phrases
 
 CLICHE = "isso é uma falácia clássica de debate"     # 6 words
@@ -133,33 +131,7 @@ def test_build_excludes_known_phrases_ignoring_accents_and_case(corpus):
     assert CLICHE not in {r["text"] for r in rows} and meta["already_known"] >= 1
 
 
-def test_write_phrases_appends_inactive_and_never_touches_existing_rows(corpus, tmp_path):
-    seed_csv = tmp_path / "seed.csv"
-    X.write_seed([{"text": "minha frase manual", "source": "manual", "score": "99", "enabled": "1"},
-                  {"text": "vida depois da morte existe realmente", "source": "chat", "score": "7", "enabled": "1"}],
-                 seed_csv)
-    rows, _ = X.build(corpus, cliches=[CLICHE], author_aliases=["olidia"], exclude=None)
-    added, total = X.write_phrases(rows, seed_csv, top=50)
-    got = {r["text"]: r for r in X.read_seed(seed_csv)}
-    assert added == total - 2 and added >= 2
-    assert got["minha frase manual"]["enabled"] == "1" and got["minha frase manual"]["score"] == "99"
-    assert got["vida depois da morte existe realmente"]["score"] == "7"            # existing row untouched
-    assert got[CLICHE]["enabled"] == "0" and got["isso prova que deus existe"]["enabled"] == "0"
-    assert all(r["enabled"] == "0" for t, r in got.items() if r["source"] != "manual" and t != "vida depois da morte existe realmente")
-    assert X.write_phrases(rows, seed_csv, top=50)[0] == 0                       # idempotent
-
-
-def test_add_manual_allows_1_to_10_words(tmp_path):
-    f = tmp_path / "s.csv"
-    assert "added" in X.add_manual("Palavra", f) and "already" in X.add_manual("palavra", f)
-    X.add_manual(" ".join(["w"] * 10), f)
-    for bad in ("", " ".join(["w"] * 11), "bom dia"):
-        with pytest.raises(ValueError):
-            X.add_manual(bad, f)
-    assert {r["source"] for r in X.read_seed(f)} == {"manual"}
-
-
-# ------------------------------------------------------------------ DB: rescore / load --new / export
+# ------------------------------------------------------------------ DB: rescore / candidates / SQL seed
 @pytest.fixture
 def db(test_db_url):
     c = connect(test_db_url)
@@ -187,39 +159,13 @@ def test_rescore_replaces_scores_of_non_manual_phrases_only(db, corpus):
     assert rows["minha frase manual"][0] == 99.0                                 # manual untouched
 
 
-def test_load_new_adds_only_missing_rows_inactive_and_never_overwrites(db, tmp_path):
-    f = tmp_path / "p.csv"
-    X.write_seed([{"text": "frase que ja existe", "source": "chat", "score": "9", "enabled": "1"},
-                  {"text": "frase nova do corpus", "source": "transcript", "score": "5", "enabled": "1"},
-                  {"text": "dois", "source": "chat", "score": "1", "enabled": "1"},             # 1 word: ok (admin-shortened)
-                  {"text": " ".join(["w"] * 11), "source": "chat", "score": "1", "enabled": "1"}], f)   # 11 words: bad
-    db.execute("INSERT INTO phrases (text, source, score) VALUES ('frase que ja existe', 'chat', 2)")
-    out = seed(db, f, new_only=True)
-    assert out["added"] == 2 and out["rejected"] == 1
-    rows = {t: (float(s), e) for t, s, e in db.execute("SELECT text, score, enabled FROM phrases")}
-    assert rows == {"frase que ja existe": (2.0, True), "frase nova do corpus": (5.0, False), "dois": (1.0, False)}
-    assert seed(db, f, new_only=True)["added"] == 0
-    assert "skipped" in seed(db, f)                                              # plain load still seed-only
-
-
-def test_export_writes_the_db_back_to_the_seed_file(db, tmp_path):
-    db.execute("INSERT INTO phrases (text, source, score, enabled) VALUES "
-               "('uma frase de teste','chat',4.5,false),('manual um','manual',99,true)")
-    f = tmp_path / "out.csv"
-    assert export_seed(db, f) == 2
-    with f.open(newline="", encoding="utf-8") as h:
-        got = list(csv.DictReader(h))
-    assert got == [{"text": "manual um", "source": "manual", "score": "99", "enabled": "1"},
-                   {"text": "uma frase de teste", "source": "chat", "score": "4.5", "enabled": "0"}]
-
-
 def test_sql_seed_loads_only_into_an_empty_table_and_is_not_reapplied(db, tmp_path):
     from corpus.load import load_sql_seed
     f = tmp_path / "seed.sql"
     f.write_text("BEGIN;\nINSERT INTO phrases (text, source, score, prior_score, enabled) VALUES\n"
                  "('frase um do seed','chat',4,4,true),('frase dois do seed','manual',99,99,false)\n"
                  "ON CONFLICT (text) DO NOTHING;\nCOMMIT;\n", encoding="utf-8")
-    assert load_sql_seed(db, f) == {"phrases": 2, "enabled": 1, "videos": 0}
+    assert load_sql_seed(db, f) == {"phrases": 2, "enabled": 1}
     db.execute("DELETE FROM phrases WHERE text = 'frase um do seed'")             # admin deletes one in the UI
     assert "skipped" in load_sql_seed(db, f)                                       # restart: must NOT bring it back
     assert db.execute("SELECT count(*) FROM phrases").fetchone() == (1,)
@@ -233,3 +179,19 @@ def test_sql_seed_refuses_a_non_autocommit_connection(db, tmp_path, test_db_url)
     f.write_text("SELECT 1;", encoding="utf-8")
     with psycopg.connect(test_db_url) as plain, pytest.raises(RuntimeError):
         load_sql_seed(plain, f)
+
+
+def test_insert_candidates_adds_inactive_rows_and_never_touches_existing_ones(db, corpus):
+    db.execute("INSERT INTO phrases (text, source, score, enabled) VALUES "
+               "('minha frase manual','manual',99,true),('vida depois da morte existe realmente','chat',7,true)")
+    rows, _ = X.build(corpus, cliches=[CLICHE], author_aliases=["olidia"], exclude=None)
+    added, total = X.insert_candidates(db, rows, top=50)
+    got = {t: (src, float(sc), en) for t, src, sc, en in db.execute("SELECT text, source, score, enabled FROM phrases")}
+    assert added == total - 2 and added >= 2
+    assert got["minha frase manual"] == ("manual", 99.0, True)                       # existing rows untouched
+    assert got["vida depois da morte existe realmente"] == ("chat", 7.0, True)
+    assert got[CLICHE][2] is False and got["isso prova que deus existe"][2] is False  # new ones are INACTIVE
+    assert all(not en for t, (src, sc, en) in got.items()
+               if t not in ("minha frase manual", "vida depois da morte existe realmente"))
+    assert db.execute("SELECT count(*) FROM phrases WHERE prior_score <> score").fetchone() == (0,)
+    assert X.insert_candidates(db, rows, top=50)[0] == 0                              # idempotent

@@ -1,6 +1,6 @@
 """Scoring: the player with the MOST marked phrase cells wins; the admin ends the session.
 
-Marks are honour-based. The free centre cell is never stored, so the max is 24.
+Marks are honour-based. The free avatar cell of a 5x5 card is never stored: max 16 marks on a 4x4 card, 24 on a 5x5.
 Tie-break: whoever reached their final count first (earliest last mark), then earliest joined.
 Nobody marked anything -> no winner.
 """

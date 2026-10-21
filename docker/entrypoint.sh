@@ -4,8 +4,6 @@
 set -eu
 python -m app.db
 if [ -f deploy/seed/phrases_seed.sql ]; then
-  python -m corpus.cli load --sql deploy/seed/phrases_seed.sql   # SQL dump of the source-of-truth DB (only if EMPTY)
-else
-  python -m corpus.cli load                                      # fallback: corpus/phrases.csv (only if EMPTY)
+  python -m corpus.cli load          # SQL seed (made from the cloud DB); only runs if the phrases table is EMPTY
 fi
 exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-server-header

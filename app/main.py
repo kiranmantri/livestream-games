@@ -7,7 +7,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from urllib.parse import quote
 
 from fasthtml.common import (
@@ -44,6 +44,7 @@ from app import scoring as G
 from app import sessions as S
 from app import texts as T
 from app.config import ROOT, database_url
+from app.lines import line_boxes
 
 STATIC_DIR = ROOT / "app" / "static"
 COOKIE_MAX_AGE = 60 * 60 * 48
@@ -89,37 +90,45 @@ def cell_size_cls(text: str) -> str:
     return "xlong" if len(text) > 48 else "long" if len(text) > 26 else ""
 
 
-def board(card: C.Card, marked: dict[int, datetime], player_name: str):
+def board(card: C.Card, marked: dict[int, datetime], player_name: str, revoked: frozenset[int] = frozenset(),
+          error: str | None = None):
     cells = []
     for i, cell in enumerate(card.cells):
-        if i == C.CENTER_INDEX:
+        if "phrase_id" not in cell:                    # the avatar free cell (5x5 cards only)
             cells.append(Div(Img(src="/center.jpg", alt=T.AVATAR_ALT, width=160, height=160),
                              cls="cell free", aria_label=T.AVATAR_ALT))
         else:
             on = i in marked
+            cls = " ".join(x for x in ("cell", "revoked" if i in revoked else "", cell_size_cls(cell["text"])) if x)
             cells.append(Button(
-                cell["text"], Small(timefmt.hms(marked[i]), cls="at") if on else None, type="button", cls=f"cell {cell_size_cls(cell['text'])}".strip(),
+                cell["text"], Small(timefmt.hms(marked[i]), cls="at") if on else None, type="button", cls=cls,
+                title=T.CELL_REVOKED if i in revoked else None,
                 aria_pressed="true" if on else "false",
                 hx_post=f"/mark/{i}", hx_target="#game-board", hx_swap="outerHTML"))
     return Div(
         Div(Span(f"{player_name} ({T.YOU})", cls="who"),
-            Span(f"{T.MARKED}: {len(marked)}/{C.PHRASE_CELLS}", cls="count", id="count"),
+            Span(f"{T.MARKED}: {len(marked)}/{card.max_marks}", cls="count", id="count"),
             cls="bar"),
-        Div(*cells, cls="board", lang="pt-BR"),
+        Div(error, cls="cellerr", role="alert") if error else None,
+        Div(*cells, *line_boxes(card.cells, marked), cls="board", lang="pt-BR", style=f"--cols: {card.size}"),
         id="game-board")
 
 
-def readonly_card(pb: M.PlayerBoard):
+def readonly_card(pb: M.PlayerBoard, join_pos: int = 0, win_pos: int = 0):
     """Another player's card: same grid, no buttons. Marked cells are green; no times."""
     cells = []
     for i, cell in enumerate(pb.cells):
-        if i == C.CENTER_INDEX:
+        if "phrase_id" not in cell:
             cells.append(Div(Img(src="/center.jpg", alt=T.AVATAR_ALT, width=160, height=160), cls="cell free ro"))
         else:
             cls = " ".join(x for x in ("cell", "ro", "on" if i in pb.marked else "", cell_size_cls(cell["text"])) if x)
             cells.append(Div(cell["text"], cls=cls, title=cell["text"]))     # title: phrase on hover when tiny
-    return Div(Div(Span(pb.name, cls="who"), Span(f"{len(pb.marked)}/{C.PHRASE_CELLS}", cls="count"), cls="bar"),
-               Div(*cells, cls="board", lang="pt-BR"), cls="cardbox other")
+    pct = round(100 * len(pb.marked) / pb.max_marks) if pb.max_marks else 0
+    return Div(Div(Span(pb.name, cls="who"), Span(f"{len(pb.marked)}/{pb.max_marks}", cls="count"), cls="bar"),
+               Div(Span(style=f"width:{pct}%"), cls="meter"),       # shown in the list view only (CSS)
+               Div(*cells, *line_boxes(pb.cells, pb.marked), cls="board", lang="pt-BR",
+                   style=f"--cols: {C.grid_of(len(pb.cells))}"), cls="cardbox other",
+               style=f"--o-join:{join_pos};--o-win:{win_pos}")      # CSS `order`: join order / most marked first
 
 
 def boards_version(boards: list[M.PlayerBoard]) -> str:
@@ -132,7 +141,12 @@ def boards_version(boards: list[M.PlayerBoard]) -> str:
 
 def others_view(boards: list[M.PlayerBoard], version: str):
     # display: contents (CSS): the heading and the cards become direct items of the .cardgrid around this div
-    return Div(H2(T.OTHERS_HEADING, cls="othershead") if boards else None, *[readonly_card(b) for b in boards],
+    # same ranking rule as scoring: most marks, then whoever reached that count first, then who joined first
+    by_win = sorted(range(len(boards)), key=lambda i: (-len(boards[i].marked),
+                                                       max(boards[i].marked.values(), default=datetime.max.replace(tzinfo=UTC)), i))
+    win_pos = {i: pos for pos, i in enumerate(by_win)}
+    return Div(H2(T.OTHERS_HEADING, cls="othershead") if boards else None,
+               *[readonly_card(b, i, win_pos[i]) for i, b in enumerate(boards)],
                id="others",
                hx_get=f"/cards?v={version}", hx_trigger=POLL_CARDS, hx_swap="outerHTML")
 
@@ -180,14 +194,22 @@ def leaderboard_view(standings: list[G.Standing], me: S.Player | None, top: int 
 
 
 def game_page(card: C.Card, marked: dict[int, datetime], me: S.Player, others: list[M.PlayerBoard],
-              video_id: str | None, live_known: bool, host: str = ""):
+              video_id: str | None, live_known: bool, host: str = "", revoked: frozenset[int] = frozenset()):
     """Top row (50/50): LEFT = live stream with the chat below it, RIGHT = MY card (RED border); both columns have
     the same top and bottom. Below: everybody else, smaller. No scoreboard: their cards show who is ahead."""
     return page(
         H1(T.TITLE), P(T.HOW_TO, cls="tag"),
+        Div(Button(Span(T.LIVE_HIDE, cls="when-shown"), Span(T.LIVE_SHOW, cls="when-hidden"), type="button",
+                   cls="pref", data_pref="live:toggle", aria_pressed="false"), cls="gamebar"),
         Div(Div(stream_panel(video_id, live_known), chat_panel(video_id, host), cls="leftcol"),
-            Div(board(card, marked, me.name), cls="cardbox mine"), cls="toprow"),
+            Div(board(card, marked, me.name, revoked), cls="cardbox mine"), cls="toprow"),
+        Div(Button("▦", type="button", cls="pref icon", data_pref="view:grid", aria_pressed="true",
+                   title=T.VIEW_GRID, aria_label=T.VIEW_GRID),
+            Button("☰", type="button", cls="pref icon", data_pref="view:list", aria_pressed="false",
+                   title=T.VIEW_LIST, aria_label=T.VIEW_LIST),
+            cls="gamebar others"),
         Div(others_view(others, boards_version(others)), cls="cardgrid small"),
+        Script(src="/game.js", defer=True),
         cls="game")
 
 
@@ -268,7 +290,7 @@ def create_app(db_url: str | None = None, live: livestream.LiveStream | None = N
                     return entry_page(S.get_active_session(conn), error="no_phrases")
                 others = [b for b in M.session_boards(conn, me.session_id) if b.user_id != me.id]
                 return game_page(card, M.marked_times(conn, card.id), me, others, live.current(), live.known,
-                                 request.url.hostname or "")
+                                 request.url.hostname or "", M.revoked_cells(conn, card.id))
             active = S.get_active_session(conn)
             found = S.find_player(conn, token_of(request))
             if active is None and found and found[1].status == "ended":
@@ -290,15 +312,20 @@ def create_app(db_url: str | None = None, live: livestream.LiveStream | None = N
             me = S.resume(conn, token_of(request))
             if me is None:
                 return Response(status_code=401, headers={"HX-Refresh": "true"})
+            card = C.get_card(conn, me.session_id, me.id)
             try:
                 M.toggle_mark(conn, me.id, idx)
+            except M.CellRevoked:       # the admin removed this mark: show the board again with the reason
+                assert card is not None
+                return board(card, M.marked_times(conn, card.id), me.name, M.revoked_cells(conn, card.id),
+                             error=T.CELL_REVOKED)
             except M.InvalidCell:
                 return PlainTextResponse("invalid cell", status_code=400)
             except M.SessionNotActive:
                 return Response(status_code=409, headers={"HX-Refresh": "true"})  # game just ended
             card = C.get_card(conn, me.session_id, me.id)
             assert card is not None
-            return board(card, M.marked_times(conn, card.id), me.name)
+            return board(card, M.marked_times(conn, card.id), me.name, M.revoked_cells(conn, card.id))
 
     @rt("/leaderboard")
     def leaderboard(request: Request):

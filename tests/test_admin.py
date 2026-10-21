@@ -110,13 +110,13 @@ def test_admin_lists_users_cards_and_marks(web, conn):
         b.post(f"/mark/{i}")
     html = web().get("/admin", headers=basic()).text
     assert "Partida em andamento" in html and "Jogadores: 2" in html
-    assert "203.0.113.10" in html and "203.0.113.11" in html
+    assert "203.0.113.10" not in html and "203.0.113.11" not in html      # IPs are not shown
     assert "Bia &lt;i&gt;" in html and "Bia <i>" not in html           # escaped
     assert html.count('class="mini"') == 2
-    assert html.count('class="mc on"') == 3 and html.count('class="mc free"') == 2
+    assert html.count('class="mc on"') == 3 and html.count('class="mc free"') == 0
     cells = conn.execute("SELECT cells FROM bingo_cards c JOIN users u ON u.id=c.user_id WHERE u.name='Ana'").fetchone()[0]
-    assert cells[0]["text"] in html and cells[24]["text"] in html        # real card content shown
-    assert "Bia &lt;i&gt; - 3/24" in html
+    assert cells[0]["text"] in html and cells[15]["text"] in html        # real card content shown
+    assert "Bia &lt;i&gt; - 3/16" in html
     assert "/admin/finish" in html and "csrf" in html
 
 

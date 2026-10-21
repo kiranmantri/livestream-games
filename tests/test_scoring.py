@@ -33,7 +33,7 @@ def mark(conn, card, idxs, secs=0):
                      (card.id, i, secs + k))
 
 
-CELLS = [i for i in range(25) if i != 12]
+CELLS = list(range(16))            # every cell of a 4x4 card is a phrase cell
 
 
 @pytest.fixture

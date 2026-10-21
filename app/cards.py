@@ -1,8 +1,9 @@
 """Bingo card generation + assignment.
 
-A card is 25 cells (row-major 5x5). Index 12 (centre) is the channel avatar (free cell); the other
-24 are distinct phrases drawn at random from the enabled corpus. Cards are persisted once and are
-immutable (DB trigger); assign_card() is idempotent so a user can never be re-rolled.
+A new session deals 4x4 cards (16 distinct phrases, no free cell). Sessions created before that change keep
+their 5x5 cards: 25 cells, index 12 (centre) is the channel avatar (free cell), the other 24 are phrases. The
+size is stored per session (game_sessions.grid_size); phrases are drawn at random from the enabled corpus.
+Cards are persisted once and are immutable (DB trigger); assign_card() is idempotent so a user can never be re-rolled.
 """
 from __future__ import annotations
 
@@ -17,9 +18,11 @@ from psycopg.rows import dict_row
 
 from app.db import ensure_autocommit
 
-CENTER_INDEX = 12
-GRID = 5
-PHRASE_CELLS = GRID * GRID - 1  # 24
+DEFAULT_GRID = 4                  # new sessions: 4x4, 16 phrase cells, no free cell
+SUPPORTED_GRIDS = (4, 5)          # 5x5 only exists for sessions created before the 4x4 change (and in tests)
+CENTER_INDEX = 12                 # the avatar free cell of a 5x5 card; a 4x4 card has none
+MAX_CELLS = 25                    # cells of the largest supported card (5x5)
+PHRASE_CELLS = 24                 # MOST phrases any supported card needs (5x5): floor for the enabled corpus
 CENTER_IMAGE_URL = ("https://yt3.googleusercontent.com/LSxmMTuZ7eATKJKq10HbVV29fuHJej6zse6odK-"
                     "C-95Fg85xBXDowLysZzqlOFFzq6EoTRkcjQ=s160-c-k-c0x00ffffff-no-rj")
 CENTER_CELL = {"type": "image"}
@@ -46,7 +49,43 @@ class Card:
     created_at: datetime
 
     def grid(self) -> list[list[dict]]:
-        return [self.cells[r * GRID:(r + 1) * GRID] for r in range(GRID)]
+        n = grid_of(len(self.cells))
+        return [self.cells[r * n:(r + 1) * n] for r in range(n)]
+
+    @property
+    def size(self) -> int:
+        return grid_of(len(self.cells))
+
+    @property
+    def max_marks(self) -> int:
+        return max_marks(self.cells)
+
+
+# ------------------------------------------------------------------ grid helpers
+def grid_of(n_cells: int) -> int:
+    """Side of the square for a card with n_cells cells (16 -> 4, 25 -> 5)."""
+    n = round(n_cells ** 0.5)
+    if n * n != n_cells or n not in SUPPORTED_GRIDS:
+        raise ValueError(f"unsupported card size: {n_cells} cells")
+    return n
+
+
+def centre_of(grid: int) -> int | None:
+    """Index of the free avatar cell: only a 5x5 card has one."""
+    return CENTER_INDEX if grid == 5 else None
+
+
+def phrase_cell_count(grid: int) -> int:
+    return grid * grid - (1 if centre_of(grid) is not None else 0)
+
+
+def max_marks(cells: list[dict]) -> int:
+    """Markable cells of a stored card (every cell holding a phrase)."""
+    return sum(1 for c in cells if "phrase_id" in c)
+
+
+def is_phrase_cell(cells: list[dict], index: int) -> bool:
+    return 0 <= index < len(cells) and "phrase_id" in cells[index]
 
 
 # ------------------------------------------------------------------ pure generation
@@ -57,19 +96,23 @@ def phrase_weights(phrases: list[Phrase]) -> list[float]:
     return [1.0 + max(p.score, 0.0) for p in phrases]
 
 
-def generate_cells(phrases: list[Phrase], rng: random.Random | None = None) -> list[dict]:
-    """24 distinct phrases (weighted, without replacement) at uniformly random positions + centre."""
-    if len(phrases) < PHRASE_CELLS:
-        raise NotEnoughPhrases(f"need {PHRASE_CELLS} enabled phrases, have {len(phrases)}")
+def generate_cells(phrases: list[Phrase], rng: random.Random | None = None, grid: int = DEFAULT_GRID) -> list[dict]:
+    """The phrase cells (weighted, without replacement) at uniformly random positions; a 5x5 card also gets the
+    avatar in the centre, a 4x4 card is all phrases."""
+    need = phrase_cell_count(grid)
+    if len(phrases) < need:
+        raise NotEnoughPhrases(f"need {need} enabled phrases, have {len(phrases)}")
     rng = rng or random.SystemRandom()
     weights = phrase_weights(phrases)
     # Efraimidis-Spirakis: weighted sampling without replacement via key = u ** (1/w)
     keyed = sorted(((rng.random() ** (1.0 / w), p) for w, p in zip(weights, phrases, strict=True)),
                    key=lambda kp: kp[0], reverse=True)
-    chosen = [p for _, p in keyed[:PHRASE_CELLS]]
+    chosen = [p for _, p in keyed[:need]]
     rng.shuffle(chosen)  # selection is weighted; POSITIONS must be uniform
     cells = [{"phrase_id": p.id, "text": p.text} for p in chosen]
-    cells.insert(CENTER_INDEX, dict(CENTER_CELL))
+    centre = centre_of(grid)
+    if centre is not None:
+        cells.insert(centre, dict(CENTER_CELL))
     return cells
 
 
@@ -98,7 +141,9 @@ def assign_card(conn: psycopg.Connection, session_id: uuid.UUID, user_id: uuid.U
     existing = get_card(conn, session_id, user_id)
     if existing:
         return existing
-    cells = generate_cells(enabled_phrases(conn), rng)
+    row = conn.execute("SELECT grid_size FROM game_sessions WHERE id = %s", (session_id,)).fetchone()
+    grid = row[0] if row else DEFAULT_GRID      # unknown session: the INSERT below fails on the foreign key
+    cells = generate_cells(enabled_phrases(conn), rng, grid)
     with conn.transaction():
         # a concurrent call may have inserted first: UNIQUE(session_id, user_id) makes this a no-op
         conn.execute(
