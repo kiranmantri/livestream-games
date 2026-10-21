@@ -345,7 +345,7 @@ Also state what the agent itself already ran and its real output; never claim su
     c = connect()
     b,p,tb = S.start_session(c,'Ana','10.0.0.1'); f = S.start_session_as_admin(c,'falacias')
     print('both active:', S.get_active_session(c).game_type, S.get_active_session(c,'falacias').game_type)
-    s,q,tf = S.join_as_same_name(c, tb, 'bingo', '10.0.0.1', 'falacias'); print('same name:', q.name, '| tokens differ:', tb != tf)
+    s,q,tf = S.join_session(c, 'Ana', '10.0.0.1', game_type='falacias'); print('same name:', q.name, '| tokens differ:', tb != tf)
     try: S.start_session_as_admin(c,'falacias')
     except S.SessionAlreadyActive as e: print('2nd falacias refused:', e.code)
     "
@@ -407,7 +407,7 @@ Also state what the agent itself already ran and its real output; never claim su
     # Not built yet: the pages that call tick (Task 3), the pair route that calls ensure_up (Task 4), the entrypoint/seed wiring (Task 7).
 
 ### Validation for Task 3 (menu + the two panes: app/ui.py, app/falacias_web.py, app/static/falacias.js)
-    uv run pytest tests/test_falacias_web.py -q   # expect: 24 passed (entry, panes, poll, cross-game join, menu)
+    uv run pytest tests/test_falacias_web.py -q   # expect: 24 passed (entry, panes, poll, name flow, menu)
     uv run pytest -q                              # expect: 589 passed, 1 skipped
     uv run migrate && uv run corpus replay-import _nVWPIFCUzQ    # YOU: dev DB needs 0007, 0008 and the replay rows
     uv run uvicorn app.main:app --port 8001       # (8000 is your --reload server) open http://127.0.0.1:8001/falacias
@@ -416,8 +416,9 @@ Also state what the agent itself already ran and its real output; never claim su
     #   the first transcript line at 59 s); new lines appear by themselves (poll every 2 s) and the pane stays glued to the newest line.
     #   Scroll a pane up: it stops following and shows a "N novas · voltar ao vivo" button; click it to go back to the live edge.
     #   FALACIAS_SPEED=60 uv run uvicorn ... makes a minute of video pass per second (demo only).
-    # Same-name join: start Bingo in one window, open /falacias in the same window -> you are in Falácias with the same name, no form
-    #   (and the other way round). If the name is taken in the other game you get the name form with an error.
+    # One name for both games: the first page asks "Qual é o seu nome?" (no tabs yet); the name is remembered (cookie lg_name) and
+    #   every page then shows the tabs Bingo | Encontre as Falácias. A game tab shows ONE button ("Começar partida" / "Entrar na partida")
+    #   with the remembered name and a "trocar nome" link; nothing joins by itself. A taken or invalid name returns to the name page.
     # Two cookies: lg_token (Bingo) and lg_token_falacias (browser devtools). A Bingo cookie is NOT a Falácias identity.
     # Menu dot: a green dot on a game that has a running session (refreshes every 30 s).
     # End the game: uv run python -c "from app.db import connect; from app import sessions as S; c=connect(); print(S.end_session(c, S.get_active_session(c,'falacias').id, None))"
@@ -425,6 +426,34 @@ Also state what the agent itself already ran and its real output; never claim su
     # reset: TRUNCATE game_sessions, users CASCADE (stream_events go with it); replay_events stay.
     # Not built yet: selecting text / flagging pairs (Task 4), admin tab (Task 5). Panes keep every line in the DOM (no trimming).
     # Mutation check (repo COPY): 33/33 killed (mutate_3.py in the scratch dir). Not checked: falacias.js in a real browser.
+
+### Validation for the shared nickname + tabs (app/ui.py: name gate, cookie lg_name; follow-up to Task 3)
+    # Flow: FIRST page = "Qual é o seu nome?" (no tabs). POST /name stores it (cookie lg_name, NOT an identity) and returns to the tab you
+    #   came from (/ or /falacias, whitelisted). Then every page has the tabs "Bingo | Encontre as Falácias" (green dot = a game is running)
+    #   and a game tab shows ONE button (Começar partida / Entrar na partida) with "Jogando como <nome> · trocar nome". Nothing joins by itself.
+    #   A taken/invalid name sends you back to the name page with the message. POST /start|/join still accept an explicit `name` field.
+    #   `join_as_same_name` was REMOVED (nothing used it). An invalid/oversized lg_name cookie is ignored (gate shown).
+    uv run pytest -q                              # expect: 633 passed, 1 skipped (adapted: 3 tests in test_web.py/test_admin.py + e2e now set a name first)
+
+### Validation for Task 4 (select, choose a fallacy, submit; my pairs + leaderboard)
+    uv run pytest tests/test_falacias_marks_web.py -q   # expect: 39 passed
+    uv run pytest -q                                    # expect: 633 passed, 1 skipped
+    uv run migrate && uv run corpus replay-import _nVWPIFCUzQ    # YOU, on the dev DB (needs 0007/0008); fallacies: see Task 1b
+    FALACIAS_SPEED=20 uv run uvicorn app.main:app --port 8001     # demo speed: 20 s of video per second (speed bonus meaningless)
+    # Browser http://127.0.0.1:8001/falacias: give a name, start. SELECT text with the mouse in the transcript or the chat (it may span
+    #   several lines of ONE pane): a panel opens with the quote. Type in "Buscar falácia..." (accent/case-insensitive), tick one, "Enviar".
+    #   expect: "Enviado! ...", the panel closes, "Meus envios" shows the quote + "Aguardando" + 5,0, the "Placar" shows you with 5,0.
+    #   While you hold a selection (or scrolled up) the pane does NOT jump; a "N novas · voltar ao vivo" button appears.
+    #   Errors (inline): <10 s since your last send, same passage+fallacy twice, bad/too long selection (30 lines / 500 chars), feed down.
+    #   Verdicts (Correto/Errado/Spam) come from the admin tab (Task 5, not built): meanwhile test with
+    #   uv run python -c "from app.db import connect; from app import falacias as F; c=connect(); m=F.user_marks(c, <user uuid>)[0]; F.review_mark(c, m.session_id, m.id, 'correct')"
+    #   and watch "Meus envios" change within 5 s. CC BY-SA attribution link is under the picker.
+    # QA done in a real browser (Chrome, throwaway DB, real video): click + shift-click selection across 2 lines, filter, submit, polls.
+    #   Found there (no test could): the Task 3 pane/menu CSS had never been written (a failed `sed` skipped the `cat >> app.css`), the pane
+    #   class clashed with Bingo's `.line` (renamed `.pline`), and /menu re-requested itself forever (`load` trigger inside the swapped fragment).
+    #   NOT checked: touch selection on a phone, Safari/Firefox, drag with mouseMoved (the QA tool hangs on it), picker height on small screens.
+    # Mutation check (repo COPY): 41/41 killed (mutate_4.py in the scratch dir; covers Task 4 routes/views and the name gate).
+    # reset: TRUNCATE game_sessions, users CASCADE (stream_events and fallacy_marks go with it).
 
 ## Conventions log
 (Append new conventions below as they are agreed.)

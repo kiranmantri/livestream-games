@@ -41,12 +41,15 @@ def test_full_game_flow():
         assert anon.get("/center.jpg").status_code == 200
 
     with client() as ana, client() as bia:
+        assert "Qual é o seu nome?" in ana.get("/").text                           # the name comes first
+        ana.post("/name", data={"name": "Ana", "next": "/"})
         entry = ana.get("/").text
         assert "Começar partida" in entry, "a game is already active: finish it first (reset the stack)"
         home = ana.post("/start", data={"name": "Ana"}).text                       # first visitor starts the game
         assert len(CELL.findall(home)) == 16 and "cell free" not in home           # 4x4 card, phrases only
         assert "lg_token" in ana.cookies
 
+        bia.post("/name", data={"name": "Bia", "next": "/"})
         assert "Entrar na partida" in bia.get("/").text                            # others join, never start another
         assert "Começar partida" not in bia.get("/").text
         dup = bia.post("/join", data={"name": "ANA"}).text

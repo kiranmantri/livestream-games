@@ -56,6 +56,11 @@ def age(conn, seconds):
     feed._last_tick.clear()
 
 
+def named(browser, name="Zed"):
+    browser.cookies.set("lg_name", name)
+    return browser
+
+
 def start(b, name="Ana"):
     r = b.post("/falacias/start", data={"name": name})
     assert r.status_code == 303, r.text
@@ -68,9 +73,16 @@ def lines(html: str, kind: str) -> list[str]:
 
 
 # ================================================================ entry
-def test_home_without_session_offers_start(web):
+def test_home_asks_for_the_name_first(web):
     r = web().get("/falacias")
+    assert r.status_code == 200 and T.NAME_HEADING in r.text and 'action="/name"' in r.text
+    assert 'id="menu"' not in r.text and 'action="/falacias/start"' not in r.text
+
+
+def test_home_without_session_offers_start_with_the_remembered_name(web):
+    r = named(web(), "Zed").get("/falacias")
     assert r.status_code == 200 and T.FAL_START_HEADING in r.text and 'action="/falacias/start"' in r.text
+    assert 'name="name"' not in r.text and "Zed" in r.text and 'id="menu"' in r.text
 
 
 def test_start_sets_only_the_falacias_cookie_and_shows_both_panes(web, conn):
@@ -89,20 +101,21 @@ def test_start_is_refused_without_feed_and_creates_no_session(web, conn):
     assert S.get_active_session(conn, "falacias") is None
 
 
-def test_second_visitor_sees_join_and_dup_name_is_refused(web):
+def test_second_visitor_sees_join_and_dup_name_goes_back_to_the_name_gate(web):
     start(web(IP_A))
-    r = web(IP_B).get("/falacias")
+    r = named(web(IP_B), "Bia").get("/falacias")
     assert T.FAL_JOIN_HEADING in r.text and 'action="/falacias/join"' in r.text
-    r = web(IP_B).post("/falacias/join", data={"name": " ANA "})
-    assert r.status_code == 200 and T.ERRORS["name_taken"] in r.text and "set-cookie" not in r.headers
-    assert web(IP_B).post("/falacias/join", data={"name": "Bia"}).status_code == 303
+    r = named(web(IP_B), " ANA ").post("/falacias/join")
+    assert r.status_code == 200 and T.ERRORS["name_taken"] in r.text and 'action="/name"' in r.text
+    assert "set-cookie" not in r.headers
+    assert named(web(IP_B), "Bia").post("/falacias/join").status_code == 303
 
 
 def test_a_bingo_cookie_is_not_a_falacias_identity(web, conn):
     a = web()
     a.post("/start", data={"name": "Ana"})                      # Bingo only
     r = a.get("/falacias")
-    assert r.status_code == 200 and T.FAL_START_HEADING in r.text    # nothing running there: form, no auto-join
+    assert r.status_code == 200 and T.FAL_START_HEADING in r.text    # no auto-join: a button to start
 
 
 # ================================================================ panes
@@ -190,51 +203,40 @@ def test_poll_of_an_ended_session_refreshes_to_the_results(web, conn):
     assert T.FAL_GAME_OVER in a.get("/falacias").text
 
 
-# ================================================================ cross-game
-def test_opening_falacias_while_playing_bingo_joins_with_the_same_name(web, conn):
-    start(web(IP_B), "Zeca")                                     # a Falácias session exists
+# ================================================================ one name, both games
+def test_the_name_is_asked_once_for_both_games(web, conn):
     a = web()
-    a.post("/start", data={"name": "Ana"})
-    r = a.get("/falacias")
-    assert r.status_code == 303 and S.cookie_name("falacias") in r.headers["set-cookie"]
+    a.post("/name", data={"name": "Ana", "next": "/"})
+    a.post("/start")                                            # Bingo, name from the cookie
     html = a.get("/falacias").text
-    assert "Ana" in html and 'id="pane-chat"' in html
-    assert conn.execute("SELECT count(*) FROM users WHERE name = 'Ana'").fetchone()[0] == 2
-    assert a.get("/falacias").status_code == 200 and conn.execute("SELECT count(*) FROM users WHERE name = 'Ana'").fetchone()[0] == 2
+    assert T.NAME_HEADING not in html and "Ana" in html and 'id="menu"' in html
 
 
-def test_opening_falacias_with_a_taken_name_asks_for_another(web, conn):
-    start(web(IP_B), "Ana")
+def test_opening_the_other_game_never_joins_by_itself(web, conn):
+    start(web(IP_B), "Zeca")                                    # a Falácias session exists
     a = web()
-    a.post("/start", data={"name": "Ana"})
+    a.post("/start", data={"name": "Ana"})                      # Ana plays Bingo
     r = a.get("/falacias")
-    assert r.status_code == 200 and T.ERRORS["name_taken"] in r.text and "set-cookie" not in r.headers
+    assert r.status_code == 200 and 'action="/falacias/join"' in r.text
+    assert conn.execute("SELECT count(*) FROM users WHERE name = 'Ana'").fetchone()[0] == 1
+    assert a.post("/falacias/join").status_code == 303           # one click, remembered name
+    assert conn.execute("SELECT count(*) FROM users WHERE name = 'Ana'").fetchone()[0] == 2
 
 
-def test_opening_bingo_while_playing_falacias_joins_with_the_same_name_and_deals_a_card(web, conn):
-    b = web(IP_B)
-    b.post("/start", data={"name": "Zeca"})                       # Bingo running, by someone else
+def test_bingo_tab_does_not_join_by_itself_either(web, conn):
+    web(IP_B).post("/start", data={"name": "Zeca"})
     a = web()
     start(a, "Ana")
     r = a.get("/")
-    assert r.status_code == 303 and "lg_token=" in r.headers["set-cookie"]
-    assert "Ana" in a.get("/").text
-    sid = S.get_active_session(conn, "bingo").id
-    assert conn.execute("SELECT count(*) FROM bingo_cards c JOIN users u ON u.id = c.user_id "
-                        "WHERE u.name = 'Ana' AND c.session_id = %s", (sid,)).fetchone()[0] == 1
-
-
-def test_bingo_is_unchanged_when_nothing_runs_in_falacias(web):
-    a = web()
-    a.post("/start", data={"name": "Ana"})
-    assert a.get("/").status_code == 200 and "lg_token_falacias" not in a.get("/").text
+    assert r.status_code == 200 and 'action="/join"' in r.text
+    assert conn.execute("SELECT count(*) FROM users WHERE name = 'Ana'").fetchone()[0] == 1
 
 
 # ================================================================ menu
 def test_menu_is_on_both_pages_with_the_current_game_marked(web):
-    html = web().get("/").text
+    html = named(web()).get("/").text
     assert 'href="/falacias"' in html and 'href="/"' in html
-    fh = web().get("/falacias").text
+    fh = named(web()).get("/falacias").text
     assert re.search(r'<a [^>]*href="/falacias"[^>]*aria-current="page"|<a [^>]*aria-current="page"[^>]*href="/falacias"', fh)
 
 
@@ -263,3 +265,10 @@ def test_a_bingo_token_in_the_falacias_cookie_shows_no_results(web, conn):
 
 def test_menu_fragment_never_echoes_an_unknown_game(web):
     assert "cur=bingo" in web().get("/menu?cur=zzz").text and "zzz" not in web().get("/menu?cur=zzz").text
+
+
+def test_menu_fragment_does_not_reload_itself_in_a_loop(web):
+    """The swapped-in fragment must poll only on a timer: a `load` trigger would re-request /menu forever."""
+    assert 'hx-trigger="load, every 30s"' in named(web()).get("/").text           # the page asks once on load
+    frag = web().get("/menu?cur=bingo").text
+    assert 'hx-trigger="every 30s"' in frag and "load" not in frag.split('hx-trigger="')[1].split('"')[0]

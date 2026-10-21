@@ -32,7 +32,7 @@ from psycopg_pool import ConnectionPool
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, RedirectResponse, Response
 
-from app import admin_web, falacias_web, livestream, phrases_web, timefmt
+from app import admin_web, falacias_web, livestream, phrases_web, timefmt, ui
 from app import cards as C
 from app import marks as M
 from app import scoring as G
@@ -41,10 +41,14 @@ from app import texts as T
 from app.config import ROOT, database_url
 from app.lines import line_boxes
 from app.ui import (
+    NAME_ERRORS,
     client_ip_of,
-    entry_form,
     error_box,
+    name_gate,
+    name_of,
     page,
+    play_form,
+    remember_name,
     set_token_cookie,
     token_of,
 )
@@ -57,13 +61,13 @@ POLL_CARDS = "every 5s"
 
 # ------------------------------------------------------------------ views
 def entry_page(active: S.GameSession | None, n_players: int = 0, error: str | None = None,
-               value: str = ""):
+               name: str = ""):
     if active is None:
         panel = Div(H2(T.START_HEADING), P(T.START_HELP, cls="muted"),
-                    entry_form("/start", T.START_BUTTON, value), cls="panel")
+                    play_form("/start", T.START_BUTTON, name, "/"), cls="panel")
     else:
         panel = Div(H2(T.JOIN_HEADING), P(T.JOIN_HELP.format(n=n_players), cls="muted"),
-                    entry_form("/join", T.JOIN_BUTTON, value), cls="panel")
+                    play_form("/join", T.JOIN_BUTTON, name, "/"), cls="panel")
     return page(H1(T.TITLE), P(T.TAGLINE, cls="tag"), error_box(error), panel)
 
 
@@ -235,6 +239,7 @@ def create_app(db_url: str | None = None, live: livestream.LiveStream | None = N
     def enter(request: Request, kind: str, name: str):
         """Shared start/join handler. Returns a redirect (with cookie) or the form with an error."""
         ip = ip_of(request)
+        name = name or name_of(request) or ""
         with pool.connection() as conn:
             try:
                 if kind == "start":
@@ -243,12 +248,14 @@ def create_app(db_url: str | None = None, live: livestream.LiveStream | None = N
                     _, player, token = S.join_session(conn, name, ip, existing_token=token_of(request))
                 C.assign_card(conn, player.session_id, player.id)
             except C.NotEnoughPhrases:
-                return entry_page(S.get_active_session(conn), error="no_phrases")
+                return entry_page(S.get_active_session(conn), error="no_phrases", name=name)
             except S.SessionError as e:
+                if e.code in NAME_ERRORS:
+                    return name_gate("/", error=e.code, value=name)
                 active = S.get_active_session(conn)
                 n = S.count_players(conn, active.id) if active else 0
-                return entry_page(active, n, error=e.code, value=name)
-        return set_token_cookie(RedirectResponse("/", status_code=303), "bingo", token)
+                return entry_page(active, n, error=e.code, name=name)
+        return remember_name(set_token_cookie(RedirectResponse("/", status_code=303), "bingo", token), player.name)
 
     @rt("/")
     def get(request: Request):
@@ -258,25 +265,19 @@ def create_app(db_url: str | None = None, live: livestream.LiveStream | None = N
                 try:
                     card = C.assign_card(conn, me.session_id, me.id)   # lazy + idempotent
                 except C.NotEnoughPhrases:
-                    return entry_page(S.get_active_session(conn), error="no_phrases")
+                    return entry_page(S.get_active_session(conn), error="no_phrases", name=me.name)
                 others = [b for b in M.session_boards(conn, me.session_id) if b.user_id != me.id]
                 return game_page(card, M.marked_times(conn, card.id), me, others, live.current(), live.known,
                                  request.url.hostname or "", M.revoked_cells(conn, card.id))
             active = S.get_active_session(conn)
-            if active is not None and token_of(request, "falacias"):
-                # opened Bingo while playing Falácias: join with the SAME name (own card, own cookie)
-                try:
-                    got = S.join_as_same_name(conn, token_of(request, "falacias"), "falacias", ip_of(request), "bingo",
-                                              existing_token=token_of(request))
-                    if got is not None:       # the card is dealt by the redirect target (lazy + idempotent)
-                        return set_token_cookie(RedirectResponse("/", status_code=303), "bingo", got[2])
-                except S.SessionError as e:      # the name is taken in Bingo, or the IP limit: ask for a name
-                    return entry_page(active, S.count_players(conn, active.id), error=e.code)
             found = S.find_player(conn, token_of(request))
             if active is None and found and found[1].status == "ended":
                 player, session = found
                 return results_page(session, player, G.leaderboard(conn, session.id))
-            return entry_page(active, S.count_players(conn, active.id) if active else 0)
+            name = name_of(request)
+            if name is None:
+                return name_gate("/")
+            return entry_page(active, S.count_players(conn, active.id) if active else 0, name=name)
 
     @rt("/start", methods=["POST"])
     def start(request: Request, name: str = ""):
@@ -341,6 +342,7 @@ def create_app(db_url: str | None = None, live: livestream.LiveStream | None = N
     admin_web.register(rt, pool)
     phrases_web.register(rt, pool)
     falacias_web.register(rt, pool)
+    ui.register(rt)
     return app
 
 

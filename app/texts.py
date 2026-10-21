@@ -4,12 +4,17 @@ FEED_UNAVAILABLE = "Vídeo offline ou vídeo sem transcrições"
 TITLE = "Bingo da Live"
 TAGLINE = "Marque as expressões que aparecerem na live!"
 START_HEADING = "Nenhuma partida em andamento"
-START_HELP = "Você será o primeiro: digite seu nome e comece a partida."
+START_HELP = "Você será o primeiro: comece a partida."
 START_BUTTON = "Começar partida"
 JOIN_HEADING = "Tem uma partida rolando!"
-JOIN_HELP = "{n} jogador(es) na partida. Escolha um nome para entrar."
+JOIN_HELP = "{n} jogador(es) na partida."
 JOIN_BUTTON = "Entrar na partida"
 NAME_LABEL = "Seu nome (máx. 20 letras)"
+NAME_HEADING = "Qual é o seu nome?"
+NAME_HELP = "Escolha um nome para jogar. Ele vale para todos os jogos."
+NAME_BUTTON = "Continuar"
+PLAYING_AS = "Jogando como"
+CHANGE_NAME = "trocar nome"
 YOU = "você"
 MARKED = "Marcadas"
 LEADERBOARD = "Placar"
@@ -132,3 +137,25 @@ FAL_START_HEADING = "Nenhuma partida de Falácias em andamento"
 FAL_JOIN_HEADING = "Tem uma partida de Falácias rolando!"
 FAL_GAME_OVER = "Fim da partida de Falácias!"
 FAL_NO_POINTS = "Ninguém pontuou desta vez."
+
+FAL_PICK_HELP = "Selecione um trecho da transcrição ou do chat, depois escolha a falácia."
+FAL_SELECTED = "Trecho selecionado"
+FAL_FILTER = "Buscar falácia..."
+FAL_SEND = "Enviar"
+FAL_CLEAR = "Limpar"
+FAL_SENT = "Enviado! Aguarde a confirmação do apresentador."
+FAL_SOURCE = "Fonte: Wikipédia (CC BY-SA 4.0)"
+FAL_SOURCE_URL = "https://pt.wikipedia.org/wiki/Lista_de_falácias"
+FAL_MINE = "Meus envios"
+FAL_NO_PAIRS = "Você ainda não enviou nada."
+FAL_PENDING = "Aguardando"
+FAL_VERDICTS = {"correct": "Correto", "wrong": "Errado", "spam": "Spam"}
+FAL_ERRORS = {
+    "bad_selection": "Seleção inválida. Selecione o trecho de novo.",
+    "selection_too_long": "Trecho grande demais. Selecione um trecho menor.",
+    "unknown_fallacy": "Escolha uma falácia da lista.",
+    "rate_limited": "Calma! Aguarde {n} s entre envios.",
+    "duplicate_mark": "Você já enviou esse trecho com essa falácia.",
+    "feed_down": FEED_UNAVAILABLE,
+    "generic": "Algo deu errado. Tente de novo.",
+}

@@ -248,6 +248,7 @@ def test_admin_start_flow_then_players_join(web, conn):
     assert "Partida em andamento" in page and "Jogadores: 0" in page
     assert "Iniciar nova partida" not in page and "/admin/finish" in page
     visitor = web("203.0.113.10")
+    visitor.cookies.set("lg_name", "Ana")                                     # the name gate comes first
     home = visitor.get("/").text
     assert 'action="/join"' in home and 'action="/start"' not in home        # joins, cannot start
     assert visitor.post("/join", data={"name": "Ana"}).status_code == 303

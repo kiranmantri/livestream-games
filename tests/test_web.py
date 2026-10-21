@@ -48,10 +48,57 @@ def start(b, name="Ana"):
 
 
 # ---------------------------------------------------------------- entry
+def named(browser, name="Zed"):
+    browser.cookies.set("lg_name", name)
+    return browser
+
+
 def test_home_without_session_offers_start(web):
-    r = web().get("/")
+    r = named(web()).get("/")
     assert r.status_code == 200 and T.START_BUTTON in r.text and 'action="/start"' in r.text
     assert 'action="/join"' not in r.text and "set-cookie" not in r.headers
+    assert 'name="name"' not in r.text and "Zed" in r.text                 # one button; the remembered name, no field
+
+
+def test_first_thing_is_the_name_gate_without_tabs(web):
+    r = web().get("/")
+    assert r.status_code == 200 and T.NAME_HEADING in r.text and 'action="/name"' in r.text
+    assert 'action="/start"' not in r.text and 'id="menu"' not in r.text
+
+
+def test_name_gate_remembers_the_name_and_goes_back_to_the_tab(web):
+    a = web()
+    r = a.post("/name", data={"name": "  Zé   Maria ", "next": "/falacias"})
+    assert r.status_code == 303 and r.headers["location"] == "/falacias"
+    assert "lg_name=" in r.headers["set-cookie"] and "lg_token" not in r.headers["set-cookie"]
+    html = a.get("/").text
+    assert 'id="menu"' in html and "Zé Maria" in html and T.START_BUTTON in html
+
+
+@pytest.mark.parametrize("bad", ["", "   ", "x" * 21, "bad\x00name"])
+def test_name_gate_rejects_invalid_names(web, bad):
+    r = web().post("/name", data={"name": bad, "next": "/"})
+    assert r.status_code == 200 and "set-cookie" not in r.headers
+    assert T.ERRORS["invalid_name"] in r.text or "required" in r.text
+
+
+def test_name_gate_next_is_whitelisted(web):
+    r = web().post("/name", data={"name": "Ana", "next": "https://evil.example/"})
+    assert r.headers["location"] == "/"
+
+
+def test_a_taken_name_returns_to_the_name_gate_with_the_message(web):
+    start(web(IP_A))
+    b = named(web(IP_B), "ana")
+    r = b.post("/join")
+    assert r.status_code == 200 and T.ERRORS["name_taken"] in r.text and 'action="/name"' in r.text
+    assert "set-cookie" not in r.headers
+
+
+def test_start_and_join_remember_the_name_for_the_other_game(web):
+    a = web(IP_A)
+    r = start(a)
+    assert "lg_name=Ana" in r.headers["set-cookie"] or a.cookies.get("lg_name") == "Ana"
 
 
 def test_first_visitor_starts_and_gets_card(web, conn):
@@ -83,7 +130,7 @@ def test_same_card_on_every_reload_and_in_other_tab(web):
 
 def test_second_visitor_sees_join_not_start(web):
     start(web(IP_A))
-    r = web(IP_B).get("/")
+    r = named(web(IP_B)).get("/")
     assert T.JOIN_BUTTON in r.text and 'action="/join"' in r.text and 'action="/start"' not in r.text
     assert "1 jogador" in r.text
 
@@ -137,7 +184,7 @@ def test_name_is_html_escaped(web):
 def test_stranger_on_same_ip_does_not_inherit_the_player(web):
     a = web(IP_A)
     start(a)
-    stranger = web(IP_A)                       # same IP, no cookie
+    stranger = named(web(IP_A))                # same IP, no player cookie
     page = stranger.get("/")
     assert T.JOIN_BUTTON in page.text and "Ana" not in page.text
 
@@ -315,3 +362,11 @@ def test_display_timezone_is_configurable(monkeypatch):
     monkeypatch.setenv("TIMEZONE", "America/Toronto")
     assert timefmt.hms(t) == "16:05:09"
     assert timefmt.hms(None) == "-"
+
+
+@pytest.mark.parametrize("bad", ["x" * 21, "bad\x00name", "   "])
+def test_an_invalid_name_cookie_is_ignored_and_the_gate_is_shown(web, bad):
+    b = web()
+    b.cookies.set("lg_name", bad)
+    r = b.get("/")
+    assert T.NAME_HEADING in r.text and 'action="/start"' not in r.text

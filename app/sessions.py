@@ -279,22 +279,6 @@ def join_session(conn: psycopg.Connection, name: str, ip: str, existing_token: s
     return session, _get_player(conn, uid), token
 
 
-def join_as_same_name(conn: psycopg.Connection, other_token: str | None, other_game: str, ip: str,
-                      game_type: str, existing_token: str | None = None) -> tuple[GameSession, Player, str] | None:
-    """A person who already plays `other_game` opens `game_type`: join it with the SAME name and a NEW token (its own
-    cookie). Returns None when `other_token` is not a current player of `other_game` (the caller shows the name
-    form). Raises NoActiveSession (target game not running), NameTaken (someone else holds the name there: ask for
-    another), IpLimitReached. With a valid `existing_token` of the target game it just resumes (idempotent)."""
-    check_game(other_game)
-    check_game(game_type)
-    if other_game == game_type:
-        raise ValueError("source and target games must be different")
-    source = get_player_by_token(conn, other_token, other_game)
-    if source is None:
-        return None
-    return join_session(conn, source.name, ip, existing_token=existing_token, game_type=game_type)
-
-
 def resume(conn: psycopg.Connection, raw_token: str | None, game_type: str = "bingo") -> Player | None:
     """Identify the caller by cookie; refreshes last_seen_at. None if not a current player of that game."""
     player = get_player_by_token(conn, raw_token, game_type)

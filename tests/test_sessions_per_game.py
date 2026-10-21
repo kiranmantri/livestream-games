@@ -1,4 +1,4 @@
-"""Task 1c: one active session PER GAME (bingo, falacias); one cookie per game; same name across games."""
+"""Task 1c: one active session PER GAME (bingo, falacias); one cookie per game."""
 from __future__ import annotations
 
 import threading
@@ -121,75 +121,6 @@ def test_joining_with_a_valid_cookie_resumes_instead_of_creating_a_second_player
     s, p, t = S.join_session(conn, "Ana", "10.0.0.1", game_type="falacias")
     s2, p2, t2 = S.join_session(conn, "Other", "10.0.0.1", existing_token=t, game_type="falacias")
     assert (s2.id, p2.id, t2) == (s.id, p.id, t) and S.count_players(conn, s.id) == 1
-
-
-# ---------------------------------------------------------------- same name in the other game
-def test_same_name_join_creates_a_player_with_the_same_name_and_its_own_token(conn):
-    _, pb, tb = S.start_session(conn, "Ana", "10.0.0.1")
-    f = S.start_session_as_admin(conn, game_type="falacias")
-    got = S.join_as_same_name(conn, tb, "bingo", "10.0.0.1", "falacias")
-    assert got is not None
-    session, player, token = got
-    assert session.id == f.id and player.name == "Ana" and player.id != pb.id and token != tb
-    assert S.resume(conn, token, "falacias").id == player.id and S.resume(conn, tb).id == pb.id
-    rows = conn.execute("SELECT count(DISTINCT token_hash) FROM users").fetchone()[0]
-    assert rows == 2                                                          # two tokens: token_hash stays globally unique
-
-
-def test_same_name_join_works_in_the_other_direction_too(conn):
-    """A Falácias player opening Bingo is joined to Bingo with the same name (source game is honoured)."""
-    S.start_session_as_admin(conn)
-    _, pf, tf = S.start_session(conn, "Bia", "10.0.0.2", game_type="falacias")
-    got = S.join_as_same_name(conn, tf, "falacias", "10.0.0.2", "bingo")
-    assert got is not None and got[0].game_type == "bingo" and got[1].name == "Bia" and got[1].id != pf.id
-    assert S.join_as_same_name(conn, tf, "bingo", "10.0.0.2", "falacias") is None     # a falacias token is not a bingo identity
-
-
-def test_same_name_join_is_idempotent_for_a_player_already_in_the_game(conn):
-    _, _, tb = S.start_session(conn, "Ana", "10.0.0.1")
-    S.start_session_as_admin(conn, game_type="falacias")
-    first = S.join_as_same_name(conn, tb, "bingo", "10.0.0.1", "falacias")
-    assert first is not None
-    again = S.join_as_same_name(conn, tb, "bingo", "10.0.0.1", "falacias", existing_token=first[2])
-    assert again is not None and again[1].id == first[1].id and again[2] == first[2]
-    assert S.count_players(conn, first[0].id) == 1
-
-
-def test_same_name_join_returns_none_without_a_valid_identity_in_the_other_game(conn):
-    S.start_session_as_admin(conn, game_type="falacias")
-    S.start_session(conn, "Ana", "10.0.0.1")
-    for bad in (None, "", "garbage"):
-        assert S.join_as_same_name(conn, bad, "bingo", "10.0.0.1", "falacias") is None
-    assert S.join_as_same_name(conn, "garbage", "falacias", "10.0.0.1", "bingo") is None
-    assert S.count_players(conn, S.get_active_session(conn, "falacias").id) == 0
-
-
-def test_same_name_join_needs_an_active_target_session(conn):
-    _, _, tb = S.start_session(conn, "Ana", "10.0.0.1")
-    with pytest.raises(S.NoActiveSession):
-        S.join_as_same_name(conn, tb, "bingo", "10.0.0.1", "falacias")
-
-
-def test_same_name_taken_by_someone_else_raises_name_taken_and_adds_nobody(conn):
-    _, _, tb = S.start_session(conn, "Ana", "10.0.0.1")
-    f, _, _ = S.start_session(conn, "ANA", "10.0.0.9", game_type="falacias")   # another person already uses that name there
-    with pytest.raises(S.NameTaken):
-        S.join_as_same_name(conn, tb, "bingo", "10.0.0.1", "falacias")
-    assert S.count_players(conn, f.id) == 1
-
-
-def test_same_name_join_respects_the_ip_limit_of_the_target_session(conn, monkeypatch):
-    monkeypatch.setenv("MAX_USERS_PER_IP", "1")
-    _, _, tb = S.start_session(conn, "Ana", "10.0.0.1")
-    S.start_session(conn, "Bia", "10.0.0.1", game_type="falacias")           # that IP already holds its 1 slot there
-    with pytest.raises(S.IpLimitReached):
-        S.join_as_same_name(conn, tb, "bingo", "10.0.0.1", "falacias")
-
-
-def test_same_name_join_refuses_the_same_game_as_source_and_target(conn):
-    _, _, tb = S.start_session(conn, "Ana", "10.0.0.1")
-    with pytest.raises(ValueError, match="different"):
-        S.join_as_same_name(conn, tb, "bingo", "10.0.0.1", "bingo")
 
 
 # ---------------------------------------------------------------- admin view per game

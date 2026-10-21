@@ -204,3 +204,49 @@ button.pref[aria-pressed=true] { background: var(--ok); color: var(--ok-text); b
 /* admin: yellow star next to a player's name once they completed a row, column or diagonal */
 .star { color: #facc15; margin-left: 6px; text-shadow: 0 0 6px rgba(250,204,21,.55); cursor: help; }
 .star.full { font-size: 1.15em; }
+
+/* ---- tabs (override of the pill look above): a bar across the top of every page after the name gate */
+.menu { display: flex; gap: 0; margin: 0 0 10px; border-bottom: 1px solid var(--line); }
+.menu .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); display: inline-block; }
+.menu a { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; font-weight: 600; font-size: .95rem; }
+.menu a { border: 0; border-bottom: 3px solid transparent; border-radius: 0; padding: 10px 16px; margin-bottom: -1px; background: none; color: var(--muted); }
+.menu a.active { background: none; color: var(--text); border-bottom-color: var(--accent); }
+.entry .who { margin: 0; }
+
+/* ---- Falácias: picker (bottom sheet), my pairs, leaderboard */
+.picker { position: sticky; bottom: 0; z-index: 5; margin: 8px 0; max-height: 55vh; overflow-y: auto; border-color: var(--accent); box-shadow: 0 -4px 16px rgba(0,0,0,.4); }
+.picker[hidden] { display: none; }
+.picker .quote { margin: 4px 0 8px; padding: 6px 8px; border-left: 3px solid var(--accent); background: #0b1220; font-style: italic; overflow-wrap: anywhere; }
+.picker input[type=text] { margin-bottom: 6px; }
+.opts { max-height: 190px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; background: #0b1220; }
+.opts .cat { display: block; margin: 6px 0 2px; color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; }
+.opts label { display: flex; gap: 8px; align-items: center; padding: 6px 2px; color: var(--text); font-size: .95rem; cursor: pointer; }
+.opts [hidden] { display: none; }
+.sendrow { display: flex; gap: 10px; align-items: center; margin: 8px 0; }
+.sendrow .ok { color: var(--ok); } .sendrow .error { margin: 0; padding: 6px 10px; }
+button.link { background: none; border: 0; color: var(--accent); cursor: pointer; font: inherit; text-decoration: underline; }
+.side { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 8px; }
+@media (max-width: 760px) { .side { grid-template-columns: 1fr; } }
+ol.pairs { list-style: none; padding: 0; margin: 0; }
+ol.pairs li { display: grid; gap: 2px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+ol.pairs li:last-child { border-bottom: 0; }
+ol.pairs .meta { display: flex; justify-content: space-between; gap: 8px; }
+ol.pairs .q { font-style: italic; overflow-wrap: anywhere; } ol.pairs .fl { color: var(--accent); font-weight: 600; }
+ol.pairs .pts { font-variant-numeric: tabular-nums; color: var(--accent); }
+.badge { padding: 1px 8px; border-radius: 999px; font-size: .75rem; font-weight: 700; background: var(--line); color: var(--text); }
+.badge.correct { background: var(--ok); color: var(--ok-text); } .badge.wrong { background: #b45309; } .badge.spam { background: #7f1d1d; }
+
+/* ---- Falácias: two scrolling panes, transcript | chat (stacked on phones) */
+main.fal { max-width: 1180px; }
+.panes { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 8px 0; }
+.pane { margin: 0; padding: 8px; display: flex; flex-direction: column; min-width: 0; position: relative; }
+.pane .bar { margin: 0 2px 6px; }
+.pane .pill { border: 0; border-radius: 999px; padding: 4px 10px; background: var(--accent); color: #082f49; font-weight: 600; font-size: .8rem; cursor: pointer; }
+.pane .pill[hidden] { display: none; }
+.scroll { height: 55vh; min-height: 260px; overflow-y: auto; background: #0b1220; border-radius: 8px; padding: 6px 8px; overscroll-behavior: contain; }
+.pline { padding: 3px 0; line-height: 1.4; overflow-wrap: anywhere; }
+.pline .au { color: var(--accent); font-weight: 600; margin-right: 6px; user-select: none; -webkit-user-select: none; }
+.pline .au::after { content: ":"; }
+@media (max-width: 760px) { .panes { grid-template-columns: 1fr; } .scroll { height: 40vh; } }
+
+.entry .who a, .muted a { color: var(--accent); }
