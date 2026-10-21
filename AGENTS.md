@@ -305,6 +305,31 @@ Also state what the agent itself already ran and its real output; never claim su
     #   no scroll jump (without JS it falls back to POST + redirect to /admin?open=<user>).
     # Corpus seed: `deploy/seed/phrases_seed.sql` (loaded only into an EMPTY phrases table); `suggest --write` inserts inactive rows.
 
+### Deploying to Fly.io - checklist (every release)
+    # 0. Local: tests green and everything committed + pushed.
+    uv run ruff check . && uv run pytest -q                    # expect: All checks passed! / N passed
+    uv run migrate                                             # applies new migrations to the DEV DB first (cloud applies its own on boot)
+    # 1. NO active game in the cloud (the deploy restarts the Machine for ~30 s; data is safe, players lose the page briefly).
+    fly ssh console --app livebingo --container db -C "psql -U livegames -d livegames -h 127.0.0.1 -At -c \"select status, count(*) from game_sessions group by 1\""
+    #    expect: no "active|N" line. If there is one: finish the game in /admin first (or agree on the interruption).
+    # 2. Backup (plain SQL; tested: restores cleanly into a scratch DB). Mandatory when the release has a migration, esp. DROP/ALTER.
+    fly ssh console --app livebingo --container db -C "pg_dump -U livegames -d livegames -h 127.0.0.1 --no-owner" 2>/dev/null | grep -v '^Connecting' > data/backup/cloud_full_$(date +%Y%m%d_%H%M%S).sql
+    #    expect: ~100+ KB file, 7+ "COPY" lines (grep -c '^COPY'). Files in data/backup/ are gitignored; delete when no longer needed.
+    # 3. Deploy (ALWAYS --ha=false):
+    fly deploy --ha=false                                      # expect: "Machine ... is now in a good state"
+    # 4. Verify:
+    fly logs --app livebingo --no-tail | grep -E "applied|up to date|phrases:|Uvicorn|rror"    # expect "applied: 000N_*.sql" (or "up to date"), "phrases: {'skipped': ...}", "Uvicorn running"
+    curl -s -o /dev/null -w "%{http_code}\n" https://livebingo.fly.dev/healthz               # expect 200
+    curl -s -o /dev/null -w "%{http_code}\n" https://livebingo.fly.dev/admin                 # expect 401
+    fly ssh console --app livebingo --container db -C "psql -U livegames -d livegames -h 127.0.0.1 -At -c \"select name from schema_migrations order by 1 desc limit 1\" -c \"select count(*) from phrases\""
+    #    expect: the newest migration file name; the phrase count unchanged. Then play/open /admin once in a browser.
+    # Rollback (code only; NOT tested): `fly releases --app livebingo` -> `fly deploy --ha=false --image <registry.fly.io/livebingo:deployment-...>`
+    #   of the previous release. Migrations are NOT undone (0006 dropped ingested_videos for good): for a bad migration restore the
+    #   step-2 backup into an empty DB instead (psql -f <file>), after stopping writes. Never TRUNCATE the cloud DB.
+    # Phrases are edited in the cloud (/admin/phrases); the seed file only fills an EMPTY table. To bring the cloud phrases to
+    #   local: dump `COPY (SELECT * FROM phrases ORDER BY 1) TO STDOUT WITH (FORMAT csv, HEADER, NULL '\N')` via fly ssh into
+    #   data/backup/cloud_phrases.csv, then `uv run python -m deploy.make_seed --from-dump data/backup` (see the Fly section above).
+
 ## Conventions log
 (Append new conventions below as they are agreed.)
 - DB access from services: ALWAYS use an autocommit connection (`app.db.connect()` / pool with
