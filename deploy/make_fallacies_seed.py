@@ -5,7 +5,7 @@
 
 The app never calls Wikipedia; this script is run by us. Output: deploy/seed/fallacies_seed.sql, loaded only into an
 EMPTY `fallacies` table (table created by migration 0008). Every INSERT is `ON CONFLICT DO NOTHING`.
-Informal fallacies are enabled by default, formal (syllogistic/propositional) ones are imported disabled.
+Only the curated top 20 (app.falacias.TOP_FALLACIES) are enabled; the other rows are imported disabled.
 Text © Wikipedia contributors, CC BY-SA 4.0 (show the attribution wherever the list appears).
 """
 from __future__ import annotations
@@ -20,6 +20,8 @@ import urllib.request
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
+
+from app.falacias import TOP_FALLACIES
 
 OLDID = 70610117
 API = "https://pt.wikipedia.org/w/api.php"
@@ -65,7 +67,8 @@ class Fallacy:
 
     @property
     def enabled(self) -> bool:
-        return self.kind == "informal"
+        """Only the curated top 20 (app.falacias.TOP_FALLACIES) are switched on; everything else is seeded disabled."""
+        return self.name in TOP_FALLACIES
 
 
 def fold(s: str) -> str:

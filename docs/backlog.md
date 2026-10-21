@@ -7,6 +7,11 @@ Open items, newest first. Remove an item when done.
   contains player names/IPs). Also delete `data/backup/fly_admin_password.txt` AFTER the admin password has been
   stored in a password manager (rotate it any time with `fly secrets set ADMIN_PASSWORD=...`).
 
+## Falácias
+- Live speech-to-text (auto-transcription) of the horizontal live stream. Until then spoken passages are TYPED by the players
+  (max 300 chars, no context for the admin). Needs an audio source (yt-dlp audio of the live), an STT engine (cost/latency/pt-BR quality
+  to be measured) and a spoiler-free delay policy. The replay transcript feed (Task 2) stays for tests/demos.
+
 ## Production (Fly.io)
 - Scheduled Postgres backup: Fly keeps only 5 days of volume snapshots and this is one Machine / one volume.
   Add a periodic `pg_dump` to off-machine storage, and rehearse a restore once.

@@ -74,4 +74,6 @@ def no_youtube_lookups(monkeypatch):
     """Tests must never reach YouTube: the live-stream lookup answers 'not live' unless a test injects its own."""
     from app import livestream
     monkeypatch.setattr(livestream, "resolve_channel", lambda url=livestream.DEFAULT_URL: None)
+    monkeypatch.setattr(livestream, "resolve_channel_info", lambda url=livestream.DEFAULT_URL: None)
+    monkeypatch.setattr(livestream, "resolve_video_title", lambda video_id: None)
     monkeypatch.delenv("LIVE_VIDEO_ID", raising=False)

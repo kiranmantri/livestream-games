@@ -193,7 +193,7 @@ def test_list_fallacies_filters_disabled_and_keeps_id_order(conn):
 def test_seed_loads_the_real_file_once_and_never_resurrects(conn):
     first = F.load_fallacy_seed(conn)
     assert first == {"inserted": 97}
-    assert conn.execute("SELECT count(*) FILTER (WHERE enabled), count(*) FILTER (WHERE source = 'wikipedia') FROM fallacies").fetchone() == (77, 97)
+    assert conn.execute("SELECT count(*) FILTER (WHERE enabled), count(*) FILTER (WHERE source = 'wikipedia') FROM fallacies").fetchone() == (20, 97)
     conn.execute("DELETE FROM fallacies WHERE name LIKE 'Falácia do espantalho%'")
     fallacy(conn, "Deus das lacunas")
     again = F.load_fallacy_seed(conn)
@@ -610,3 +610,22 @@ def test_leaderboard_is_per_session(conn):
     fid = fallacy(conn)
     mark(conn, u, ev(conn, s.id), fid)
     assert [r.name for r in F.leaderboard(conn, s.id)] == ["Ana"] and F.leaderboard(conn, other.id) == []
+
+
+def test_sync_top_fallacies_enables_only_the_curated_wikipedia_rows(conn):
+    F.load_fallacy_seed(conn)
+    conn.execute("UPDATE fallacies SET enabled = true")                       # an old DB where all 97 were switched on
+    manual = fallacy(conn, "Deus das lacunas")                                # manual rows are never touched
+    conn.execute("UPDATE fallacies SET enabled = false WHERE name = 'Ad hominem'")        # a curated one that was switched off
+    r = F.sync_top_fallacies(conn)
+    assert r == {"enabled": 1, "disabled": 77, "missing": []}          # Ad hominem back on; the 77 others off
+    on = {n for (n,) in conn.execute("SELECT name FROM fallacies WHERE enabled AND source = 'wikipedia'")}
+    assert on == set(F.TOP_FALLACIES)
+    assert conn.execute("SELECT enabled FROM fallacies WHERE id = %s", (manual,)).fetchone() == (True,)
+    assert F.sync_top_fallacies(conn) == {"enabled": 0, "disabled": 0, "missing": []}     # idempotent: nothing left to change
+
+
+def test_sync_top_fallacies_reports_names_missing_from_the_table(conn):
+    fallacy(conn, "Ad hominem")
+    r = F.sync_top_fallacies(conn)
+    assert len(r["missing"]) == 19 and "Ad hominem" not in r["missing"]

@@ -15,6 +15,8 @@ Selection offsets are UTF-16 code units, i.e. what the browser's Selection/Range
 from __future__ import annotations
 
 import re
+import unicodedata
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -27,12 +29,15 @@ from psycopg.rows import class_row
 from app.db import ensure_autocommit
 from app.sessions import SessionError
 
-KINDS = ("transcript", "chat")
+KINDS = ("transcript", "chat")      # panes a player can SELECT from
+SPOKEN = "spoken"                    # typed by the player (what was said on the stream); never shown in the panes
+MAX_SPOKEN = 300
 VERDICTS = ("correct", "wrong", "spam")
 BASE = 500
 CORRECT = 500
 SPEED_MAX = 600                  # hundredths: 0,1 x 60 s
 SPEED_WINDOW_S = 60
+SPOKEN_LATENCY_MS = SPEED_WINDOW_S * 1000     # a typed pair has no line to time from: no speed bonus
 RATE_LIMIT_S = 10                # at most one pair per player per 10 s
 CAP_UNREVIEWED = 20              # only the first 20 unreviewed pairs earn the base
 MAX_QUOTE = 500
@@ -54,6 +59,10 @@ class SelectionTooLong(FalaciasError):
 
 class UnknownFallacy(FalaciasError):
     code = "unknown_fallacy"
+
+
+class SpokenTooLong(FalaciasError):
+    code = "spoken_too_long"
 
 
 class RateLimited(FalaciasError):
@@ -155,6 +164,47 @@ def list_fallacies(conn: psycopg.Connection, enabled_only: bool = True) -> list[
         return cur.fetchall()
 
 
+# The 20 fallacies players can pick: the most common ones in debates like this channel's (religion x atheism). EXACT names
+# from the pinned pt.wikipedia seed (tests check every one exists there). The other seeded rows stay in the table, disabled;
+# manual rows are never touched by the sync.
+TOP_FALLACIES: tuple[str, ...] = (
+    "Ad hominem",
+    "Falácia do espantalho",
+    "Falsa dicotomia",
+    "Argumentum ad verecundiam (Apelo à autoridade)",
+    "Argumentum ad populum (apelo à desinformação, apelo à maioria)",
+    "Bola de neve (Slippery slope)",
+    "Petitio principii",
+    "Pista falsa",
+    "Tu quoque (Apelo à hipocrisia)",
+    "Falsa analogia",
+    "Generalização precipitada",
+    'Post hoc ergo propter hoc (Latim para "após isso, portanto por causa disso"; sequência temporal não implica causalidade)',
+    "Argumentum ad ignorantiam (Apelo à ignorância)",
+    "Falácia do escocês de verdade",
+    "Equívoco",
+    "Envenenando o poço",
+    "Apelo à emoção",
+    "Argumentum ad consequentiam (Apelo à consequências)",
+    "Argumentum ad antiquitatem",
+    "Falácia divina (apelo à incredulidade)",
+)
+
+
+def sync_top_fallacies(conn: psycopg.Connection) -> dict:
+    """Make `enabled` of the Wikipedia rows match TOP_FALLACIES (for a DB seeded before the list was cut). Idempotent: the
+    result counts the rows that CHANGED; `missing` lists curated names not found in the table."""
+    ensure_autocommit(conn)
+    top = list(TOP_FALLACIES)
+    with conn.transaction():
+        on = conn.execute("UPDATE fallacies SET enabled = true WHERE source = 'wikipedia' AND name = ANY(%s) AND NOT enabled",
+                          (top,)).rowcount
+        off = conn.execute("UPDATE fallacies SET enabled = false WHERE source = 'wikipedia' AND NOT (name = ANY(%s)) AND enabled",
+                           (top,)).rowcount
+        present = {n for (n,) in conn.execute("SELECT name FROM fallacies WHERE name = ANY(%s)", (top,))}
+    return {"enabled": on, "disabled": off, "missing": [n for n in top if n not in present]}
+
+
 def load_fallacy_seed(conn: psycopg.Connection, path: Path = SEED_PATH) -> dict:
     """Apply the Wikipedia seed ONLY when the table is empty (the DB is the truth afterwards: deleted rows stay deleted)."""
     ensure_autocommit(conn)
@@ -238,23 +288,24 @@ def build_quote(conn: psycopg.Connection, session_id: UUID, kind: str, start_eve
 
 
 # ------------------------------------------------------------------ pairs
-def submit_mark(conn: psycopg.Connection, user_id: UUID, kind: str, start_event_id: int, start_offset: int,
-                end_event_id: int, end_offset: int, fallacy_id: int) -> Mark:
-    """A player flags (passage, fallacy). Server-side: quote, latency, rate limit, duplicate and cap checks."""
-    ensure_autocommit(conn)
+def _player_session(conn: psycopg.Connection, user_id: UUID, fallacy_id: int) -> UUID:
+    """The checks every submit starts with: a player of an ACTIVE falacias session, and an enabled fallacy."""
     row = conn.execute("SELECT u.session_id, s.status, s.game_type FROM users u JOIN game_sessions s ON s.id = u.session_id "
                        "WHERE u.id = %s", (user_id,)).fetchone()
     if row is None or row[2] != "falacias":
         raise NotAFalaciasPlayer("not a player of a falacias session")
-    session_id = row[0]
     if row[1] != "active":
         raise SessionNotActive("the session has ended")
     if conn.execute("SELECT 1 FROM fallacies WHERE id = %s AND enabled", (fallacy_id,)).fetchone() is None:
         raise UnknownFallacy("unknown or disabled fallacy")
-    quote = build_quote(conn, session_id, kind, start_event_id, start_offset, end_event_id, end_offset)
+    return row[0]
+
+
+def _guarded_insert(conn: psycopg.Connection, session_id: UUID, user_id: UUID, insert) -> Mark:
+    """Run `insert(counts) -> Mark` under the per-player lock, with the session still active, the rate limit applied and the
+    cap computed. Shared by selected and typed pairs: one player's submits are serialised (count-then-insert)."""
     try:
         with conn.transaction():
-            # one player's submits are serialised: the rate limit and the cap are count-then-insert
             conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (f"falacias-mark:{user_id}",))
             status = conn.execute("SELECT status FROM game_sessions WHERE id = %s FOR SHARE", (session_id,)).fetchone()
             if status is None or status[0] != "active":
@@ -265,24 +316,84 @@ def submit_mark(conn: psycopg.Connection, user_id: UUID, kind: str, start_event_
                 raise RateLimited(f"wait {RATE_LIMIT_S} s between pairs")
             pending = conn.execute("SELECT count(*) FROM fallacy_marks WHERE user_id = %s AND status = 'pending' AND counts",
                                    (user_id,)).fetchone()[0]
-            with conn.cursor(row_factory=class_row(Mark)) as cur:
-                cur.execute(
-                    "INSERT INTO fallacy_marks (session_id, user_id, kind, start_event_id, start_offset, end_event_id, "
-                    "end_offset, quote, fallacy_id, latency_ms, counts, created_at) "
-                    "SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, "
-                    "       GREATEST(0, floor(extract(epoch FROM clock_timestamp() - e.fed_at) * 1000))::int, %s, clock_timestamp() "
-                    "FROM stream_events e WHERE e.id = %s "
-                    f"RETURNING {_MARK_COLS}",
-                    (session_id, user_id, kind, start_event_id, start_offset, end_event_id, end_offset, quote, fallacy_id,
-                     pending < CAP_UNREVIEWED, end_event_id))
-                return cur.fetchone()
+            return insert(pending < CAP_UNREVIEWED)
     except errors.UniqueViolation as e:
         if e.diag.constraint_name == "fallacy_marks_unique_pair":
             raise DuplicateMark("you already flagged this passage with this fallacy") from e
         raise
 
 
+def submit_mark(conn: psycopg.Connection, user_id: UUID, kind: str, start_event_id: int, start_offset: int,
+                end_event_id: int, end_offset: int, fallacy_id: int) -> Mark:
+    """A player flags (passage, fallacy). Server-side: quote, latency, rate limit, duplicate and cap checks."""
+    ensure_autocommit(conn)
+    session_id = _player_session(conn, user_id, fallacy_id)
+    quote = build_quote(conn, session_id, kind, start_event_id, start_offset, end_event_id, end_offset)
+
+    def insert(counts: bool) -> Mark:
+        with conn.cursor(row_factory=class_row(Mark)) as cur:
+            cur.execute(
+                "INSERT INTO fallacy_marks (session_id, user_id, kind, start_event_id, start_offset, end_event_id, "
+                "end_offset, quote, fallacy_id, latency_ms, counts, created_at) "
+                "SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, "
+                "       GREATEST(0, floor(extract(epoch FROM clock_timestamp() - e.fed_at) * 1000))::int, %s, clock_timestamp() "
+                "FROM stream_events e WHERE e.id = %s "
+                f"RETURNING {_MARK_COLS}",
+                (session_id, user_id, kind, start_event_id, start_offset, end_event_id, end_offset, quote, fallacy_id,
+                 counts, end_event_id))
+            return cur.fetchone()
+    return _guarded_insert(conn, session_id, user_id, insert)
+
+
+def normalize_spoken(raw: str | None) -> str:
+    """What the player typed: NFC, control characters dropped, whitespace collapsed. 1..MAX_SPOKEN characters AFTER cleaning."""
+    text = unicodedata.normalize("NFC", raw or "")
+    text = "".join(" " if c.isspace() else c for c in text if c.isspace() or unicodedata.category(c) not in ("Cc", "Cs"))
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        raise BadSelection("nothing typed")
+    if len(text) > MAX_SPOKEN:
+        raise SpokenTooLong(f"more than {MAX_SPOKEN} characters")
+    return text
+
+
+def submit_spoken(conn: psycopg.Connection, user_id: UUID, text: str, fallacy_id: int) -> Mark:
+    """A player TYPES the passage that was said on the stream and flags it. The pair is its own one-line event of kind 'spoken'
+    (author = the player; never shown in the panes). Same rate limit / cap / duplicate rules as selected pairs; no speed bonus
+    (latency is fixed at SPEED_WINDOW_S); a duplicate is the same text (case-insensitive) + fallacy from the same player."""
+    ensure_autocommit(conn)
+    quote = normalize_spoken(text)
+    session_id = _player_session(conn, user_id, fallacy_id)
+
+    def insert(counts: bool) -> Mark:
+        if conn.execute("SELECT 1 FROM fallacy_marks WHERE user_id = %s AND kind = 'spoken' AND fallacy_id = %s "
+                        "AND lower(quote) = lower(%s)", (user_id, fallacy_id, quote)).fetchone():
+            raise DuplicateMark("you already flagged this passage with this fallacy")
+        eid = conn.execute(
+            "INSERT INTO stream_events (session_id, kind, source_key, author, text, fed_at) "
+            "SELECT %s, 'spoken', %s, u.name, %s, clock_timestamp() FROM users u WHERE u.id = %s RETURNING id",
+            (session_id, str(uuid.uuid4()), quote, user_id)).fetchone()[0]
+        with conn.cursor(row_factory=class_row(Mark)) as cur:
+            cur.execute(
+                "INSERT INTO fallacy_marks (session_id, user_id, kind, start_event_id, start_offset, end_event_id, end_offset, "
+                "quote, fallacy_id, latency_ms, counts, created_at) "
+                "VALUES (%s, %s, 'spoken', %s, 0, %s, %s, %s, %s, %s, %s, clock_timestamp()) "
+                f"RETURNING {_MARK_COLS}",
+                (session_id, user_id, eid, eid, _units(quote), quote, fallacy_id, SPOKEN_LATENCY_MS, counts))
+            return cur.fetchone()
+    return _guarded_insert(conn, session_id, user_id, insert)
+
+
 # ------------------------------------------------------------------ admin review
+def _same(a: str, b: str) -> str:
+    """SQL: row `a` and row `b` of fallacy_marks are the SAME pair for grouped verdicts: same fallacy and, for selected pairs, the
+    same passage; for typed pairs the same text (case-insensitive), because every typed pair is its own event."""
+    return (f"({a}.session_id = {b}.session_id AND {a}.kind = {b}.kind AND {a}.fallacy_id = {b}.fallacy_id AND "
+            f"(({a}.kind <> 'spoken' AND {a}.start_event_id = {b}.start_event_id AND {a}.start_offset = {b}.start_offset "
+            f"AND {a}.end_event_id = {b}.end_event_id AND {a}.end_offset = {b}.end_offset) "
+            f"OR ({a}.kind = 'spoken' AND lower({a}.quote) = lower({b}.quote))))")
+
+
 def _check_verdict(verdict: str) -> None:
     if verdict not in VERDICTS:
         raise ValueError(f"verdict must be one of {VERDICTS}")
@@ -317,10 +428,8 @@ def review_same_pairs(conn: psycopg.Connection, session_id: UUID, mark_id: UUID,
         _require_active(conn, session_id)
         n = conn.execute(
             "UPDATE fallacy_marks m SET status = %s, reviewed_at = now() FROM fallacy_marks ref "
-            "WHERE ref.id = %s AND ref.session_id = %s AND m.session_id = ref.session_id AND m.kind = ref.kind "
-            "AND m.start_event_id = ref.start_event_id AND m.start_offset = ref.start_offset "
-            "AND m.end_event_id = ref.end_event_id AND m.end_offset = ref.end_offset "
-            "AND m.fallacy_id = ref.fallacy_id AND m.status = 'pending'", (verdict, mark_id, session_id)).rowcount
+            f"WHERE ref.id = %s AND ref.session_id = %s AND {_same('m', 'ref')} AND m.status = 'pending'",
+            (verdict, mark_id, session_id)).rowcount
         if n == 0 and conn.execute("SELECT 1 FROM fallacy_marks WHERE id = %s AND session_id = %s",
                                    (mark_id, session_id)).fetchone() is None:
             raise MarkNotFound("no such pair in this session")
@@ -351,9 +460,7 @@ def queue_items(conn: psycopg.Connection, session_id: UUID, after_us: int = 0, m
     where, params = ("m.id = %s", (mark_id,)) if mark_id else ("m.status = 'pending' AND created_us > %s", (after_us,))
     rows = conn.execute(
         f"SELECT * FROM (SELECT {cols}, u.name, f.name AS fname, "
-        "(SELECT count(*) FROM fallacy_marks x WHERE x.session_id = m.session_id AND x.kind = m.kind "
-        " AND x.start_event_id = m.start_event_id AND x.start_offset = m.start_offset AND x.end_event_id = m.end_event_id "
-        " AND x.end_offset = m.end_offset AND x.fallacy_id = m.fallacy_id AND x.status = 'pending') AS same, "
+        f"(SELECT count(*) FROM fallacy_marks x WHERE {_same('x', 'm')} AND x.status = 'pending') AS same, "
         "floor(extract(epoch FROM m.created_at) * 1000000)::bigint AS created_us "
         "FROM fallacy_marks m JOIN users u ON u.id = m.user_id JOIN fallacies f ON f.id = m.fallacy_id "
         f"WHERE m.session_id = %s) q WHERE {where.replace('m.id', 'q.id').replace('m.status', 'q.status')} "
@@ -363,6 +470,9 @@ def queue_items(conn: psycopg.Connection, session_id: UUID, after_us: int = 0, m
     for r in rows:
         m = Mark(*r[:n])
         names = r[n:]
+        if m.kind == SPOKEN:                      # a typed quote has no surrounding lines (its neighbours are other players' typing)
+            items.append(QueueItem(m, names[0], names[1], names[2], [], [m.quote], [], names[3]))
+            continue
         around = conn.execute(
             "(SELECT 'b', id, text FROM stream_events WHERE session_id = %s AND kind = %s AND id < %s ORDER BY id DESC LIMIT %s) "
             "UNION ALL (SELECT 's', id, text FROM stream_events WHERE session_id = %s AND kind = %s AND id BETWEEN %s AND %s) "
@@ -379,9 +489,7 @@ def identical_pending_ids(conn: psycopg.Connection, session_id: UUID, mark_id: U
     """Ids of the PENDING pairs identical to this one (same passage + fallacy, any player), oldest first."""
     return [r[0] for r in conn.execute(
         "SELECT m.id FROM fallacy_marks m JOIN fallacy_marks ref ON ref.id = %s AND ref.session_id = %s "
-        "WHERE m.session_id = ref.session_id AND m.kind = ref.kind AND m.start_event_id = ref.start_event_id "
-        "AND m.start_offset = ref.start_offset AND m.end_event_id = ref.end_event_id AND m.end_offset = ref.end_offset "
-        "AND m.fallacy_id = ref.fallacy_id AND m.status = 'pending' ORDER BY m.created_at, m.id", (mark_id, session_id))]
+        f"WHERE {_same('m', 'ref')} AND m.status = 'pending' ORDER BY m.created_at, m.id", (mark_id, session_id))]
 
 
 def pending_count(conn: psycopg.Connection, session_id: UUID) -> int:

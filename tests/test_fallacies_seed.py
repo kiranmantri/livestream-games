@@ -39,15 +39,19 @@ def test_fixture_is_the_pinned_revision(page):
 
 def test_counts_on_the_pinned_page(items):
     assert len(items) == 97
-    assert sum(f.enabled for f in items) == 77
+    assert sum(f.enabled for f in items) == 20
     assert {f.kind for f in items} == {"formal", "informal"}
     assert len({M.fold(f.name) for f in items}) == len(items)            # names unique (table key)
 
 
-def test_formal_are_disabled_and_informal_enabled(items):
-    assert not by_name(items, "Argumento ad logicam").enabled
+def test_only_the_top_20_are_enabled(items):
+    from app.falacias import TOP_FALLACIES
+    assert len(TOP_FALLACIES) == 20 and len(set(TOP_FALLACIES)) == 20
+    assert {f.name for f in items if f.enabled} == set(TOP_FALLACIES)
+    assert {f.name for f in items} >= set(TOP_FALLACIES)           # every curated name exists on the pinned page (no typos)
+    assert not by_name(items, "Argumento ad logicam").enabled      # formal ones and the rest stay in the table, disabled
+    assert not by_name(items, "Pooh-pooh").enabled
     assert by_name(items, "Falácia do espantalho").enabled
-    assert all(f.enabled == (f.kind == "informal") for f in items)
 
 
 def test_category_is_the_nearest_heading(items):
@@ -130,7 +134,8 @@ def test_parent_text_stops_at_the_nested_list():
 def test_sql_escapes_quotes_and_is_idempotent_on_conflict():
     f = M.Fallacy("D'Alembert", "diz 'x'; DROP TABLE y;--", "Cat", "informal", None, None)
     sql = M.to_sql([f])
-    assert "'D''Alembert'" in sql and "'diz ''x''; DROP TABLE y;--'" in sql and ", NULL, 'wikipedia', true)" in sql
+    assert "'D''Alembert'" in sql and "'diz ''x''; DROP TABLE y;--'" in sql and ", NULL, 'wikipedia', false)" in sql   # not in the top 20
+    assert ", NULL, 'wikipedia', true)" in M.to_sql([M.Fallacy("Ad hominem", "d", "Cat", "informal", None, None)])
     assert sql.rstrip().endswith("ON CONFLICT (name) DO NOTHING;")
 
 
@@ -147,7 +152,7 @@ def test_seed_applies_twice_without_duplicates(items, test_db_url):
         c.execute(sql)
         c.execute(sql)
         n, on = c.execute("SELECT count(*), count(*) FILTER (WHERE enabled) FROM fallacies").fetchone()
-        assert (n, on) == (97, 77)
+        assert (n, on) == (97, 20)
         assert c.execute("SELECT count(*) FROM fallacies WHERE source <> 'wikipedia'").fetchone()[0] == 0
 
 

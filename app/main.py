@@ -341,7 +341,7 @@ def create_app(db_url: str | None = None, live: livestream.LiveStream | None = N
 
     admin_web.register(rt, pool)
     phrases_web.register(rt, pool)
-    falacias_web.register(rt, pool)
+    falacias_web.register(rt, pool, live)
     falacias_admin_web.register(rt, pool)
     ui.register(rt)
     return app

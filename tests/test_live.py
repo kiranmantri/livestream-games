@@ -267,7 +267,7 @@ def test_stream_poll_is_quiet_until_the_live_id_changes(web):
     r = ana.get(f"/stream?cur={VID}")
     assert r.status_code == 200 and r.headers["hx-refresh"] == "true"
     live.forced = None
-    live._id, live.ttl = None, 3600
+    live._info, live.ttl = None, 3600
     assert ana.get(f"/stream?cur={VID}").headers["hx-refresh"] == "true"           # went offline -> reload
 
 

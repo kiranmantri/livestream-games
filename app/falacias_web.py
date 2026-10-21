@@ -41,7 +41,7 @@ from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 
 from app import falacias as F
-from app import feed
+from app import feed, livestream
 from app import host_messages as H
 from app import sessions as S
 from app import texts as T
@@ -162,20 +162,40 @@ def message_box_view(sent: int):
                 id="hostbox", cls="panel", hx_post="/falacias/message", hx_swap="none")
 
 
-def entry_view(active: S.GameSession | None, n_players: int = 0, error: str | None = None, name: str = ""):
+def source_view(live: livestream.LiveStream):
+    """Title + URL of the video the game uses (the replay, for now) and of the channel's live stream, if any. Polled like /menu:
+    fast while a title/live answer is still being looked up, slowly afterwards; the fragment has NO `load` trigger (no loop)."""
+    vid = feed.feed_config().video_id
+    title = live.title_of(vid)
+    info = live.info()
+    poll = "every 5s" if title is None or not live.known else "every 60s"
+    url = f"https://www.youtube.com/watch?v={vid}"
+    if info is None:
+        liveline = P(T.SRC_LIVE_OFFLINE, cls="muted") if live.known else None
+    else:
+        label = T.SRC_LIVE_NOW if info.horizontal else T.SRC_LIVE_VERTICAL
+        liveline = P(Span(label + ": ", cls="who"), info.title or T.SRC_TITLE_UNKNOWN, " · ", A(info.url, href=info.url, target="_blank", rel="noopener"),
+                     cls="muted" if info.horizontal else "muted vertical")
+    return Div(P(Span(T.SRC_VIDEO + ": ", cls="who"), title or T.SRC_TITLE_UNKNOWN, " · ", A(url, href=url, target="_blank", rel="noopener")),
+               liveline, P(T.SRC_ONLY_HORIZONTAL, cls="muted small"),
+               id="source", cls="source", hx_get="/falacias/source", hx_trigger=poll, hx_swap="outerHTML")
+
+
+def entry_view(active: S.GameSession | None, n_players: int = 0, error: str | None = None, name: str = "", source=None):
     if active is None:
         panel = Div(H2(T.FAL_START_HEADING), P(T.START_HELP, cls="muted"),
                     play_form("/falacias/start", T.START_BUTTON, name, "/falacias"), cls="panel")
     else:
         panel = Div(H2(T.FAL_JOIN_HEADING), P(T.JOIN_HELP.format(n=n_players), cls="muted"),
                     play_form("/falacias/join", T.JOIN_BUTTON, name, "/falacias"), cls="panel")
-    return fal_page(H1(T.FAL_TITLE), P(T.FAL_TAGLINE, cls="tag"), P(T.FAL_REPLAY, cls="muted"), error_box(error), panel)
+    return fal_page(H1(T.FAL_TITLE), P(T.FAL_TAGLINE, cls="tag"), P(T.FAL_REPLAY, cls="muted"), source, error_box(error), panel)
 
 
-def game_view(me: S.Player, events: list[feed.Event], last_id: int, st: str, fallacies, side, sent: int = 0):
+def game_view(me: S.Player, events: list[feed.Event], last_id: int, st: str, fallacies, side, sent: int = 0, source=None):
     by_kind = {k: [e for e in events if e.kind == k] for k, _ in PANES}
     return fal_page(
         H1(T.FAL_TITLE), P(f"{me.name} ({T.YOU})", cls="tag"), P(T.FAL_HOW_TO, cls="muted"), P(T.FAL_PICK_HELP, cls="muted"), P(T.FAL_REPLAY, cls="muted"),
+        source,
         banner_view(st),
         Div(*[pane_view(k, title, by_kind[k]) for k, title in PANES], cls="panes"),
         poller_view(last_id, st),
@@ -207,7 +227,9 @@ def ended_view(conn, session: S.GameSession, me: S.Player, rows: list[F.LeaderRo
 
 
 # ------------------------------------------------------------------ routes
-def register(rt, pool) -> None:
+def register(rt, pool, live: livestream.LiveStream | None = None) -> None:
+    live = live or livestream.LiveStream()
+
     def enter(request: Request, kind: str, name: str):
         ip = client_ip_of(request)
         name = name or name_of(request) or ""
@@ -222,7 +244,7 @@ def register(rt, pool) -> None:
                     return name_gate("/falacias", error=e.code, value=name)
                 active = S.get_active_session(conn, GAME)
                 n = S.count_players(conn, active.id) if active else 0
-                return entry_view(active, n, error=e.code, name=name)
+                return entry_view(active, n, error=e.code, name=name, source=source_view(live))
         return remember_name(set_token_cookie(RedirectResponse("/falacias", status_code=303), GAME, token), player.name)
 
     @rt("/falacias")
@@ -233,7 +255,7 @@ def register(rt, pool) -> None:
                 feed.tick_throttled(conn, me.session_id)
                 events = feed.recent_events(conn, me.session_id, FIRST_LINES)
                 return game_view(me, events, feed.last_event_id(conn, me.session_id), feed.status(conn, me.session_id),
-                                 F.list_fallacies(conn), side_view(conn, me), H.sent_count(conn, me.id))
+                                 F.list_fallacies(conn), side_view(conn, me), H.sent_count(conn, me.id), source_view(live))
             active = S.get_active_session(conn, GAME)
             found = S.find_player(conn, token_of(request, GAME))
             if active is None and found and found[1].status == "ended" and found[1].game_type == GAME:
@@ -241,7 +263,7 @@ def register(rt, pool) -> None:
             name = name_of(request)
             if name is None:
                 return name_gate("/falacias")
-            return entry_view(active, S.count_players(conn, active.id) if active else 0, name=name)
+            return entry_view(active, S.count_players(conn, active.id) if active else 0, name=name, source=source_view(live))
 
     @rt("/falacias/start", methods=["POST"])
     def falacias_start(request: Request, name: str = ""):
@@ -298,6 +320,10 @@ def register(rt, pool) -> None:
             except feed.FeedError:
                 return fragment(feedback_view("feed_down"))
             return fragment(feedback_view(ok=True), side_view(conn, me, oob=True), headers={"HX-Trigger": "fal:sent"})
+
+    @rt("/falacias/source")
+    def falacias_source():
+        return fragment(source_view(live))        # public information, like /menu
 
     @rt("/falacias/message", methods=["POST"])
     def falacias_message(request: Request, text: str = ""):

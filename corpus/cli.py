@@ -48,8 +48,18 @@ def main(argv: list[str] | None = None) -> int:
     rl.add_argument("video_id", nargs="?", default=None, help="default: FALACIAS_VIDEO_ID")
 
     sub.add_parser("fallacies-load", help="apply deploy/seed/fallacies_seed.sql, only if the fallacies table is EMPTY")
+    sub.add_parser("fallacies-top", help="enable only the curated top 20 Wikipedia fallacies, disable the other Wikipedia rows")
 
     args = p.parse_args(argv)
+    if args.cmd == "fallacies-top":
+        from app.db import connect
+        from app.falacias import sync_top_fallacies
+        conn = connect()
+        try:
+            print("fallacies:", sync_top_fallacies(conn))
+        finally:
+            conn.close()
+        return 0
     if args.cmd == "fallacies-load":
         from app.db import connect
         from app.falacias import load_fallacy_seed

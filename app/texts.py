@@ -212,3 +212,11 @@ FAL_COL_WRONG = "Errados"
 FAL_COL_SPAM = "Spam"
 FAL_COL_PENDING = "Sem veredito"
 FAL_UNREVIEWED_NOTE = "Envios sem veredito do apresentador valem só os 5 pontos do envio."
+
+# ---- Falácias: where the video comes from
+SRC_VIDEO = "Vídeo da partida (replay)"
+SRC_TITLE_UNKNOWN = "título indisponível"
+SRC_LIVE_NOW = "Ao vivo agora"
+SRC_LIVE_VERTICAL = "Transmissão ao vivo na vertical, não usada"
+SRC_LIVE_OFFLINE = "O canal não está ao vivo agora."
+SRC_ONLY_HORIZONTAL = "Só transmissões na horizontal são usadas."

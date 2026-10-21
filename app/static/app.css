@@ -276,3 +276,7 @@ ol.queue:not(:empty) ~ .empty { display: none; }
 /* ---- Falácias: end screen */
 p.winner { font-size: 1.3rem; font-weight: 800; color: var(--ok); margin: 8px 0; }
 table.final tr.me td { background: #1e3a5f; font-weight: 700; }
+
+/* ---- Falácias: video source */
+.source { margin: 8px 0; font-size: .9rem; } .source p { margin: 2px 0; } .source .vertical { color: #fbbf24; }
+.source .small { font-size: .8rem; } .source a { color: var(--accent); overflow-wrap: anywhere; }
