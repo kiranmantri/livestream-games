@@ -357,12 +357,14 @@ Also state what the agent itself already ran and its real output; never claim su
     uv run pytest tests/test_fallacies_seed.py -q      # expect: 18 passed (offline: parses a SAVED copy, tests/fixtures/lista_de_falacias_70610117.json)
     uv run pytest -q                                   # expect: 442 passed, 1 skipped
     uv run python -m deploy.make_fallacies_seed --from-file tests/fixtures/lista_de_falacias_70610117.json
-                                                       # expect: "97 fallacies -> deploy/seed/fallacies_seed.sql (77 enabled)", counts per
+                                                       # expect: "97 fallacies -> deploy/seed/fallacies_seed.sql (20 enabled)", counts per
                                                        #   category, "without article link: 33", missing must-haves: deus das lacunas, onus da prova invertido
     uv run python -m deploy.make_fallacies_seed        # same, but fetches revision 70610117 from the MediaWiki API (needs network)
     head -c 600 deploy/seed/fallacies_seed.sql         # expect: INSERT INTO fallacies (name, category, description, wikipedia_url, source, enabled) VALUES ...
     # The `fallacies` table does not exist yet (migration 0008, Task 1b): the seed is tested against a TEMP table with the planned layout.
-    # Informal fallacies are seeded enabled, formal ones disabled. Missing must-haves are added later as source='manual'.
+    # ONLY the curated top 20 (app/falacias.py TOP_FALLACIES) are enabled; the other 77 rows stay in the table, disabled. Missing must-haves
+    #   (deus das lacunas, onus da prova invertido) are added later as source='manual' (manual rows are never touched by the sync).
+    # DB seeded before the cut: `uv run corpus fallacies-top` -> fallacies: {'enabled': N, 'disabled': M, 'missing': []}; verify with the psql line above (20 | 97).
     # Text (c) Wikipedia contributors, CC BY-SA 4.0: show the attribution wherever the list appears.
     # Mutation check (repo COPY): 16/16 killed (mutate_1a.py in the scratch dir). reset: rm deploy/seed/fallacies_seed.sql
 
@@ -376,7 +378,7 @@ Also state what the agent itself already ran and its real output; never claim su
     from app.db import connect; from app import falacias as F
     c = connect(); print(F.load_fallacy_seed(c)); print(F.load_fallacy_seed(c))
     "                                                  # expect {'inserted': 97} then {'skipped': 'fallacies table already has 97 rows'}
-    docker compose exec db psql -U livegames -c "select count(*) filter (where enabled) on_, count(*) from fallacies"   # expect 77 | 97
+    docker compose exec db psql -U livegames -c "select count(*) filter (where enabled) on_, count(*) from fallacies"   # expect 20 | 97
     # Rules implemented (all derived, nothing about points is stored): base +5 (first 20 unreviewed pairs of a player; flag `counts` stored at submit),
     #   Correto +5 and speed 0,1 x max(0, 60 - s) (s = server clock from the LAST selected line's fed_at to submit), Errado = base only, Spam = 0.
     #   Rate limit 1 pair / 10 s per player, no identical pair twice per player (others may repeat it and ALL score), quote recomputed by the server
@@ -481,6 +483,26 @@ Also state what the agent itself already ran and its real output; never claim su
     docker compose exec db psql -U livegames -c "select g.status, u.name winner from game_sessions g left join users u on u.id = g.winner_user_id where g.game_type='falacias'"
     # Winner = most points; ties: more Correto pairs, then whoever submitted their last pair first. Stored once (a 2nd finish returns None, keeps it).
     # Not done: mutation check, real-browser look at the end screen.
+
+### Validation for L2 (live-source step 1: migration 0009, typed pairs, per-session video source)
+    uv run pytest tests/test_spoken.py -q               # expect: 65 passed (collection error before the code existed: Source/submit_spoken missing)
+    uv run pytest -q                                    # expect: 819 passed, 1 skipped
+    uv run migrate                                      # YOU, dev DB: expect "applied: 0009_live_source.sql" (then "up to date")
+    docker compose exec db psql -U livegames -c '\d game_sessions'    # expect video_id, source_mode + 4 session_* checks
+    docker compose exec db psql -U livegames -c '\d fallacy_marks'    # expect kind check with 'spoken', mark_spoken_quote, mark_spoken_shape
+    # Nothing in the UI changes yet (pages = step 3, chat worker = step 2). What exists now (services only):
+    #   * kind 'spoken' = the player TYPES the passage: falacias.submit_spoken(conn, user_id, text, fallacy_id). It creates its own one-line
+    #     stream_event (author = player, never shown in the panes: feed reads filter kind IN transcript/chat) + a pending mark. 1..300 chars AFTER
+    #     cleaning (NFC, control chars dropped, whitespace collapsed); same rate limit (10 s), cap (20) and per-player lock as selected pairs;
+    #     duplicate = same player + same text (case-insensitive) + same fallacy; no speed bonus (latency fixed at 60 s => correct = 5 + 5).
+    #   * Admin queue: a spoken item has NO context; identical typed pairs (same text, case-insensitive, same fallacy, any player) group for one verdict.
+    #   * game_sessions.video_id + source_mode ('live'|'replay'); NULL = legacy session = the FALACIAS_VIDEO_ID replay (old rows unchanged).
+    #   * feed.resolve_source(conn, live_info, requested): a HORIZONTAL live ALWAYS wins (a replay is never used while one exists); a vertical live
+    #     is ignored; no live => the requested replay (youtube id/URL, both tracks imported) else NoSource (the page must ask for a video URL).
+    #   * feed.start_falacias(conn, name, ip, source=None) stores the source; tick() and status() follow the SESSION's source
+    #     (live => no replay clock, status ok; the chat worker's health arrives with step 2).
+    # Mutation check (repo COPY): 41/41 killed (mutate_L2.py in the scratch dir; the first run had 1 survivor -> test added).
+    # reset: TRUNCATE game_sessions, users CASCADE.
 
 ## Conventions log
 (Append new conventions below as they are agreed.)

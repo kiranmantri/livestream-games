@@ -78,6 +78,8 @@ class GameSession:
     winner_user_id: uuid.UUID | None
     created_at: datetime
     ended_at: datetime | None
+    video_id: str | None = None        # Falácias only: the video the game follows ...
+    source_mode: str | None = None     # ... and how: 'live' or 'replay' (NULL = legacy session: the FALACIAS_VIDEO_ID replay)
 
 
 @dataclass(frozen=True)
@@ -90,7 +92,7 @@ class Player:
     last_seen_at: datetime
 
 
-_SESSION_COLS = "id, game_type, status, created_by, winner_user_id, created_at, ended_at"
+_SESSION_COLS = "id, game_type, status, created_by, winner_user_id, created_at, ended_at, video_id, source_mode"
 _PLAYER_COLS = "id, session_id, name, host(ip) AS ip, created_at, last_seen_at"
 
 
@@ -200,8 +202,8 @@ def _count_ip(conn: psycopg.Connection, session_id: uuid.UUID, ip: str) -> int:
 
 
 # ------------------------------------------------------------------ commands
-def start_session(conn: psycopg.Connection, name: str, ip: str,
-                  game_type: str = "bingo") -> tuple[GameSession, Player, str]:
+def start_session(conn: psycopg.Connection, name: str, ip: str, game_type: str = "bingo",
+                  video_id: str | None = None, source_mode: str | None = None) -> tuple[GameSession, Player, str]:
     """First visitor starts the session of `game_type` and becomes its first player.
     Returns (session, player, raw_token). Raises SessionAlreadyActive if one is running for that game
     (also when a concurrent request wins the race: the DB's unique index decides)."""
@@ -213,8 +215,8 @@ def start_session(conn: psycopg.Connection, name: str, ip: str,
     try:
         with conn.transaction():
             # both rows in one transaction; the circular FKs are deferred (see migration 0001)
-            conn.execute("INSERT INTO game_sessions (id, game_type, created_by) VALUES (%s, %s, %s)",
-                         (sid, game_type, uid))
+            conn.execute("INSERT INTO game_sessions (id, game_type, created_by, video_id, source_mode) VALUES (%s, %s, %s, %s, %s)",
+                         (sid, game_type, uid, video_id, source_mode))
             conn.execute(
                 "INSERT INTO users (id, session_id, name, ip, token_hash) VALUES (%s,%s,%s,%s,%s)",
                 (uid, sid, name, ip, hash_token(token)))
@@ -225,14 +227,16 @@ def start_session(conn: psycopg.Connection, name: str, ip: str,
     return _get_session(conn, sid), _get_player(conn, uid), token
 
 
-def start_session_as_admin(conn: psycopg.Connection, game_type: str = "bingo") -> GameSession:
+def start_session_as_admin(conn: psycopg.Connection, game_type: str = "bingo", video_id: str | None = None,
+                           source_mode: str | None = None) -> GameSession:
     """Admin starts a session of `game_type` with no players yet (created_by NULL). Players then join it.
     Raises SessionAlreadyActive if one is running for that game (the DB's unique index decides, also on races)."""
     check_game(game_type)
     ensure_autocommit(conn)
     sid = uuid.uuid4()
     try:
-        conn.execute("INSERT INTO game_sessions (id, game_type, created_by) VALUES (%s, %s, NULL)", (sid, game_type))
+        conn.execute("INSERT INTO game_sessions (id, game_type, created_by, video_id, source_mode) VALUES (%s, %s, NULL, %s, %s)",
+                     (sid, game_type, video_id, source_mode))
     except errors.UniqueViolation as e:
         if e.diag.constraint_name == "one_active_session_per_game":
             raise SessionAlreadyActive(f"a {game_type} session is already running") from e
