@@ -28,6 +28,7 @@ from fasthtml.common import (
     Script,
     Small,
     Span,
+    Textarea,
     to_xml,
 )
 from starlette.requests import Request
@@ -35,6 +36,7 @@ from starlette.responses import RedirectResponse, Response
 
 from app import falacias as F
 from app import feed
+from app import host_messages as H
 from app import sessions as S
 from app import texts as T
 from app.ui import (
@@ -134,6 +136,26 @@ def side_view(conn, me: S.Player, oob: bool = False):
                **({"hx_swap_oob": "true"} if oob else {}))
 
 
+def hm_count_view(n: int, oob: bool = False):
+    return Span(T.HM_COUNT.format(n=n, max=H.MAX_PER_PLAYER), id="hm-count", cls="muted", hx_swap_oob="true" if oob else None)
+
+
+def hm_feedback_view(code: str | None = None):
+    if code is None:
+        return Div(T.HM_SENT, id="hm-feedback", cls="ok", role="status", hx_swap_oob="true")
+    return Div(T.HM_ERRORS.get(code, T.HM_ERRORS["generic"]).format(n=H.RATE_LIMIT_S, max=H.MAX_PER_PLAYER),
+               id="hm-feedback", cls="error", role="alert", hx_swap_oob="true")
+
+
+def message_box_view(sent: int):
+    return Form(H2(T.HM_HEADING), P(T.HM_HELP, cls="muted"),
+                Textarea(id="hm-text", name="text", maxlength=H.MAX_LEN, rows=3, required=True, placeholder=T.HM_PLACEHOLDER,
+                         aria_label=T.HM_HEADING),
+                Div(Button(T.HM_SEND, type="submit", cls="primary"), hm_count_view(sent), Div(id="hm-feedback", role="status"),
+                    cls="sendrow"),
+                id="hostbox", cls="panel", hx_post="/falacias/message", hx_swap="none")
+
+
 def entry_view(active: S.GameSession | None, n_players: int = 0, error: str | None = None, name: str = ""):
     if active is None:
         panel = Div(H2(T.FAL_START_HEADING), P(T.START_HELP, cls="muted"),
@@ -144,7 +166,7 @@ def entry_view(active: S.GameSession | None, n_players: int = 0, error: str | No
     return fal_page(H1(T.FAL_TITLE), P(T.FAL_TAGLINE, cls="tag"), P(T.FAL_REPLAY, cls="muted"), error_box(error), panel)
 
 
-def game_view(me: S.Player, events: list[feed.Event], last_id: int, st: str, fallacies, side):
+def game_view(me: S.Player, events: list[feed.Event], last_id: int, st: str, fallacies, side, sent: int = 0):
     by_kind = {k: [e for e in events if e.kind == k] for k, _ in PANES}
     return fal_page(
         H1(T.FAL_TITLE), P(f"{me.name} ({T.YOU})", cls="tag"), P(T.FAL_HOW_TO, cls="muted"), P(T.FAL_PICK_HELP, cls="muted"), P(T.FAL_REPLAY, cls="muted"),
@@ -153,6 +175,7 @@ def game_view(me: S.Player, events: list[feed.Event], last_id: int, st: str, fal
         poller_view(last_id, st),
         picker_view(fallacies),
         side,
+        message_box_view(sent),
         Script(src="/falacias.js", defer=True),
         cls="fal")
 
@@ -192,7 +215,7 @@ def register(rt, pool) -> None:
                 feed.tick_throttled(conn, me.session_id)
                 events = feed.recent_events(conn, me.session_id, FIRST_LINES)
                 return game_view(me, events, feed.last_event_id(conn, me.session_id), feed.status(conn, me.session_id),
-                                 F.list_fallacies(conn), side_view(conn, me))
+                                 F.list_fallacies(conn), side_view(conn, me), H.sent_count(conn, me.id))
             active = S.get_active_session(conn, GAME)
             found = S.find_player(conn, token_of(request, GAME))
             if active is None and found and found[1].status == "ended" and found[1].game_type == GAME:
@@ -257,6 +280,21 @@ def register(rt, pool) -> None:
             except feed.FeedError:
                 return fragment(feedback_view("feed_down"))
             return fragment(feedback_view(ok=True), side_view(conn, me, oob=True), headers={"HX-Trigger": "fal:sent"})
+
+    @rt("/falacias/message", methods=["POST"])
+    def falacias_message(request: Request, text: str = ""):
+        with pool.connection() as conn:
+            me = S.resume(conn, token_of(request, GAME), GAME)
+            if me is None:
+                return Response(status_code=401, headers={"HX-Refresh": "true"})
+            try:
+                H.send(conn, me.id, text)
+            except F.SessionNotActive:
+                return Response(status_code=200, headers={"HX-Refresh": "true"})
+            except H.HostMessageError as e:
+                return fragment(hm_feedback_view(e.code))
+            return fragment(hm_feedback_view(), hm_count_view(H.sent_count(conn, me.id), oob=True),
+                            headers={"HX-Trigger": "fal:msg-sent"})
 
     @rt("/falacias/side")
     def falacias_side(request: Request):

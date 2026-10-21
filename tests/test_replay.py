@@ -261,3 +261,15 @@ def test_cli_reports_errors_without_a_traceback(conn, tmp_path, test_db_url, mon
     assert cli.main(["replay-import", "../x", "--corpus", str(tmp_path)]) == 1
     assert cli.main(["replay-seed", "nada"]) == 1
     assert capsys.readouterr().err.count("ERROR:") == 3
+
+
+def test_cli_fallacies_load_seeds_an_empty_table_once(conn, test_db_url, monkeypatch, capsys):
+    from corpus import cli
+    monkeypatch.setenv("DATABASE_URL", test_db_url)
+    conn.execute("DELETE FROM fallacies")
+    assert cli.main(["fallacies-load"]) == 0
+    assert "'inserted': 97" in capsys.readouterr().out
+    assert conn.execute("SELECT count(*) FILTER (WHERE enabled), count(*) FROM fallacies").fetchone() == (77, 97)
+    assert cli.main(["fallacies-load"]) == 0
+    assert "skipped" in capsys.readouterr().out
+    conn.execute("DELETE FROM fallacies")

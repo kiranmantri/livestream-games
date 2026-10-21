@@ -14,6 +14,7 @@ from fasthtml.common import (
     Form,
     Input,
     Main,
+    Nav,
     P,
     Small,
     Span,
@@ -160,10 +161,19 @@ def admin_page(session: S.GameSession, rows: list[A_.PlayerRow], standings: list
         onsubmit=f"return confirm({T.ADMIN_FINISH_CONFIRM!r})") if active else None
     cards = [card_panel(r, session.id, token, active, str(r.user_id) == open_uid) for r in rows]
     return (Title(f"{T.TITLE} - admin"),
-            Main(H1(f"{T.TITLE} - admin"), head, finish or "",
+            Main(admin_tabs("bingo"), H1(f"{T.TITLE} - admin"), head, finish or "",
                  start_form(start_token) if not active else "",
                  users_panel(rows, rank, sort, direction),
                  H2(T.ADMIN_CARDS), *cards, A(T.ADMIN_REFRESH, href="/admin", cls="btn"), cls="wide"))
+
+
+def admin_tabs(active: str):
+    """Tabs shared by every admin page: Bingo | Encontre as Falácias | Frases do Bingo."""
+    tabs = (("bingo", T.ADMIN_TAB_BINGO, "/admin"), ("falacias", T.ADMIN_TAB_FALACIAS, "/admin/falacias"),
+            ("phrases", T.ADMIN_TAB_PHRASES, "/admin/phrases"))
+    return Nav(*[A(label, href=href, cls="active" if key == active else None,
+                   aria_current="page" if key == active else None) for key, label, href in tabs],
+               cls="menu admintabs", aria_label="admin")
 
 
 def denied(request: Request):
@@ -186,7 +196,7 @@ def register(rt, pool):
             session = A_.current_session(conn)
             pw = A_.admin_password() or ""
             if session is None:
-                return Main(H1(f"{T.TITLE} - admin"), P(T.ADMIN_NO_SESSION, cls="muted"),
+                return Main(admin_tabs("bingo"), H1(f"{T.TITLE} - admin"), P(T.ADMIN_NO_SESSION, cls="muted"),
                             start_form(A_.start_token(pw)),
                             A(T.ADMIN_PHRASES_LINK, href="/admin/phrases", cls="btn small"),
                             A(T.ADMIN_REFRESH, href="/admin", cls="btn"), cls="wide")

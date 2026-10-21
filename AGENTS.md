@@ -455,6 +455,22 @@ Also state what the agent itself already ran and its real output; never claim su
     # Mutation check (repo COPY): 41/41 killed (mutate_4.py in the scratch dir; covers Task 4 routes/views and the name gate).
     # reset: TRUNCATE game_sessions, users CASCADE (stream_events and fallacy_marks go with it).
 
+### Validation for Task 5 (admin Falácias tab, live queue, host messages: app/falacias_admin_web.py, app/host_messages.py)
+    uv run pytest tests/test_host_messages.py tests/test_falacias_queue.py tests/test_admin_falacias.py -q   # expect: all passed
+    uv run pytest -q                                    # expect: 705 passed, 1 skipped
+    uv run migrate && uv run corpus replay-import _nVWPIFCUzQ    # YOU, dev DB (0007/0008); fallacies seed: see Task 1b
+    FALACIAS_SPEED=20 uv run uvicorn app.main:app --port 8001
+    # Admin (user "admin", ADMIN_PASSWORD): tabs "Bingo | Encontre as Falácias | Frases" on every admin page.
+    #   http://127.0.0.1:8001/admin/falacias -> "Iniciar partida" (or start from /falacias as a player).
+    #   Players mark pairs: they appear at the BOTTOM of the queue within ~3 s (oldest first; never inserted above, so a click cannot hit
+    #   the wrong pair), with 3 lines of context before/after, the quote, and Correto / Errado / Spam. Clicking redraws only that item.
+    #   Identical pending pairs show "Todas iguais (n)" buttons: one verdict for the whole group. A verdict can be changed later.
+    #   Players type in "Mensagem para o apresentador" (280 chars, 1 per 30 s, max 5): it shows in the admin side panel; "Passada"/"Ocultar" move it
+    #   to "Tratadas" (Desfazer brings it back). The side panel also has the leaderboard. "Encerrar partida" ends it; no review afterwards.
+    # reset: TRUNCATE game_sessions, users CASCADE.
+    # NOT done for Task 5: mutation check, real-browser QA (tests were written AFTER the web code, so no red run for tests/test_admin_falacias.py;
+    #   tests/test_host_messages.py and test_falacias_queue.py were written first). htmx swaps (oob beforeend, group redraw) are only checked as HTML.
+
 ## Conventions log
 (Append new conventions below as they are agreed.)
 - DB access from services: ALWAYS use an autocommit connection (`app.db.connect()` / pool with

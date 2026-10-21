@@ -327,6 +327,68 @@ def review_same_pairs(conn: psycopg.Connection, session_id: UUID, mark_id: UUID,
         return n
 
 
+# ------------------------------------------------------------------ admin queue (read model)
+CONTEXT_LINES = 3
+
+
+@dataclass(frozen=True)
+class QueueItem:
+    mark: Mark
+    name: str                 # who sent it
+    fallacy: str
+    same: int                 # PENDING pairs identical to this one (same passage + fallacy, any player), itself included
+    before: list[str]         # up to CONTEXT_LINES lines of the same pane before the selection
+    selected: list[str]       # the full text of the selected lines
+    after: list[str]
+    created_us: int           # cursor for the live queue: microseconds since the epoch
+
+
+def queue_items(conn: psycopg.Connection, session_id: UUID, after_us: int = 0, mark_id: UUID | None = None,
+                limit: int = 200) -> list[QueueItem]:
+    """PENDING pairs oldest first (FIFO) whose created_us > after_us; or exactly one pair, whatever its status, when
+    `mark_id` is given (used to redraw an item after a verdict)."""
+    cols = ", ".join("m." + c.strip() for c in _MARK_COLS.split(","))
+    where, params = ("m.id = %s", (mark_id,)) if mark_id else ("m.status = 'pending' AND created_us > %s", (after_us,))
+    rows = conn.execute(
+        f"SELECT * FROM (SELECT {cols}, u.name, f.name AS fname, "
+        "(SELECT count(*) FROM fallacy_marks x WHERE x.session_id = m.session_id AND x.kind = m.kind "
+        " AND x.start_event_id = m.start_event_id AND x.start_offset = m.start_offset AND x.end_event_id = m.end_event_id "
+        " AND x.end_offset = m.end_offset AND x.fallacy_id = m.fallacy_id AND x.status = 'pending') AS same, "
+        "floor(extract(epoch FROM m.created_at) * 1000000)::bigint AS created_us "
+        "FROM fallacy_marks m JOIN users u ON u.id = m.user_id JOIN fallacies f ON f.id = m.fallacy_id "
+        f"WHERE m.session_id = %s) q WHERE {where.replace('m.id', 'q.id').replace('m.status', 'q.status')} "
+        "ORDER BY q.created_at, q.id LIMIT %s", (session_id, *params, limit)).fetchall()
+    n = len(_MARK_COLS.split(","))
+    items = []
+    for r in rows:
+        m = Mark(*r[:n])
+        names = r[n:]
+        around = conn.execute(
+            "(SELECT 'b', id, text FROM stream_events WHERE session_id = %s AND kind = %s AND id < %s ORDER BY id DESC LIMIT %s) "
+            "UNION ALL (SELECT 's', id, text FROM stream_events WHERE session_id = %s AND kind = %s AND id BETWEEN %s AND %s) "
+            "UNION ALL (SELECT 'a', id, text FROM stream_events WHERE session_id = %s AND kind = %s AND id > %s ORDER BY id LIMIT %s) "
+            "ORDER BY 2",
+            (m.session_id, m.kind, m.start_event_id, CONTEXT_LINES, m.session_id, m.kind, m.start_event_id, m.end_event_id,
+             m.session_id, m.kind, m.end_event_id, CONTEXT_LINES)).fetchall()
+        items.append(QueueItem(m, names[0], names[1], names[2], [t for k, _, t in around if k == "b"],
+                               [t for k, _, t in around if k == "s"], [t for k, _, t in around if k == "a"], names[3]))
+    return items
+
+
+def identical_pending_ids(conn: psycopg.Connection, session_id: UUID, mark_id: UUID) -> list[UUID]:
+    """Ids of the PENDING pairs identical to this one (same passage + fallacy, any player), oldest first."""
+    return [r[0] for r in conn.execute(
+        "SELECT m.id FROM fallacy_marks m JOIN fallacy_marks ref ON ref.id = %s AND ref.session_id = %s "
+        "WHERE m.session_id = ref.session_id AND m.kind = ref.kind AND m.start_event_id = ref.start_event_id "
+        "AND m.start_offset = ref.start_offset AND m.end_event_id = ref.end_event_id AND m.end_offset = ref.end_offset "
+        "AND m.fallacy_id = ref.fallacy_id AND m.status = 'pending' ORDER BY m.created_at, m.id", (mark_id, session_id))]
+
+
+def pending_count(conn: psycopg.Connection, session_id: UUID) -> int:
+    return conn.execute("SELECT count(*) FROM fallacy_marks WHERE session_id = %s AND status = 'pending'",
+                        (session_id,)).fetchone()[0]
+
+
 # ------------------------------------------------------------------ leaderboard
 @dataclass(frozen=True)
 class LeaderRow:

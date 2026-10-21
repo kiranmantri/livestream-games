@@ -32,7 +32,7 @@ from starlette.responses import PlainTextResponse, RedirectResponse
 from app import admin as A_
 from app import phrases as P_
 from app import texts as T
-from app.admin_web import denied
+from app.admin_web import admin_tabs, denied
 
 
 def _fmt_score(x: float) -> str:
@@ -147,7 +147,7 @@ def phrases_page(rows: list[P_.PhraseRow], total: int, token: str, q: str, sourc
     table = (Table(Thead(Tr(*[Th(h) for h in T.PH_COLS])), Tbody(*[display_row(r) for r in rows]),
                    cls="users phrases") if rows else P(T.PH_EMPTY, cls="muted"))
     return (Title(f"{T.TITLE} - {T.PH_TITLE}"),
-            Main(H1(T.PH_TITLE), A(f"‹ {T.PH_BACK}", href="/admin", cls="btn small"),
+            Main(admin_tabs("phrases"), H1(T.PH_TITLE), A(f"‹ {T.PH_BACK}", href="/admin", cls="btn small"),
                  Div(error, cls="error", role="alert") if error else None,
                  Div(notice, cls="notice", role="status") if notice else None,
                  add, flt, P(T.PH_TOTAL.format(n=total), cls="muted"), bulk,

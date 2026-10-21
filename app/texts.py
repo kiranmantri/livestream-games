@@ -159,3 +159,48 @@ FAL_ERRORS = {
     "feed_down": FEED_UNAVAILABLE,
     "generic": "Algo deu errado. Tente de novo.",
 }
+
+# ---- admin: Falácias tab
+ADMIN_TAB_BINGO = "Bingo"
+ADMIN_TAB_FALACIAS = "Encontre as Falácias"
+ADMIN_TAB_PHRASES = "Frases do Bingo"
+AF_TITLE = "Encontre as Falácias - admin"
+AF_NO_SESSION = "Nenhuma partida de Falácias em andamento."
+AF_START = "Iniciar partida de Falácias"
+AF_FINISH = "Encerrar partida de Falácias"
+AF_FINISH_CONFIRM = "Encerrar a partida agora? Depois disso não dá mais para avaliar os envios."
+AF_QUEUE = "Fila de envios"
+AF_PENDING = "Pendentes"
+AF_QUEUE_EMPTY = "Nenhum envio pendente."
+AF_SENT_AFTER = "enviado {s} s depois da fala"
+AF_CORRECT = "Correto"
+AF_WRONG = "Errado"
+AF_SPAM = "Spam"
+AF_ALL_SAME = "Todas iguais ({n}):"
+AF_MESSAGES = "Mensagens para o apresentador"
+AF_NO_MESSAGES = "Nenhuma mensagem nova."
+AF_MSG_DONE = "Passada"
+AF_MSG_HIDE = "Ocultar"
+AF_MSG_UNDO = "Desfazer"
+AF_MSG_HANDLED = "Tratadas"
+AF_BOARD = "Placar"
+AF_COL_PLAYER = "Jogador"
+AF_COL_POINTS = "Pontos"
+AF_COL_PAIRS = "Envios"
+AF_COL_PENDING = "Pend."
+
+# ---- player: message box for the host
+HM_HEADING = "Mensagem para o apresentador"
+HM_HELP = "Escreva uma pergunta ou comentário curto (até 280 letras). O administrador repassa ao vivo."
+HM_PLACEHOLDER = "Sua mensagem..."
+HM_SEND = "Enviar mensagem"
+HM_SENT = "Mensagem enviada!"
+HM_COUNT = "Enviadas: {n}/{max}"
+HM_ERRORS = {
+    "empty_message": "Escreva alguma coisa antes de enviar.",
+    "bad_message": "A mensagem tem caracteres inválidos.",
+    "message_too_long": "Mensagem longa demais (máximo 280 letras).",
+    "message_rate_limited": "Calma! Aguarde {n} s entre mensagens.",
+    "message_limit_reached": "Você já enviou o máximo de mensagens ({max}) nesta partida.",
+    "generic": "Algo deu errado. Tente de novo.",
+}

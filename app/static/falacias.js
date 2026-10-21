@@ -86,6 +86,7 @@
     filter();
   }
   document.getElementById('pk-clear').addEventListener('click', clear);
+  document.body.addEventListener('fal:msg-sent', function () { var t = document.getElementById('hm-text'); if (t) t.value = ''; });
   document.body.addEventListener('fal:sent', clear);               // sent by the server (HX-Trigger) after a stored pair
 
   // ---------------------------------------------------------------- fallacy filter (accent/case-insensitive)

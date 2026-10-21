@@ -47,7 +47,18 @@ def main(argv: list[str] | None = None) -> int:
     rl = sub.add_parser("replay-load", help="apply the video's SQL seed, only if the DB has no rows of that video")
     rl.add_argument("video_id", nargs="?", default=None, help="default: FALACIAS_VIDEO_ID")
 
+    sub.add_parser("fallacies-load", help="apply deploy/seed/fallacies_seed.sql, only if the fallacies table is EMPTY")
+
     args = p.parse_args(argv)
+    if args.cmd == "fallacies-load":
+        from app.db import connect
+        from app.falacias import load_fallacy_seed
+        conn = connect()
+        try:
+            print("fallacies:", load_fallacy_seed(conn))
+        finally:
+            conn.close()
+        return 0
     if args.cmd in ("replay-import", "replay-seed", "replay-load"):
         from app.db import connect
         from corpus import replay
