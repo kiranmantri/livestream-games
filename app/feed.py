@@ -25,6 +25,7 @@ from uuid import UUID
 
 import psycopg
 
+from app import chatworker
 from app import sessions as S
 from app.config import ROOT
 from app.db import ensure_autocommit
@@ -199,7 +200,10 @@ def tick(conn: psycopg.Connection, session_id: UUID, cfg: FeedConfig | None = No
         row = conn.execute("SELECT extract(epoch FROM clock_timestamp() - created_at) * 1000, video_id, source_mode "
                            "FROM game_sessions WHERE id = %s AND status = 'active' AND game_type = 'falacias'",
                            (session_id,)).fetchone()
-        if row is None or row[2] == "live":          # a live session has no replay clock (its chat arrives from the chat worker)
+        if row is None:
+            return 0
+        if row[2] == "live":          # no replay clock: its chat arrives from the chat worker (started here, once)
+            chatworker.ensure(session_id, row[1])
             return 0
         if row[1]:
             cfg = replace(cfg, video_id=row[1])
@@ -269,7 +273,7 @@ def status(conn: psycopg.Connection, session_id: UUID, cfg: FeedConfig | None = 
     cfg = cfg or feed_config()
     video_id, mode = session_source(conn, session_id)
     if mode == "live":
-        return "ok"                  # the chat worker's own health arrives with L3
+        return chatworker.health(session_id)
     if video_id:
         cfg = replace(cfg, video_id=video_id)
     try:

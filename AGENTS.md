@@ -504,6 +504,26 @@ Also state what the agent itself already ran and its real output; never claim su
     # Mutation check (repo COPY): 41/41 killed (mutate_L2.py in the scratch dir; the first run had 1 survivor -> test added).
     # reset: TRUNCATE game_sessions, users CASCADE.
 
+### Validation for L3 (live-source step 2: chat worker, app/chatworker.py)
+    uv run pytest tests/test_chatworker.py -q           # expect: 44 passed (collection error before the module existed)
+    uv run pytest -q                                    # expect: 863 passed, 1 skipped
+    # What exists (no page uses it directly yet): feed.tick() of a LIVE falacias session starts ONE daemon thread (chatworker.ensure) that runs
+    #   `python -m yt_dlp --skip-download --write-subs --sub-langs live_chat -o chat <watch url>` in a private temp dir, tails
+    #   chat.live_chat.json.part, and stores text/paid messages as stream_events kind 'chat' (source_key = YouTube message id, so a restart's
+    #   ~2 MB backlog replay is deduped; messages older than the session or without timestamp are dropped). Pages show them like replay chat.
+    # Health: 'down' when the process died / printed nothing for 90 s / start failed / DB error; restart with backoff 2,4,8..60 s.
+    #   feed.status() of a live session returns that health, so feed.ensure_up() refuses new pairs while the chat is down (replay sessions unaffected).
+    #   The thread ends by itself when the session ends. Tests never start yt-dlp (autouse fixture in tests/conftest.py uses a fake process).
+    # Real smoke (read-only, YOU can repeat; ~50 s; needs a live video id):
+    uv run python -c "
+    import time; from app import chatworker as C
+    p = C.YtdlpChat('Ko_lIgMJudY'); p.start(); time.sleep(40); L = p.read_lines(); m = C.parse_lines(L)
+    print('alive', p.alive(), 'lines', len(L), 'text msgs', len(m), 'with ts', sum(x.ts_us is not None for x in m)); p.stop()
+    "                                                   # expect (my run): alive True, 77 lines, 72 text msgs, 72 with ts (first output after ~13 s)
+    # Mutation check (repo COPY): 35/37 killed (mutate_L3.py). Survivors are equivalent: "ts ignored" (SQL to_timestamp(NULL) already rejects) and
+    #   "no SIGTERM" (the 5 s wait then SIGKILLs the child). Not checked: the thread against a real live session end to end (needs step 3 pages).
+    # Fly: yt-dlp needs a WRITABLE temp dir (root fs is read-only): configure in Task 7. Risks: `.part` is a yt-dlp internal; YouTube may block it.
+
 ## Conventions log
 (Append new conventions below as they are agreed.)
 - DB access from services: ALWAYS use an autocommit connection (`app.db.connect()` / pool with

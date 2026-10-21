@@ -77,3 +77,22 @@ def no_youtube_lookups(monkeypatch):
     monkeypatch.setattr(livestream, "resolve_channel_info", lambda url=livestream.DEFAULT_URL: None)
     monkeypatch.setattr(livestream, "resolve_video_title", lambda video_id: None)
     monkeypatch.delenv("LIVE_VIDEO_ID", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def no_real_chat_process(monkeypatch, request):
+    """Tests must never start yt-dlp: live sessions get an idle fake chat process; the worker thread uses the test DB if the
+    test has a DB at all, else every DB attempt fails (the worker just stays 'down')."""
+    from app import chatworker
+    from tests.chat_fakes import FakeProcess
+    monkeypatch.setattr(chatworker, "process_factory", lambda video_id: FakeProcess())
+    if "conn" in request.fixturenames or "test_db_url" in request.fixturenames:
+        from app.db import connect
+        url = request.getfixturevalue("test_db_url")
+        monkeypatch.setattr(chatworker, "connect_fn", lambda: connect(url))
+    else:
+        def _no_db():
+            raise RuntimeError("no database in this test")
+        monkeypatch.setattr(chatworker, "connect_fn", _no_db)
+    yield
+    chatworker.stop_all()
