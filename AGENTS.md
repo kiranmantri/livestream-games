@@ -366,6 +366,25 @@ Also state what the agent itself already ran and its real output; never claim su
     # Text (c) Wikipedia contributors, CC BY-SA 4.0: show the attribution wherever the list appears.
     # Mutation check (repo COPY): 16/16 killed (mutate_1a.py in the scratch dir). reset: rm deploy/seed/fallacies_seed.sql
 
+### Validation for Task 1b (Falácias schema + services, migration 0008, app/falacias.py)
+    uv run pytest tests/test_falacias.py -q            # expect: 65 passed (constraints, seed, quote building, submit, review, leaderboard, races)
+    uv run pytest -q                                   # expect: 507 passed, 1 skipped
+    uv run migrate                                     # YOU run it on the dev DB (applies 0007 too if pending): expect "applied: 0007_..." and "applied: 0008_falacias.sql"
+    docker compose exec db psql -U livegames -c '\dt'                       # expect fallacies, replay_events, stream_events, fallacy_marks, host_messages
+    docker compose exec db psql -U livegames -c '\d fallacy_marks'          # expect FKs mark_user_in_session, mark_start_event, mark_end_event, unique fallacy_marks_unique_pair
+    uv run python -c "
+    from app.db import connect; from app import falacias as F
+    c = connect(); print(F.load_fallacy_seed(c)); print(F.load_fallacy_seed(c))
+    "                                                  # expect {'inserted': 97} then {'skipped': 'fallacies table already has 97 rows'}
+    docker compose exec db psql -U livegames -c "select count(*) filter (where enabled) on_, count(*) from fallacies"   # expect 77 | 97
+    # Rules implemented (all derived, nothing about points is stored): base +5 (first 20 unreviewed pairs of a player; flag `counts` stored at submit),
+    #   Correto +5 and speed 0,1 x max(0, 60 - s) (s = server clock from the LAST selected line's fed_at to submit), Errado = base only, Spam = 0.
+    #   Rate limit 1 pair / 10 s per player, no identical pair twice per player (others may repeat it and ALL score), quote recomputed by the server
+    #   (max 500 chars, max 30 lines, offsets are UTF-16 units = browser offsets), no review after the session ended, review_same_pairs for identical pending pairs.
+    # Not built yet: the feed worker (Task 2), pages (Tasks 3-5), host-message service (Task 5), fallacy admin UI. `host_messages` exists but has no service yet.
+    # Mutation check (repo COPY): 57/57 killed (mutate_1b.py in the scratch dir). Clean up dev rows: TRUNCATE game_sessions, users CASCADE (cascades marks/events).
+    # Fly: migration 0008 -> follow "Deploying to Fly.io - checklist" (no active game, backup first). Nothing is deployed yet.
+
 ## Conventions log
 (Append new conventions below as they are agreed.)
 - DB access from services: ALWAYS use an autocommit connection (`app.db.connect()` / pool with
