@@ -1,8 +1,8 @@
-"""Completed lines of a bingo card (full rows, full columns, the two diagonals) and their red boxes.
+"""Completed lines of a bingo card (full rows, full columns, the two diagonals) and their blue boxes.
 
 Purely visual: the winner is still the player with the MOST marked cells. On a 5x5 card the avatar free cell counts
-as marked. A line is a box drawn over the board (position: absolute, see .line in app.css); the board is square,
-so percentages of its width/height map to cells (the diagonals are a band rotated by 45 degrees).
+as marked. The boxes are children of the board grid, placed with `grid-area` (so they follow the cells exactly,
+gaps included): a row/column is one rectangle, a diagonal is one box around EACH of its cells.
 """
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ from fasthtml.common import Div
 from app.cards import grid_of
 
 Line = tuple[str, int]     # ("row", r) | ("col", c) | ("diag", 0 = top-left to bottom-right, 1 = top-right to bottom-left)
-SQRT2 = 2 ** 0.5
 
 
 def complete_lines(cells: list[dict], marked: Collection[int]) -> list[Line]:
@@ -32,20 +31,24 @@ def complete_lines(cells: list[dict], marked: Collection[int]) -> list[Line]:
     return out
 
 
-def line_style(line: Line, n: int) -> str:
-    size = 100 / n
+def line_areas(line: Line, n: int) -> list[str]:
+    """CSS grid areas (row-start / col-start / row-end / col-end, all explicit: the board's rows are IMPLICIT, so `-1`
+    would not reach the last row) of the boxes of a line: ONE rectangle for a row/column, one box PER CELL for a diagonal."""
     kind, k = line
     if kind == "row":
-        return f"left:0;top:{k * size:.3f}%;width:100%;height:{size:.3f}%"
+        return [f"grid-area:{k + 1} / 1 / {k + 2} / {n + 1}"]
     if kind == "col":
-        return f"top:0;left:{k * size:.3f}%;height:100%;width:{size:.3f}%"
-    length, thick = 100 * SQRT2, size * 1.1                      # board diagonal x a bit more than one cell
-    angle = 45 if k == 0 else -45
-    return (f"left:{50 - length / 2:.3f}%;top:{50 - thick / 2:.3f}%;width:{length:.3f}%;height:{thick:.3f}%;"
-            f"transform:rotate({angle}deg)")
+        return [f"grid-area:1 / {k + 1} / {n + 1} / {k + 2}"]
+    return [f"grid-area:{i + 1} / {(i if k == 0 else n - 1 - i) + 1} / {i + 2} / {(i if k == 0 else n - 1 - i) + 2}"
+            for i in range(n)]
+
+
+def is_full(cells: list[dict], marked: Collection[int]) -> bool:
+    """Every phrase cell of the card is marked."""
+    return all(i in marked for i, c in enumerate(cells) if "phrase_id" in c)
 
 
 def line_boxes(cells: list[dict], marked: Collection[int]) -> list:
     n = grid_of(len(cells))
-    return [Div(cls=f"line {kind}", style=line_style((kind, k), n), aria_hidden="true")
-            for kind, k in complete_lines(cells, marked)]
+    return [Div(cls=f"line {kind}", style=area, aria_hidden="true")
+            for kind, k in complete_lines(cells, marked) for area in line_areas((kind, k), n)]

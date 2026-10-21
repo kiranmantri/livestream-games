@@ -35,7 +35,7 @@ from app import scoring as G
 from app import sessions as S
 from app import texts as T
 from app import timefmt
-from app.lines import line_boxes
+from app.lines import complete_lines, is_full, line_boxes
 
 _ts = timefmt.dmy_hms
 
@@ -49,6 +49,16 @@ def _cell_form(action: str, session_id: uuid.UUID, user_id: uuid.UUID, cell: int
                 Button(label, type="submit", cls="mcbtn", title=label),
                 method="post", action=action, cls="mcform",
                 onsubmit=f"return confirm({confirm!r})" if confirm else None)
+
+
+def star(row: A_.PlayerRow):
+    """Yellow star next to the player's name once they completed any row, column or diagonal (or the whole card)."""
+    found = complete_lines(row.cells, row.marked)
+    if not found:
+        return None
+    full = is_full(row.cells, row.marked)
+    tip = f"{len(found)} {T.ADMIN_STAR_LINE if len(found) == 1 else T.ADMIN_STAR_LINES}" + (f", {T.ADMIN_STAR_FULL}" if full else "")
+    return Span("★", cls="star" + (" full" if full else ""), title=tip, aria_label=tip, role="img")
 
 
 def mini_card(row: A_.PlayerRow, session_id: uuid.UUID | None = None, token: str = "", active: bool = False):
@@ -132,10 +142,10 @@ def admin_page(session: S.GameSession, rows: list[A_.PlayerRow], standings: list
         onsubmit=f"return confirm({T.ADMIN_FINISH_CONFIRM!r})") if active else None
     table = Table(
         Thead(Tr(*[sort_header(c, sort, direction) for c in SORTS])),
-        Tbody(*[Tr(Td(str(rank.get(r.user_id, "-"))), Td(r.name), Td(str(len(r.marked))),
+        Tbody(*[Tr(Td(str(rank.get(r.user_id, "-"))), Td(r.name, star(r)), Td(str(len(r.marked))),
                    Td(_ts(r.joined_at)), Td(_ts(r.last_seen_at))) for r in table_rows]),
         cls="users")
-    cards = [Details(Summary(f"{r.name} - {len(r.marked)}/{C.max_marks(r.cells)}"),
+    cards = [Details(Summary(f"{r.name} - {len(r.marked)}/{C.max_marks(r.cells)}", star(r)),
                      mini_card(r, session.id, token, active), cls="panel", open=str(r.user_id) == open_uid or None)
              for r in rows]
     return (Title(f"{T.TITLE} - admin"),

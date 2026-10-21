@@ -1,7 +1,8 @@
-"""Completed lines (red boxes), the users-table sort, admin unmark over HTTP and the game-screen toggles."""
+"""Completed lines (blue boxes), the users-table sort, admin unmark over HTTP and the game-screen toggles."""
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import pytest
 from starlette.testclient import TestClient
@@ -55,10 +56,21 @@ def test_5x5_avatar_counts_as_marked_for_lines():
     assert L.complete_lines(PH5, {10, 11, 13}) == []
 
 
-def test_line_boxes_geometry():
-    assert "width:100%" in L.line_style(("row", 1), 4) and "top:25.000%" in L.line_style(("row", 1), 4)
-    assert "rotate(45deg)" in L.line_style(("diag", 0), 4) and "rotate(-45deg)" in L.line_style(("diag", 1), 4)
-    assert len(L.line_boxes(PH4, {0, 1, 2, 3, 4, 8, 12})) == 2
+def test_row_and_column_are_one_rectangle_and_a_diagonal_is_one_box_per_cell():
+    assert L.line_areas(("row", 1), 4) == ["grid-area:2 / 1 / 3 / 5"]           # explicit ends: rows are implicit
+    assert L.line_areas(("col", 2), 4) == ["grid-area:1 / 3 / 5 / 4"]
+    assert L.line_areas(("diag", 0), 4) == [f"grid-area:{i} / {i} / {i + 1} / {i + 1}" for i in (1, 2, 3, 4)]
+    assert L.line_areas(("diag", 1), 4) == ["grid-area:1 / 4 / 2 / 5", "grid-area:2 / 3 / 3 / 4",
+                                            "grid-area:3 / 2 / 4 / 3", "grid-area:4 / 1 / 5 / 2"]
+    assert len(L.line_boxes(PH4, {0, 1, 2, 3, 4, 8, 12})) == 2                     # row + column
+    assert len(L.line_boxes(PH4, {0, 5, 10, 15})) == 4                              # diagonal: 4 boxes
+    assert len(L.line_boxes(PH5, {0, 6, 18, 24})) == 5
+
+
+def test_line_boxes_are_blue_not_red():
+    css = Path("app/static/app.css").read_text()
+    line = css[css.index(".line {"):css.index(".cell.revoked")]
+    assert "#3b82f6" in line and "#ef4444" not in line and "rotate" not in line
 
 
 def test_player_page_draws_a_red_box_only_for_a_complete_line(web):
@@ -131,3 +143,26 @@ def test_admin_unmark_blocks_the_cell_and_unblock_lifts_it(web, conn):
     admin.post("/admin/unblock", data=data, headers=basic())
     a.post("/mark/3")
     assert conn.execute("SELECT count(*) FROM bingo_marks").fetchone()[0] == 1
+
+
+def test_is_full_ignores_the_avatar_cell():
+    assert L.is_full(PH4, set(range(16))) and not L.is_full(PH4, set(range(15)))
+    assert L.is_full(PH5, set(range(25)) - {12}) and not L.is_full(PH5, {0, 1})
+
+
+def test_admin_shows_a_yellow_star_only_for_players_with_a_completed_line(web, conn):
+    a, b, admin = web("203.0.113.10"), web("203.0.113.11"), web("203.0.113.99")
+    a.post("/start", data={"name": "Ana"})
+    b.post("/join", data={"name": "Bia"})
+    for i in (0, 1, 2):
+        a.post(f"/mark/{i}")                     # Ana: 3 of a row -> not yet
+        b.post(f"/mark/{i}")
+    b.post("/mark/3")                            # Bia: full row
+    html = admin.get("/admin", headers=basic()).text
+    assert html.count('class="star"') == 2       # Bia: users table + her card header; Ana: none
+    assert re.search(r"<td>\s*Bia\s*<span[^>]*class=\"star\"", html) and not re.search(r"Ana\s*<span[^>]*class=\"star\"", html)
+    assert "1 linha completa" in html and "1 linhas" not in html
+    for i in range(4, 16):
+        b.post(f"/mark/{i}")
+    html = admin.get("/admin", headers=basic()).text
+    assert 'class="star full"' in html and "cartela completa" in html

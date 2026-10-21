@@ -165,10 +165,11 @@ main.game { max-width: 1180px; }
 .cell.on { background: var(--ok); color: var(--ok-text); border-color: var(--ok); font-weight: 700; }
 .cell.on::after { content: "\2713"; position: absolute; top: 1px; right: 4px; font-size: .9em; }
 
-/* completed lines (full row / column / diagonal): red box over the board */
+/* completed lines (full row / column / diagonal): blue box(es) over the board */
 .board, .mini { position: relative; }
-.line { position: absolute; pointer-events: none; z-index: 3; box-sizing: border-box;
-        border: 3px solid #ef4444; border-radius: 10px; box-shadow: 0 0 0 1px rgba(0,0,0,.45), 0 0 8px rgba(239,68,68,.55); }
+.line { position: absolute; inset: 0; pointer-events: none; z-index: 3; box-sizing: border-box;   /* inset: 0 + grid-area = its cells */
+        border: 3px solid #3b82f6; border-radius: 10px; box-shadow: 0 0 0 1px rgba(0,0,0,.45), 0 0 8px rgba(59,130,246,.6); }
+.line.diag { border-radius: 8px; }
 .cell.revoked { cursor: not-allowed; border-style: dashed; border-color: #ef4444; opacity: .75; }
 
 /* admin: unmark controls, sortable users table */
@@ -200,3 +201,6 @@ button.pref[aria-pressed=true] { background: var(--ok); color: var(--ok-text); b
 .view-list .cardgrid.small { grid-template-columns: 1fr; gap: 6px; max-width: 560px; }
 .view-list .cardbox.other .board { display: none; }
 .view-list .cardbox.other .meter { display: block; }
+/* admin: yellow star next to a player's name once they completed a row, column or diagonal */
+.star { color: #facc15; margin-left: 6px; text-shadow: 0 0 6px rgba(250,204,21,.55); cursor: help; }
+.star.full { font-size: 1.15em; }
