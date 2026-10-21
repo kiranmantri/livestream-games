@@ -272,3 +272,7 @@ ol.queue:not(:empty) ~ .empty { display: none; }
 .mcard .mtext { font-size: 1.25rem; margin: 0 0 8px; overflow-wrap: anywhere; }
 .mfoot { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 #hostbox textarea { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--line); background: #0b1220; color: var(--text); font: inherit; }
+
+/* ---- Falácias: end screen */
+p.winner { font-size: 1.3rem; font-weight: 800; color: var(--ok); margin: 8px 0; }
+table.final tr.me td { background: #1e3a5f; font-weight: 700; }

@@ -140,6 +140,10 @@ def page_view(conn, session: S.GameSession | None, pw: str, error: str | None = 
     parts.append(Div(Span(T.ADMIN_ACTIVE if active else T.ADMIN_ENDED, cls="pill on" if active else "pill"),
                      Span(f"{T.ADMIN_STARTED}: {timefmt.dmy_hms(session.created_at)}", cls="muted"),
                      Span(f"{T.ADMIN_PLAYERS}: {S.count_players(conn, session.id)}", cls="muted"), cls="adminbar"))
+    if not active:
+        winner = next((r for r in F.leaderboard(conn, session.id) if r.user_id == session.winner_user_id), None)
+        parts.append(P(f"{T.ADMIN_WINNER}: {winner.name} ({F.fmt_points(winner.points)})", cls="winner") if winner
+                     else P(T.FAL_NO_POINTS, cls="muted"))
     if active:
         parts.append(Form(Input(type="hidden", name="session_id", value=str(session.id)), Input(type="hidden", name="csrf", value=token),
                           Button(T.AF_FINISH, type="submit", cls="primary danger"), method="post", action="/admin/falacias/finish",
@@ -197,7 +201,7 @@ def register(rt, pool):
         if not A_.csrf_ok(pw(), sid, csrf):
             return PlainTextResponse("bad csrf token", status_code=403)
         with pool.connection() as conn:
-            S.end_session(conn, sid, None)          # False if already ended: harmless double click
+            F.finish_session(conn, sid)             # None if already ended: harmless double click
         return RedirectResponse("/admin/falacias", status_code=303)
 
     @rt("/admin/falacias/queue", methods=["GET"])

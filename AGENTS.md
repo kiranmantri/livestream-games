@@ -471,6 +471,17 @@ Also state what the agent itself already ran and its real output; never claim su
     # NOT done for Task 5: mutation check, real-browser QA (tests were written AFTER the web code, so no red run for tests/test_admin_falacias.py;
     #   tests/test_host_messages.py and test_falacias_queue.py were written first). htmx swaps (oob beforeend, group redraw) are only checked as HTML.
 
+### Validation for Task 6 (Falácias results: F.finish_session, end screens)
+    uv run pytest tests/test_falacias_results.py -q    # expect: 14 passed (red run before the code: 12 failed / 2 passed)
+    uv run pytest -q                                   # expect: 720 passed, 1 skipped
+    # Play a Falácias game (see Task 5), review some pairs in /admin/falacias, click "Encerrar partida".
+    # expect: players see "Fim da partida de Falácias!", "Vencedor(a): <nome> com <pts> pontos" (green), a table (pts, Corretos, Errados, Spam,
+    #   Sem veredito; your row highlighted), the note about pairs without a verdict (only if YOU have some) and "Meus envios" with verdicts.
+    #   /admin/falacias shows the winner too. Nobody with points > 0 -> "Ninguém pontuou desta vez." and no winner.
+    docker compose exec db psql -U livegames -c "select g.status, u.name winner from game_sessions g left join users u on u.id = g.winner_user_id where g.game_type='falacias'"
+    # Winner = most points; ties: more Correto pairs, then whoever submitted their last pair first. Stored once (a 2nd finish returns None, keeps it).
+    # Not done: mutation check, real-browser look at the end screen.
+
 ## Conventions log
 (Append new conventions below as they are agreed.)
 - DB access from services: ALWAYS use an autocommit connection (`app.db.connect()` / pool with

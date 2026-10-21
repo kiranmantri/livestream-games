@@ -39,6 +39,8 @@ def web(conn, test_db_url, monkeypatch):
 
 @pytest.fixture
 def fal(conn):
+    conn.execute("TRUNCATE game_sessions, users CASCADE")
+    conn.execute("DELETE FROM fallacies")                    # a crashed earlier run must not break this one
     ids = {}
     for name in ("Espantalho", "Ad hominem"):
         ids[name] = conn.execute("INSERT INTO fallacies (name, category, description, source, enabled) "

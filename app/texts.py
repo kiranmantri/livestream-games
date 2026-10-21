@@ -204,3 +204,11 @@ HM_ERRORS = {
     "message_limit_reached": "Você já enviou o máximo de mensagens ({max}) nesta partida.",
     "generic": "Algo deu errado. Tente de novo.",
 }
+
+# ---- Falácias: end screen
+FAL_WINNER = "Vencedor(a): {name} com {pts} pontos"
+FAL_COL_CORRECT = "Corretos"
+FAL_COL_WRONG = "Errados"
+FAL_COL_SPAM = "Spam"
+FAL_COL_PENDING = "Sem veredito"
+FAL_UNREVIEWED_NOTE = "Envios sem veredito do apresentador valem só os 5 pontos do envio."

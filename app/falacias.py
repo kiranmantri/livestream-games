@@ -421,6 +421,31 @@ def leaderboard(conn: psycopg.Connection, session_id: UUID) -> list[LeaderRow]:
     return _rank(users, stats)
 
 
+@dataclass(frozen=True)
+class FinishResult:
+    session_id: UUID
+    winner: LeaderRow | None          # None: nobody scored
+    standings: list[LeaderRow]
+
+
+def finish_session(conn: psycopg.Connection, session_id: UUID) -> FinishResult | None:
+    """Admin action: end an ACTIVE Falácias session and record the winner (most points; ties: more Correto pairs, then who
+    submitted their last pair first). Nobody with points > 0 -> no winner. Returns None when the session is unknown, not a
+    Falácias session or already ended (double click / two admins never overwrite the winner). Reviews are frozen afterwards
+    (review_mark requires an active session); pairs still pending keep only their base points."""
+    ensure_autocommit(conn)
+    with conn.transaction():
+        locked = conn.execute("SELECT 1 FROM game_sessions WHERE id = %s AND status = 'active' AND game_type = 'falacias' "
+                              "FOR UPDATE", (session_id,)).fetchone()
+        if locked is None:
+            return None
+        standings = leaderboard(conn, session_id)
+        winner = standings[0] if standings and standings[0].points > 0 else None
+        conn.execute("UPDATE game_sessions SET status = 'ended', ended_at = now(), winner_user_id = %s WHERE id = %s",
+                     (winner.user_id if winner else None, session_id))
+    return FinishResult(session_id, winner, standings)
+
+
 def _rank(users: list, stats: dict) -> list[LeaderRow]:
     def key(i: int):
         s = stats[users[i][0]]

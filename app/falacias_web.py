@@ -28,7 +28,13 @@ from fasthtml.common import (
     Script,
     Small,
     Span,
+    Table,
+    Tbody,
+    Td,
     Textarea,
+    Th,
+    Thead,
+    Tr,
     to_xml,
 )
 from starlette.requests import Request
@@ -180,12 +186,24 @@ def game_view(me: S.Player, events: list[feed.Event], last_id: int, st: str, fal
         cls="fal")
 
 
-def ended_view(session: S.GameSession, me: S.Player, rows: list[F.LeaderRow]):
-    scored = [r for r in rows if r.points > 0]
-    items = [Li(Span(f"{r.rank}.", cls="pos"), Span(r.name, cls="nm"), Span(F.fmt_points(r.points), cls="pts"),
-                cls="me" if r.user_id == me.id else None) for r in rows]
-    return fal_page(H1(T.FAL_GAME_OVER), None if scored else P(T.FAL_NO_POINTS, cls="muted"),
-                    Div(H2(T.LEADERBOARD), Ol(*items, cls="lb"), cls="panel"))
+def ended_view(conn, session: S.GameSession, me: S.Player, rows: list[F.LeaderRow]):
+    """Final ranking: the stored winner (not recomputed), per-player verdict counts, and my own pairs with their verdicts."""
+    winner = next((r for r in rows if r.user_id == session.winner_user_id), None)
+    head = P(T.FAL_WINNER.format(name=winner.name, pts=F.fmt_points(winner.points)), cls="winner") if winner \
+        else P(T.FAL_NO_POINTS, cls="muted")
+    table = Table(Thead(Tr(Th("#"), Th(T.AF_COL_PLAYER), Th(T.AF_COL_POINTS), Th(T.FAL_COL_CORRECT), Th(T.FAL_COL_WRONG),
+                           Th(T.FAL_COL_SPAM), Th(T.FAL_COL_PENDING))),
+                  Tbody(*[Tr(Td(str(r.rank)), Td(r.name), Td(F.fmt_points(r.points)), Td(str(r.correct)), Td(str(r.wrong)),
+                             Td(str(r.spam)), Td(str(r.pending)), cls="me" if r.user_id == me.id else None) for r in rows]),
+                  cls="users final")
+    mine = next((r for r in rows if r.user_id == me.id), None)
+    names = {f.id: f.name for f in F.list_fallacies(conn, enabled_only=False)}
+    pairs = [Li(Span(status_badge(m), Span(F.fmt_points(F.points_of(m)), cls="pts"), cls="meta"),
+                Span(f"“{m.quote}”", cls="q"), Span(names.get(m.fallacy_id, "?"), cls="fl")) for m in F.user_marks(conn, me.id)]
+    return fal_page(H1(T.FAL_GAME_OVER), head,
+                    Div(H2(T.LEADERBOARD), table, P(T.FAL_UNREVIEWED_NOTE, cls="muted") if mine and mine.pending else None,
+                        cls="panel"),
+                    Div(H2(T.FAL_MINE), Ol(*pairs, cls="pairs") if pairs else P(T.FAL_NO_PAIRS, cls="muted"), cls="panel"))
 
 
 # ------------------------------------------------------------------ routes
@@ -219,7 +237,7 @@ def register(rt, pool) -> None:
             active = S.get_active_session(conn, GAME)
             found = S.find_player(conn, token_of(request, GAME))
             if active is None and found and found[1].status == "ended" and found[1].game_type == GAME:
-                return ended_view(found[1], found[0], F.leaderboard(conn, found[1].id))
+                return ended_view(conn, found[1], found[0], F.leaderboard(conn, found[1].id))
             name = name_of(request)
             if name is None:
                 return name_gate("/falacias")
