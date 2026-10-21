@@ -1,0 +1,90 @@
+{
+  "containers": [
+    {
+      "name": "db",
+      "image": "postgres:17",
+      "env": {
+        "POSTGRES_USER": "livegames",
+        "POSTGRES_DB": "livegames"
+      },
+      "healthchecks": [
+        {
+          "name": "pg",
+          "exec": {
+            "command": [
+              "pg_isready",
+              "-h",
+              "127.0.0.1",
+              "-U",
+              "livegames",
+              "-d",
+              "livegames"
+            ]
+          },
+          "interval": 5,
+          "timeout": 3,
+          "grace_period": 20,
+          "success_threshold": 1,
+          "failure_threshold": 10
+        }
+      ],
+      "secrets": [
+        {
+          "env_var": "POSTGRES_PASSWORD",
+          "name": "POSTGRES_PASSWORD"
+        }
+      ],
+      "entrypoint": [
+        "sh",
+        "-c",
+        "export PGDATA=/data/pgdata; exec docker-entrypoint.sh postgres -c listen_addresses=127.0.0.1"
+      ]
+    },
+    {
+      "name": "app",
+      "image": "registry.fly.io/livebingo:placeholder",
+      "env": {
+        "COOKIE_SECURE": "1",
+        "CLIENT_IP_HEADER": "fly-client-ip",
+        "MAX_USERS_PER_IP": "3",
+        "TIMEZONE": "America/Sao_Paulo"
+      },
+      "depends_on": [
+        {
+          "name": "db",
+          "condition": "healthy"
+        }
+      ],
+      "healthchecks": [
+        {
+          "name": "web",
+          "http": {
+            "port": 8000,
+            "method": "GET",
+            "path": "/healthz",
+            "scheme": "http"
+          },
+          "interval": 15,
+          "timeout": 3,
+          "grace_period": 30,
+          "success_threshold": 1,
+          "failure_threshold": 5
+        }
+      ],
+      "secrets": [
+        {
+          "env_var": "DATABASE_URL",
+          "name": "DATABASE_URL"
+        },
+        {
+          "env_var": "ADMIN_PASSWORD",
+          "name": "ADMIN_PASSWORD"
+        },
+        {
+          "env_var": "SESSION_SECRET",
+          "name": "SESSION_SECRET"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+# Chat authors whose messages are considered very cliche. One alias per line (lowercase, letters/digits only).
+# A chat display name matches when, after dropping '@' and punctuation, it CONTAINS the alias.
+# Each of their 3-10 word sentences becomes an (inactive) candidate, even if said only once.
+# Never use short/common aliases ("rafa", "oliveira"): they match unrelated users.
+olidia
+jaidielson
+aquiles
+corvo
+batman
+rafaelaoliveira
+rafaoliveira

@@ -1,0 +1,27 @@
+# Live Games on Fly.io: ONE Machine, two containers (app + Postgres) sharing localhost, Postgres data on a Volume.
+# Secrets (fly secrets set; each container lists the ones it gets under "secrets" in deploy/fly.machine.json): POSTGRES_PASSWORD, DATABASE_URL, ADMIN_PASSWORD, SESSION_SECRET.
+# Deploy with:  fly deploy --ha=false     (a volume belongs to one Machine; the default 2 Machines would not work)
+app = "livebingo"
+primary_region = "gru"
+
+[experimental]
+  machine_config = "deploy/fly.machine.json"
+  container = "app"            # replaced by the image built from ./Dockerfile
+
+[build]
+  dockerfile = "Dockerfile"
+
+[mounts]
+  source = "pgdata"
+  destination = "/data"        # PGDATA = /data/pgdata (the volume root has lost+found, so a subdirectory)
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "off"   # a game in progress / live-stream detection must not be put to sleep
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"

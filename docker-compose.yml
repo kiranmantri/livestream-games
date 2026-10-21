@@ -1,0 +1,44 @@
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-livegames}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-livegames}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-livegames} -d ${POSTGRES_DB:-livegames}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    image: live-games:local
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Inside compose the DB host is "db" (the DATABASE_URL in .env is for host-side dev only).
+      # POSTGRES_PASSWORD must be URL-safe (letters/digits/-_.~) because it is embedded in this URL.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-livegames}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-livegames}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+      MAX_USERS_PER_IP: ${MAX_USERS_PER_IP:-3}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      TIMEZONE: ${TIMEZONE:-America/Sao_Paulo}
+      COOKIE_SECURE: ${COOKIE_SECURE:-0}   # set 1 when served over HTTPS
+    ports:
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-8000}:8000"   # APP_BIND=0.0.0.0 to expose directly (no TLS!)
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  pgdata:

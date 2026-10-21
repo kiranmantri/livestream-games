@@ -218,3 +218,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# project
+data/corpus/*
+!data/corpus/.gitkeep
+
+# FastHTML generated
+.sesskey
+
+# Temporary DB backups (contain player names/IPs) - never commit
+data/backup/

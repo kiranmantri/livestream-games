@@ -1,0 +1,142 @@
+# Expressions that are cliches or fallacies in a religion/atheism debate (pt-BR). 3-10 words each.
+# Matching ignores case and accents. Every one found at least once in the transcripts/chat becomes a
+# candidate (inactive), however rarely it was said. Add yours here and re-run `corpus suggest --write`.
+ausência de evidência não é evidência de ausência
+não dá pra provar que deus não existe
+você não pode provar que deus não existe
+o ônus da prova é seu
+o ônus da prova é de quem afirma
+afirmações extraordinárias exigem provas extraordinárias
+isso é só uma teoria
+a evolução é só uma teoria
+se viemos do macaco
+por que ainda existem macacos
+o macaco virou gente
+ninguém viu o big bang
+você não estava lá
+a ciência não explica tudo
+a ciência também tem fé
+a ciência é uma religião
+a ciência muda de opinião
+o universo não surgiu do nada
+do nada surgiu tudo
+tudo tem uma causa
+quem criou deus
+deus é a causa primeira
+deus está além da compreensão humana
+os caminhos de deus são misteriosos
+deus escreve certo por linhas tortas
+deus tem um plano
+foi vontade de deus
+deus quis assim
+sem deus não há moral
+de onde vem a moral
+ateu não tem moral
+ateu não tem esperança
+a vida não tem sentido sem deus
+qual o sentido da vida
+o ateísmo também é uma religião
+ateísmo é uma crença
+ateísmo é uma fé
+você é ateu porque quer
+você só está revoltado com deus
+você só tem raiva de deus
+você vai se arrepender
+você vai pro inferno
+você vai queimar no inferno
+stalin era ateu
+hitler era cristão
+o nazismo era ateu
+o comunismo era ateu
+milhões de pessoas não podem estar erradas
+a maioria das pessoas acredita em deus
+sempre foi assim
+a tradição prova que é verdade
+os caminhos da fé
+fé é crer sem ver
+é só ter fé
+tenha fé e você verá
+pela fé tudo é possível
+eu senti deus no meu coração
+tenho uma experiência pessoal com deus
+o meu testemunho pessoal
+a bíblia é a palavra de deus
+está escrito na bíblia
+a bíblia diz que
+a bíblia é um livro histórico
+a bíblia não erra
+isso está fora de contexto
+você tirou do contexto
+é uma metáfora
+é uma interpretação literal
+isso é só simbólico
+você está interpretando errado
+o relojoeiro e o relógio
+ajuste fino do universo
+a vida não surgiu do acaso
+a probabilidade é quase zero
+o acaso não cria ordem
+o problema do mal
+deus deu o livre arbítrio
+o mal é consequência do pecado
+o pecado original
+deus não tem culpa
+a culpa é do homem
+deus é amor
+deus é bom e justo
+deus é onipotente e onisciente
+a aposta de pascal
+o dragão na garagem
+o bule de russell
+navalha de occam
+falácia do espantalho
+isso é um espantalho
+isso é uma falácia
+apelo à autoridade
+apelo à tradição
+apelo à emoção
+apelo à ignorância
+isso é um falso dilema
+isso é uma pergunta carregada
+isso é uma ladeira escorregadia
+você está mudando o gol
+mover as traves
+o ponto é outro
+você está fugindo da pergunta
+responde a pergunta
+não foi isso que eu disse
+você está distorcendo o que eu disse
+você está generalizando
+isso é uma generalização
+você não entendeu o argumento
+você não entende nada
+você é arrogante
+você acha que sabe tudo
+você é fanático
+isso é puro fanatismo religioso
+isso é lavagem cerebral
+isso é doutrinação religiosa desde criança
+você foi doutrinado
+você está iludido
+respeito a sua opinião
+cada um acredita no que quiser
+cada um tem a sua verdade
+isso é relativismo
+a verdade absoluta
+sem deus não existe moral objetiva
+sem religião seria o caos
+cidadão de bem
+pessoas de bem
+os valores cristãos da nossa sociedade
+defender a família tradicional brasileira
+é óbvio que
+é lógico que
+os fatos não mentem
+os dados mostram
+isso é cientificamente comprovado
+vou orar por você
+vou rezar por você
+deus te ama
+jesus te ama
+que deus abençoe a todos
+o milagre da vida

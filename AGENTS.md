@@ -1,0 +1,302 @@
+# AGENTS.md — Live Games
+
+Reference instructions for any agent (or human) working in this repo. Keep it current:
+when we agree on a new convention, add it here in the same change.
+
+## Project
+"Live Games": FastHTML web app with games to play while a YouTube live stream runs.
+First game: Bingo (5x5). Cell phrases come from transcripts + live chat of past streams of
+https://www.youtube.com/@O_Poligrafo/streams (Portuguese, pt-BR). Design: `docs/design.md`.
+
+## Stack
+- Python >=3.12, managed with **uv** (`uv sync`, `uv run ...`); deps live in `pyproject.toml` only.
+- **FastHTML** (+ HTMX) for the web app. **PostgreSQL 17** in Docker, **psycopg 3** with a pool,
+  plain SQL migrations in `migrations/` (no ORM).
+- Deployment: `docker compose` on a VM/VPS (host TBD). Secrets via env (`.env`, never committed).
+  `Dockerfile` (uv, python:3.14-slim, non-root uid 10001, read-only rootfs) + `docker/entrypoint.sh`
+  (migrate -> seed phrases only if table EMPTY -> uvicorn). `docker-compose.override.yml` (dev only) publishes Postgres on 127.0.0.1:5432.
+- Corpus ingestion uses the **yt-dlp CLI/library**; CLI entry point: `uv run corpus ...`.
+
+## Layout
+    app/          FastHTML app (routes, views, services, db)
+    corpus/       yt-dlp ingestion + phrase extraction
+    migrations/   numbered SQL files (0001_*.sql ...)
+    data/corpus/  raw downloads (gitignored)
+    docs/         design docs
+    tests/        pytest
+
+## Working agreements
+- Work **task by task** following the plan in `docs/design.md`; stop after each task for review.
+- Be critical: state pros AND cons of technical choices. Never claim success without real
+  command output (tests run, app exercised).
+- Verify DB schema with `\d table` before building on it; migrations are the source of truth.
+- Only horizontal streams are used (check `width > height` from metadata; the 📱 title marker
+  is a secondary hint only).
+- Phrases: anything the admin types (add OR edit, any source) is 1-10 words; the DB CHECK `phrase_word_count` is 1-10
+  for every source (migration 0005). Candidates EXTRACTED from the corpus are 3-10 words (enforced in corpus/extract.py,
+  not in the DB); an extracted phrase keeps its source when the admin shortens it. Never greetings ("bom dia", "tudo bem", "boa noite", ...). Sources: `transcript`, `chat`, `transcript+chat`, `manual`.
+
+## Domain rules (decided)
+- Only ONE active game session at a time (enforced by a partial unique index in the DB).
+- First visitor starts the session, OR the admin starts it from /admin (then `created_by` is NULL and nobody is
+  the starter); others join it. Nobody can create a second session while one is active.
+- Phrases: the DB is the source of truth. `corpus/phrases.csv` is only the initial seed (`corpus load` seeds an
+  EMPTY table; `--force` re-imports and overwrites). Admin manages them at `/admin/phrases` (add / edit / delete).
+  Manual phrases start at score 99 (max) and are "frozen" (counters grow, score does not move) until the admin
+  edits the score by hand; an edited score becomes the new `prior_score`. At game finish every dealt phrase is
+  relearned: score = (20*prior + dealt*obs) / (20 + dealt), obs = 1 + 10*marked/dealt (cumulative over finished
+  games). Card weight = 1 + score for every phrase. At least 24 enabled phrases must always remain.
+- Username: unique per session, case-insensitive, max 20 chars.
+- Identity for now: random cookie token (`lg_token`, HttpOnly; only its sha256 is stored) + source IP
+  limit `MAX_USERS_PER_IP` (.env, currently 3). A valid cookie resumes the player; the IP never grants
+  identity. `X-Forwarded-For` is used only when the direct peer is in `TRUSTED_PROXIES`.
+  (To be revisited vs. fake users.)
+- A card is generated randomly on join, persisted, and immutable (no re-roll).
+- Card = 5x5; centre cell (index 12) is the channel avatar image (free cell, counts as marked).
+- Marking is honour-based (players mark their own cells; no phrase detection yet).
+  There is NO "declare BINGO". The admin ends the session after some time; the winner is the
+  player with the MOST marked phrase cells (centre free cell not counted; max 24). Tie-break: whoever
+  reached their final count first (earliest last mark). Nobody marked anything -> no winner.
+  Rationale: with the real corpus a full card is virtually never completable (see docs/design.md).
+- Admin page `/admin`: password from `ADMIN_PASSWORD` env (HTTP Basic). Lists users and cards.
+
+## Commands
+    uv sync                         # install
+    docker compose up -d db         # start Postgres (needs .env)
+    uv run pytest                   # tests
+    uv run ruff check .             # lint
+
+## Task reporting: how to test and validate
+At the end of EVERY task, the report must include a "How to test / validate" section that the
+user can follow by hand, containing:
+- exact commands to run (copy-pasteable, from the repo root), including any setup/start steps;
+- the expected result for each command (what output / UI state means success);
+- what to look at in files, DB (`docker compose exec db psql ...` queries) or browser URLs;
+- how to reset/clean up so the check can be repeated.
+Also state what the agent itself already ran and its real output; never claim success without it.
+
+### Validation for Task 1 (scaffold)
+    uv sync                                   # expect: resolves, no errors
+    uv run corpus                             # expect: "corpus: not implemented yet"
+    uv run ruff check .                       # expect: All checks passed!
+    docker compose up -d db                   # expect: container started
+    docker compose ps                         # expect: db "Up ... (healthy)"
+    docker compose exec db psql -U livegames -c "select version();"   # expect: PostgreSQL 17.x
+    # reset: docker compose down        (add -v to also delete the DB volume)
+
+### Validation for Task 2 (corpus fetch)
+    uv run corpus fetch --last 5 --dry-run   # expect: 5 KEEP lines (1920x1080), SKIP(vertical) lines (1080x1920)
+    uv run corpus fetch --last 5             # idempotent; skips files already on disk (long on first run)
+    ls -l data/corpus/*/                     # expect per video: <id>.pt-orig.vtt (+ <id>.live_chat.json)
+    python3 -c "import json;[print(x['video_id'],x['orientation'],x['errors']) for x in json.load(open('data/corpus/manifest.json'))]"
+    # expect: all horizontal; a stream without a chat track shows 'chat: no live_chat track available'
+    # reset: rm -rf data/corpus/*/ data/corpus/manifest.json
+
+### Validation for Task 3 (phrase extraction)
+    uv run corpus suggest --show 60          # expect: "5 transcripts, 4 chats (10583 chat msgs)" + ranked table
+                                             # columns: /hour = uses per stream-hour; t_str = streams (of 5) containing it
+    uv run corpus suggest --write 400        # merges candidates into corpus/phrases.csv (keeps manual rows + your edits)
+    uv run corpus add "minha frase aqui"     # manual phrase (3-5 words, else error exit 1)
+    # CURATE: open corpus/phrases.csv, set enabled to 0 for rows you don't want (or delete them), add rows via `corpus add`.
+    # re-running `suggest --write` never overwrites your enabled edits or manual rows ("+0 new").
+    awk -F, 'NR>1{c[$3]++}END{for(k in c)print k,c[k]}' corpus/phrases.csv   # count by source
+    # reset: rm corpus/phrases.csv
+
+### Validation for Task 4 (DB schema + migrations)
+    docker compose up -d db                  # DB must be healthy (see Task 1)
+    uv run migrate                           # first run: "applied: 0001_init.sql"; second run: "up to date"
+    uv run corpus load                       # expect: phrases {'upserted': N, 'enabled': E, 'disabled': D, 'rejected': 0}; videos upserted: 5
+    docker compose exec db psql -U livegames -c '\dt'                 # expect 7 tables (+ schema_migrations)
+    docker compose exec db psql -U livegames -c '\d users'            # expect name varchar(20), name_ci generated, UNIQUE (session_id, name_ci)
+    docker compose exec db psql -U livegames -c "select source, enabled, count(*) from phrases group by 1,2"
+    uv run pytest -q                         # expect: 38 passed (uses a throwaway DB; dev data untouched)
+    # Mutation check (proves tests catch removed constraints; works on COPIES, never the real migration):
+    #   LG_MIGRATIONS_DIR=<dir with a modified 0001_init.sql> uv run pytest -q   -> must FAIL
+    # reset dev DB (destroys data): docker compose down -v && docker compose up -d db && uv run migrate
+
+### Validation for Task 5 (session + identity services, app/sessions.py)
+    uv run pytest tests/test_sessions.py -q  # expect: 48 passed (incl. 4 concurrency tests with real parallel connections)
+    uv run pytest -q                         # expect: 86 passed in total
+    # Try it by hand against the dev DB (creates rows; clean up below):
+    uv run python -c "
+    import psycopg; from app.db import connect; from app import sessions as S
+    c = connect()
+    s,p,tok = S.start_session(c,'Ana','10.0.0.1'); print('started', s.status, p.name)
+    try: S.start_session(c,'Bia','10.0.0.2')
+    except S.SessionError as e: print('2nd start refused:', e.code)          # session_already_active
+    try: S.join_session(c,'ANA','10.0.0.2')
+    except S.SessionError as e: print('dup name refused:', e.code)            # name_taken
+    print('resume by cookie:', S.resume(c,tok).name, '| resume without cookie:', S.resume(c,None))
+    print('ended:', S.end_session(c,s.id,p.id), '| ended again:', S.end_session(c,s.id,p.id))   # True | False
+    "
+    docker compose exec db psql -U livegames -c "TRUNCATE game_sessions, users CASCADE"    # clean up dev rows
+    # Mutation check on a repo COPY (never the real code): see how it was done in the Task 5 report; every mutant must fail the suite.
+
+### Validation for Task 6 (card generator, app/cards.py)
+    uv run pytest tests/test_cards.py -q     # expect: 19 passed
+    uv run pytest -q                         # expect: all passed
+    # Deal real cards from the real corpus (needs `uv run migrate` + `uv run corpus load` done):
+    uv run python -c "
+    import psycopg; from app.db import connect; from app import sessions as S, cards as C
+    c = connect()
+    s,p,_ = S.start_session(c,'Ana','10.0.0.1'); _,b,_ = S.join_session(c,'Bia','10.0.0.2')
+    ca, cb = C.assign_card(c,s.id,p.id), C.assign_card(c,s.id,b.id)
+    for row in ca.grid(): print(' | '.join(('[ AVATAR ]' if 'type' in x else x['text']).ljust(28) for x in row))
+    print('same card on 2nd call:', C.assign_card(c,s.id,p.id).id == ca.id, '| Bia differs:', ca.cells != cb.cells)
+    "
+    docker compose exec db psql -U livegames -c "select jsonb_array_length(cells) n, cells->12 centre from bingo_cards"   # expect n=25, centre {"type": "image"}
+    docker compose exec db psql -U livegames -c "TRUNCATE game_sessions, users CASCADE"    # clean up dev rows
+    # Mutation checks run on a repo COPY (never the real code); every mutant must fail the suite.
+
+### Validation for Task 6b (winner = most marked cells, app/scoring.py)
+    uv run pytest tests/test_scoring.py -q   # expect: 11 passed (ranking, tie-break, finish, idempotency, concurrency)
+    uv run pytest -q                         # expect: 120 passed in total
+    # Durability check against the dev DB (rows must be visible from a DIFFERENT connection, i.e. psql):
+    uv run python -c "
+    from app.db import connect; from app import sessions as S, cards as C, scoring as G
+    c = connect()
+    s,p,_ = S.start_session(c,'Ana','10.0.0.1'); _,b,_ = S.join_session(c,'Bia','10.0.0.2')
+    ca, cb = C.assign_card(c,s.id,p.id), C.assign_card(c,s.id,b.id)
+    for i in (0,1,2,3): c.execute('INSERT INTO bingo_marks (card_id, cell_index) VALUES (%s,%s)', (ca.id,i))
+    for i in (0,1): c.execute('INSERT INTO bingo_marks (card_id, cell_index) VALUES (%s,%s)', (cb.id,i))
+    print([(x.rank,x.name,x.marked) for x in G.leaderboard(c,s.id)])
+    "
+    docker compose exec db psql -U livegames -c "select count(*) cards from bingo_cards" -c "select count(*) marks from bingo_marks"   # expect 2 and 6
+    uv run python -c "
+    from app.db import connect; from app import sessions as S, scoring as G
+    c = connect(); s = S.get_active_session(c); r = G.finish_session(c, s.id)
+    print('winner:', r.winner.name, r.winner.marked, '| finish again:', G.finish_session(c, s.id))   # Ana 4 | None
+    "
+    docker compose exec db psql -U livegames -c "select status, u.name winner from game_sessions g join users u on u.id = g.winner_user_id"   # ended | Ana
+    docker compose exec db psql -U livegames -c "TRUNCATE game_sessions, users CASCADE"    # clean up dev rows
+
+### Validation for Task 7 (player web UI, app/main.py, app/marks.py)
+    uv run pytest -q                         # expect: 168 passed (tests/test_marks.py, tests/test_web.py are new)
+    uv run ruff check .                      # expect: All checks passed!
+    uv run uvicorn app.main:app --port 8000  # then open http://127.0.0.1:8000 (phone-size window is best)
+    # expect: "Começar partida" form; after entering a name you get a 5x5 board with the avatar in the centre.
+    # Open a 2nd browser/private window: it shows "Entrar" (join), not start. Tap cells: green + "Marcadas: n/24", survives reload.
+    docker compose exec db psql -U livegames -c "select u.name, count(m.*) from users u join bingo_cards c on c.user_id=u.id left join bingo_marks m on m.card_id=c.id group by 1"
+    # end the game (until Task 8 admin exists): uv run python -c "from app.db import connect; from app import sessions as S, scoring as G; c=connect(); print(G.finish_session(c, S.get_active_session(c).id))"
+    # expect: players see the results screen on next poll/reload.
+    docker compose exec db psql -U livegames -c "TRUNCATE game_sessions, users CASCADE"    # clean up
+
+### Validation for Task 8 (admin page, app/admin.py + app/admin_web.py)
+    uv run pytest tests/test_admin.py -q     # expect: 20 passed (auth, csrf, listing, finish, double finish)
+    uv run pytest -q                         # expect: 188 passed in total
+    # ADMIN_PASSWORD in .env must be set and NOT "change-me" (otherwise /admin answers 503 "admin disabled").
+    uv run uvicorn app.main:app --port 8000
+    curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/admin                  # expect 401 (no credentials)
+    curl -s -o /dev/null -w "%{http_code}\n" -u admin:wrong http://127.0.0.1:8000/admin   # expect 401
+    # Browser: http://127.0.0.1:8000/admin -> login prompt: user "admin", password = ADMIN_PASSWORD.
+    # expect: status pill, users table (rank, name, marks, IP, joined, last seen), one collapsible 5x5 card per
+    # player (marked cells green, centre = star), and "Encerrar partida" (asks to confirm).
+    # After finishing: pill "Partida encerrada", winner name shown, no finish button; players see "Fim de jogo!".
+    # Refresh the page to update (no auto-refresh). reset: TRUNCATE game_sessions, users CASCADE (see Task 7).
+
+### Validation for "time of each mark" (follow-up to Tasks 7/8)
+    uv run pytest -q                         # expect: 193 passed
+    # Play: tap a cell -> it turns green and shows HH:MM:SS under the phrase; tap again -> the time disappears.
+    # /admin: every marked cell in each player's card grid shows its HH:MM:SS.
+    docker compose exec db psql -U livegames -c "select cell_index, marked_at from bingo_marks order by marked_at"   # stored timestamptz
+    # Displayed time = marked_at in TIMEZONE (default America/Sao_Paulo; set TIMEZONE=<IANA name> in .env to change).
+
+### Validation for "admin can start a session" (migration 0002)
+    uv run migrate                           # expect: "applied: 0002_admin_started_sessions.sql" (then "up to date")
+    uv run pytest tests/test_admin.py tests/test_sessions.py -q
+    # Browser /admin with NO active game: "Iniciar nova partida" -> "Partida em andamento", "Jogadores: 0".
+    # A visitor on / now sees "Entrar na partida" (join), never "Começar partida". Finish the game: the button returns.
+    docker compose exec db psql -U livegames -c "select status, created_by from game_sessions order by created_at desc limit 3"   # admin-started: created_by empty
+
+### Validation for phrase CRUD + learned scores (migration 0003, app/phrases.py, app/phrases_web.py)
+    uv run migrate                           # expect: "applied: 0003_phrase_stats.sql" (existing rows get prior_score = score)
+    uv run pytest -q                         # expect: 294 passed (tests/test_phrases.py, tests/test_phrases_web.py are new)
+    uv run uvicorn app.main:app --port 8000  # then http://127.0.0.1:8000/admin/phrases (user "admin", password ADMIN_PASSWORD)
+    # expect: table of phrases (text, source, score, dealt, marked, rate, active), search/filter/sort, 50 per page.
+    # Add "minha frase de teste": appears with source manual, score 99 + "fixo" badge. Edit: score "6,5" -> badge gone.
+    # Bulk: tick rows (or "Selecionar todas"), then "Ativar selecionadas" / "Desativar selecionadas" / "Excluir selecionadas".
+    #   Deactivate/delete is refused (nothing changes) if fewer than 24 enabled phrases would remain; activating never is.
+    # Edit ANY phrase (also extracted ones) down to 1 word: allowed; 11 words or a greeting: inline error.
+    # Delete: row disappears after the confirm dialog. Invalid input (2 words, greeting, score 100) shows an inline error.
+    # Learning: play a game, finish it from /admin; then sort by "mais distribuídas": Dadas/Marcadas/Taxa are filled and
+    #   the score of non-frozen phrases moved (marked often -> up, never marked -> down).
+    docker compose exec db psql -U livegames -c "select text, source, score, prior_score, dealt, marked from phrases order by dealt desc limit 5"
+    uv run corpus load                       # expect: "skipped: phrases table already has N rows"  (never overwrites edits)
+    # reset: TRUNCATE game_sessions, users CASCADE (see Task 7); phrases are real data, do not truncate them.
+
+### Validation for the game page (live stream + cards, app/livestream.py)
+    # Layout: top row 50/50 = LEFT: live stream with YouTube's live chat embed BELOW it | RIGHT: MY card (RED border);
+    #   stream top = card top and chat bottom = card bottom (the chat fills the remaining height). Below: all other cards, small,
+    # read-only, with their marks (green). No scoreboard panel. Phones: stream, then my card, then 2 small cards per row.
+    uv run pytest tests/test_live.py -q             # expect: 28 passed (cache/background lookup, yt-dlp cases, page, polls)
+    uv run pytest -q                                # expect: 377 passed, 1 skipped (e2e needs SMOKE_URL)
+    uv run uvicorn app.main:app --port 8000         # open http://127.0.0.1:8000, join from 2-3 browsers/private windows
+    # expect: the channel's CURRENT live (auto-detected from youtube.com/@O_Poligrafo/live; first lookup takes ~15 s in the
+    #   background, the page says "Procurando..." then reloads itself) - or "O canal nao esta ao vivo" with a link when offline.
+    # Others' marks appear on your page within ~5 s without reload; your own board is never re-rendered by that poll.
+    # LIVE_VIDEO_ID=<11-char id> forces a video (no detection); LIVE_CHANNEL_URL / LIVE_TTL (s, default 60) tune detection.
+    # Tests never reach YouTube (autouse fixture in tests/conftest.py stubs the lookup).
+    # Chat: iframe https://www.youtube.com/live_chat?v=<id>&embed_domain=<this page's host>; it needs a current browser and
+    #   YouTube may disable chat embedding per stream; to WRITE in it the viewer must be logged in to YouTube in that browser.
+    # reset: TRUNCATE game_sessions, users CASCADE (see Task 7).
+
+### Validation for Task 9 (Docker image, full compose, e2e smoke test)
+    # Production-like run in a SEPARATE project (does not touch your dev DB / port 8000):
+    export COMPOSE_PROJECT_NAME=lgsmoke POSTGRES_PASSWORD=smokepw1 ADMIN_PASSWORD=smokeadmin1 SESSION_SECRET=smokesecret1 APP_PORT=8088
+    docker compose -f docker-compose.yml up -d --build   # -f without the override: Postgres NOT published to the host
+    docker compose -f docker-compose.yml ps              # expect: app and db "Up ... (healthy)"
+    docker compose -f docker-compose.yml logs app        # expect: "applied: 0001..0004", "phrases: {'upserted': N ...}", "Uvicorn running"
+    SMOKE_URL=http://127.0.0.1:8088 SMOKE_ADMIN_PASSWORD=smokeadmin1 uv run pytest tests/e2e -q   # expect: 1 passed
+    docker compose -f docker-compose.yml restart app     # expect logs: "up to date" + phrases "skipped: ... already has N rows"
+    docker compose -f docker-compose.yml down -v         # reset (-v deletes the DB volume of THIS project only)
+    # Real deployment: set POSTGRES_PASSWORD (URL-safe), ADMIN_PASSWORD (not change-me), SESSION_SECRET in .env, then
+    #   docker compose -f docker-compose.yml up -d --build
+    # Put a TLS reverse proxy in front: keep APP_BIND=127.0.0.1, set COOKIE_SECURE=1 and TRUSTED_PROXIES=<proxy IP>.
+    # The e2e test needs a stack with NO active game; it plays one game and leaves an ended session.
+
+### Validation for the corpus overhaul (20 streams, cliches, rescore, bulk delete) - YOU run these (long / touch dev DB)
+    uv run migrate                                    # expect: applied 0002 ... 0005 (then "up to date")
+    nohup uv run corpus fetch --last 20 --scan 80 > /tmp/fetch20.log 2>&1 &     # hours; idempotent, re-run to resume
+    tail -f /tmp/fetch20.log                          # expect KEEP / SKIP(vertical) lines, then a summary
+    uv run corpus suggest --show 80                   # expect: "20 transcripts", cliche authors matched (names + channel ids),
+                                                      # kinds {'repeated','cliche','author'}; skips phrases already in seed/DB
+    uv run corpus suggest --write 400                 # appends NEW rows to corpus/phrases.csv, all enabled=0
+    uv run corpus export                              # FIRST (optional): make the seed file equal the DB (DB is the truth)
+    uv run corpus load --new                          # inserts CSV rows missing from the DB as INACTIVE; never changes existing
+    uv run corpus rescore --dry-run                   # expect: counts (changed / not_found_in_corpus / min / max), writes nothing
+    uv run corpus rescore                             # replaces score AND prior_score of every non-manual phrase
+    docker compose exec db psql -U livegames -c "select source, enabled, count(*), round(avg(score),2) from phrases group by 1,2 order by 1,2"
+    # UI: /admin/phrases -> tick rows, "Selecionar todas" / "Limpar seleção" / "Excluir selecionadas" (asks to confirm;
+    #   refused if fewer than 24 enabled would remain). Phrases of 1-10 words can be added manually.
+    uv run pytest -q                                  # expect: 333 passed
+    # Cliche sources: corpus/cliches.txt (3-10 word expressions, matched ignoring case/accents, >= 1 occurrence) and
+    #   corpus/cliche_authors.txt (aliases >= 5 letters; chat display name CONTAINING an alias, '@' and punctuation ignored).
+
+### Validation for the Fly.io deployment (app `livebingo`, region gru, ONE Machine with two containers)
+    # Files: fly.toml, deploy/fly.machine.json (containers db=postgres:17 + app; each lists its own `secrets`),
+    #   deploy/make_seed.py (dev DB -> deploy/seed/phrases_seed.sql), docker/entrypoint.sh (migrate -> seed if EMPTY -> uvicorn).
+    uv run python -m deploy.make_seed         # regenerate the seed from the dev DB (prior scores, no play data)
+    fly deploy --ha=false                     # ALWAYS --ha=false: a volume belongs to one Machine
+    fly status --app livebingo                # expect: 1 machine "started" in gru
+    fly logs --app livebingo --no-tail        # expect: "applied: 0001..0005" (first boot), "phrases: {...}", "Uvicorn running"
+    curl -s -o /dev/null -w "%{http_code}\n" https://livebingo.fly.dev/healthz        # expect 200
+    curl -s -o /dev/null -w "%{http_code}\n" https://livebingo.fly.dev/admin          # expect 401
+    fly ssh console --app livebingo --container db -C "psql -U livegames -d livegames -h 127.0.0.1 -c 'select count(*) from phrases'"
+    # Persistence check: fly machine restart <id>; logs must say "phrases: {'skipped': ...}" and games must still be there.
+    # Gotchas learned: (1) secrets are NOT injected into containers unless listed under the container's "secrets";
+    #   (2) the postgres image's ENV PGDATA overrides the container "env", so PGDATA is exported in the db entrypoint
+    #   (data lives in /data/pgdata on the volume, which has lost+found at its root); (3) CLIENT_IP_HEADER=fly-client-ip
+    #   makes MAX_USERS_PER_IP use the real client IP (only safe behind a proxy that overwrites that header);
+    #   (4) the SQL seed runs only when `phrases` is EMPTY, so a restart never resurrects deleted phrases.
+    # NEVER truncate the cloud DB: it holds real games and admin edits. See docs/backlog.md for follow-ups.
+
+## Conventions log
+(Append new conventions below as they are agreed.)
+- DB access from services: ALWAYS use an autocommit connection (`app.db.connect()` / pool with
+  autocommit=True). On a normal connection `conn.transaction()` silently becomes a savepoint that is
+  never committed; service write functions call `ensure_autocommit()` and raise otherwise.
+- Tests of services must check durability from a SECOND connection (reading through the writing
+  connection hides uncommitted data).
+- Mutation-check new logic on a COPY of the repo in the scratch dir (never edit real code/migrations
+  to break them): every mutant must make the suite fail.
+- Azure resources, if ever created: tag `owner=<owner-email>`.
