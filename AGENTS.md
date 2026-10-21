@@ -301,6 +301,8 @@ Also state what the agent itself already ran and its real output; never claim su
     #   diagonal; a bigger ★ + tooltip "cartela completa" when every phrase cell is marked. Hover for the line count.
     # /admin: users table has no IP and sorts via header links (?sort=name|marked|joined|seen|rank&dir=asc|desc).
     #   Each marked cell has "Desmarcar" (removes the mark AND blocks the cell, table revoked_marks); blocked cells show "Liberar".
+    # /admin Desmarcar/Liberar use htmx: only that player's card + the users table (out of band) are swapped; no reload,
+    #   no scroll jump (without JS it falls back to POST + redirect to /admin?open=<user>).
     # Corpus seed: `deploy/seed/phrases_seed.sql` (loaded only into an EMPTY phrases table); `suggest --write` inserts inactive rows.
 
 ## Conventions log

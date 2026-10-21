@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import uuid
+from urllib.parse import parse_qs, urlparse
 
 from fasthtml.common import (
     H1,
@@ -47,8 +48,10 @@ def _cell_form(action: str, session_id: uuid.UUID, user_id: uuid.UUID, cell: int
                 Input(type="hidden", name="cell", value=str(cell)),
                 Input(type="hidden", name="csrf", value=token),
                 Button(label, type="submit", cls="mcbtn", title=label),
-                method="post", action=action, cls="mcform",
-                onsubmit=f"return confirm({confirm!r})" if confirm else None)
+                # htmx: swap only THIS player's card (+ the users table, out of band); no page reload, no scroll jump.
+                # Without htmx it is still a plain POST + redirect.
+                method="post", action=action, cls="mcform", hx_post=action, hx_target=f"#card-{user_id}",
+                hx_swap="outerHTML", hx_confirm=confirm)
 
 
 def star(row: A_.PlayerRow):
@@ -120,10 +123,25 @@ def start_form(start_token: str):
                 method="post", action="/admin/start", cls="startform")
 
 
+def users_panel(rows: list[A_.PlayerRow], rank: dict, sort: str = "rank", direction: str = "asc", oob: bool = False):
+    table_rows, sort, direction = sort_rows(rows, rank, sort, direction)
+    table = Table(
+        Thead(Tr(*[sort_header(c, sort, direction) for c in SORTS])),
+        Tbody(*[Tr(Td(str(rank.get(r.user_id, "-"))), Td(r.name, star(r)), Td(str(len(r.marked))),
+                   Td(_ts(r.joined_at)), Td(_ts(r.last_seen_at))) for r in table_rows]),
+        cls="users")
+    return Div(H2(T.ADMIN_USERS), table if rows else P(T.ADMIN_NO_USERS, cls="muted"), cls="panel", id="users-panel",
+               hx_swap_oob="outerHTML" if oob else None)
+
+
+def card_panel(r: A_.PlayerRow, session_id: uuid.UUID, token: str, active: bool, open_: bool = False):
+    return Details(Summary(f"{r.name} - {len(r.marked)}/{C.max_marks(r.cells)}", star(r)),
+                   mini_card(r, session_id, token, active), cls="panel", open=open_ or None, id=f"card-{r.user_id}")
+
+
 def admin_page(session: S.GameSession, rows: list[A_.PlayerRow], standings: list[G.Standing],
                token: str, start_token: str, sort: str = "rank", direction: str = "asc", open_uid: str = ""):
     rank = {s.user_id: s.rank for s in standings}
-    table_rows, sort, direction = sort_rows(rows, rank, sort, direction)
     active = session.status == "active"
     winner = next((r for r in rows if r.user_id == session.winner_user_id), None)
     head = Div(
@@ -140,18 +158,11 @@ def admin_page(session: S.GameSession, rows: list[A_.PlayerRow], standings: list
         Button(T.ADMIN_FINISH, type="submit", cls="primary danger"),
         method="post", action="/admin/finish",
         onsubmit=f"return confirm({T.ADMIN_FINISH_CONFIRM!r})") if active else None
-    table = Table(
-        Thead(Tr(*[sort_header(c, sort, direction) for c in SORTS])),
-        Tbody(*[Tr(Td(str(rank.get(r.user_id, "-"))), Td(r.name, star(r)), Td(str(len(r.marked))),
-                   Td(_ts(r.joined_at)), Td(_ts(r.last_seen_at))) for r in table_rows]),
-        cls="users")
-    cards = [Details(Summary(f"{r.name} - {len(r.marked)}/{C.max_marks(r.cells)}", star(r)),
-                     mini_card(r, session.id, token, active), cls="panel", open=str(r.user_id) == open_uid or None)
-             for r in rows]
+    cards = [card_panel(r, session.id, token, active, str(r.user_id) == open_uid) for r in rows]
     return (Title(f"{T.TITLE} - admin"),
             Main(H1(f"{T.TITLE} - admin"), head, finish or "",
                  start_form(start_token) if not active else "",
-                 Div(H2(T.ADMIN_USERS), table if rows else P(T.ADMIN_NO_USERS, cls="muted"), cls="panel"),
+                 users_panel(rows, rank, sort, direction),
                  H2(T.ADMIN_CARDS), *cards, A(T.ADMIN_REFRESH, href="/admin", cls="btn"), cls="wide"))
 
 
@@ -220,7 +231,19 @@ def register(rt, pool):
             return PlainTextResponse("bad csrf token", status_code=403)
         with pool.connection() as conn:
             action(conn, sid, uid, idx)        # False = nothing to do (game over / not marked): harmless
-        return RedirectResponse(f"/admin?open={uid}", status_code=303)
+            if request.headers.get("hx-request") != "true":
+                return RedirectResponse(f"/admin?open={uid}", status_code=303)
+            # htmx: send back just this player's card plus the users table (marks, rank and star changed)
+            session = A_.current_session(conn)
+            rows = A_.players(conn, session.id) if session else []
+            row = next((r for r in rows if r.user_id == uid), None)
+            if session is None or row is None or session.id != sid:
+                return Response("", status_code=200, headers={"HX-Redirect": "/admin"})
+            q = parse_qs(urlparse(request.headers.get("hx-current-url", "")).query)      # keep the table's sort order
+            rank = {s.user_id: s.rank for s in G.leaderboard(conn, session.id)}
+            pw = A_.admin_password() or ""
+            return (card_panel(row, session.id, A_.csrf_token(pw, session.id), session.status == "active", True),
+                    users_panel(rows, rank, q.get("sort", ["rank"])[0], q.get("dir", [""])[0], oob=True))
 
     @rt("/admin/unmark", methods=["POST"])
     def admin_unmark(request: Request, session_id: str = "", user_id: str = "", cell: str = "", csrf: str = ""):

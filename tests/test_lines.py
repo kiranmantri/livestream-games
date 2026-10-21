@@ -166,3 +166,30 @@ def test_admin_shows_a_yellow_star_only_for_players_with_a_completed_line(web, c
         b.post(f"/mark/{i}")
     html = admin.get("/admin", headers=basic()).text
     assert 'class="star full"' in html and "cartela completa" in html
+
+
+def test_admin_unmark_over_htmx_returns_only_the_card_and_the_users_table(web, conn):
+    a, admin = web("203.0.113.10"), web("203.0.113.99")
+    a.post("/start", data={"name": "Ana"})
+    for i in (0, 1, 2, 3):
+        a.post(f"/mark/{i}")                                  # a full row -> star
+    page = admin.get("/admin", headers=basic()).text
+    sid, tok = _csrf_of(page)
+    uid = str(conn.execute("SELECT id FROM users WHERE name='Ana'").fetchone()[0])
+    assert 'hx-post="/admin/unmark"' in page and f'hx-target="#card-{uid}"' in page and f'id="card-{uid}"' in page
+    data = {"session_id": sid, "user_id": uid, "cell": "0", "csrf": tok}
+    r = admin.post("/admin/unmark", data=data, headers={**basic(), "HX-Request": "true",
+                                                        "HX-Current-URL": "http://x/admin?sort=name&dir=desc"})
+    assert r.status_code == 200 and "<html" not in r.text                  # a fragment, not a page, not a redirect
+    assert r.text.count(f'id="card-{uid}"') == 1 and "<details" in r.text and "open" in r.text.split(">")[0]
+    assert 'id="users-panel"' in r.text and 'hx-swap-oob="outerHTML"' in r.text
+    assert 'class="star"' not in r.text and "3/16" in r.text               # row broken -> star gone, count updated
+    assert "Liberar" in r.text                                              # the blocked cell now offers the lift button
+    assert conn.execute("SELECT count(*) FROM bingo_marks").fetchone()[0] == 3
+    # unblock the same way (also htmx)
+    r2 = admin.post("/admin/unblock", data=data, headers={**basic(), "HX-Request": "true"})
+    assert r2.status_code == 200 and "Liberar" not in r2.text
+    # without htmx it is still POST -> redirect (no-JS fallback), and bad csrf is refused either way
+    assert admin.post("/admin/unmark", data={**data, "cell": "1"}, headers=basic()).status_code == 303
+    bad = admin.post("/admin/unmark", data={**data, "csrf": "x"}, headers={**basic(), "HX-Request": "true"})
+    assert bad.status_code == 403
