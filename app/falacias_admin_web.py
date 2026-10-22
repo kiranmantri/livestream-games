@@ -16,11 +16,13 @@ import uuid
 from fasthtml.common import (
     H1,
     H2,
+    A,
     Button,
     Details,
     Div,
     Form,
     Input,
+    Label,
     Li,
     Main,
     Ol,
@@ -42,7 +44,7 @@ from starlette.responses import PlainTextResponse, RedirectResponse, Response
 
 from app import admin as A_
 from app import falacias as F
-from app import feed, timefmt
+from app import feed, livestream, timefmt
 from app import host_messages as H
 from app import sessions as S
 from app import texts as T
@@ -75,12 +77,14 @@ def verdict_form(it: F.QueueItem, verdict: str, token: str, group: bool = False)
 def item_view(it: F.QueueItem, token: str, oob: bool = False):
     m = it.mark
     badge = T.FAL_VERDICTS.get(m.status, T.FAL_PENDING)
-    context = Div(*[P(t, cls="ctx") for t in it.before], *[P(t, cls="sel") for t in it.selected],
-                  *[P(t, cls="ctx") for t in it.after], cls="context", lang="pt-BR")
+    typed = m.kind == F.SPOKEN
+    context = None if typed else Div(*[P(t, cls="ctx") for t in it.before], *[P(t, cls="sel") for t in it.selected],
+                                     *[P(t, cls="ctx") for t in it.after], cls="context", lang="pt-BR")
     pending = m.status == "pending"
     return Li(
         Div(Span(it.name, cls="who"), Span(it.fallacy, cls="fl"),
-            Small(T.AF_SENT_AFTER.format(s=f"{m.latency_ms / 1000:.1f}".replace(".", ",")), cls="muted"),
+            Span(T.AF_TYPED, cls="badge typed") if typed
+            else Small(T.AF_SENT_AFTER.format(s=f"{m.latency_ms / 1000:.1f}".replace(".", ",")), cls="muted"),
             Span(badge, cls=f"badge {m.status}"), cls="qhead"),
         context,
         P(f"“{m.quote}”", cls="quote"),
@@ -125,21 +129,44 @@ def side_view(conn, session: S.GameSession, token: str):
         id="adminside", hx_get="/admin/falacias/side", hx_trigger=QUEUE_POLL, hx_swap="outerHTML")
 
 
-def page_view(conn, session: S.GameSession | None, pw: str, error: str | None = None):
+def start_form(pw: str, show_video: bool):
+    return Form(Input(type="hidden", name="csrf", value=A_.start_token(pw)),
+                Label(T.AF_VIDEO_FIELD, Input(type="url", name="video", placeholder="https://www.youtube.com/watch?v=...",
+                                              autocomplete="off"), cls="videofield") if show_video else None,
+                Button(T.AF_START, type="submit", cls="primary"), method="post", action="/admin/falacias/start", cls="startform")
+
+
+def error_text(error: str, detail: str | None) -> str:
+    if error == "feed_unavailable" and detail:
+        return T.FAL_REPLAY_MISSING.format(id=detail)
+    if error in ("feed_unavailable", "feed_error"):
+        return T.FEED_UNAVAILABLE
+    return T.ERRORS[error] if error in ("no_source", "invalid_video") else T.ERRORS["generic"]
+
+
+def source_line(conn, session: S.GameSession):
+    vid, mode = feed.session_source(conn, session.id)
+    if mode is None:
+        vid, mode = feed.feed_config().video_id, "replay"
+    url = f"https://www.youtube.com/watch?v={vid}"
+    return P(Span((T.SRC_SESSION_LIVE if mode == "live" else T.SRC_VIDEO) + ": ", cls="who"),
+             A(url, href=url, target="_blank", rel="noopener"), cls="muted")
+
+
+def page_view(conn, session: S.GameSession | None, pw: str, error: str | None = None, show_video: bool = False,
+              detail: str | None = None):
     parts = [admin_tabs("falacias"), H1(T.AF_TITLE)]
     if error:
-        parts.append(Div(T.FEED_UNAVAILABLE if error in ("feed_unavailable", "feed_error") else T.ERRORS["generic"],
-                         cls="error", role="alert"))
+        parts.append(Div(error_text(error, detail), cls="error", role="alert"))
     if session is None:
-        parts += [P(T.AF_NO_SESSION, cls="muted"),
-                  Form(Input(type="hidden", name="csrf", value=A_.start_token(pw)),
-                       Button(T.AF_START, type="submit", cls="primary"), method="post", action="/admin/falacias/start", cls="startform")]
+        parts += [P(T.AF_NO_SESSION, cls="muted"), start_form(pw, show_video)]
         return (Title(T.AF_TITLE), Main(*parts, cls="wide"))
     token = A_.csrf_token(pw, session.id)
     active = session.status == "active"
     parts.append(Div(Span(T.ADMIN_ACTIVE if active else T.ADMIN_ENDED, cls="pill on" if active else "pill"),
                      Span(f"{T.ADMIN_STARTED}: {timefmt.dmy_hms(session.created_at)}", cls="muted"),
                      Span(f"{T.ADMIN_PLAYERS}: {S.count_players(conn, session.id)}", cls="muted"), cls="adminbar"))
+    parts.append(source_line(conn, session))
     if not active:
         winner = next((r for r in F.leaderboard(conn, session.id) if r.user_id == session.winner_user_id), None)
         parts.append(P(f"{T.ADMIN_WINNER}: {winner.name} ({F.fmt_points(winner.points)})", cls="winner") if winner
@@ -154,16 +181,21 @@ def page_view(conn, session: S.GameSession | None, pw: str, error: str | None = 
                          Ol(*[item_view(i, token) for i in items], id="queue", cls="queue"),
                          P(T.AF_QUEUE_EMPTY, cls="muted empty"), poller(after), cls="panel"))
     else:
-        parts.append(Form(Input(type="hidden", name="csrf", value=A_.start_token(pw)), Button(T.AF_START, type="submit", cls="primary"),
-                          method="post", action="/admin/falacias/start", cls="startform"))
+        parts.append(start_form(pw, show_video))
     parts.append(side_view(conn, session, token))
     return (Title(T.AF_TITLE), Main(*parts, cls="wide"))
 
 
 # ------------------------------------------------------------------ routes
-def register(rt, pool):
+def register(rt, pool, live: livestream.LiveStream | None = None):
+    live = live or livestream.LiveStream()
+
     def pw() -> str:
         return A_.admin_password() or ""
+
+    def show_video() -> bool:
+        info = live.info()
+        return not (info is not None and info.horizontal)
 
     def fragment(*parts, headers: dict | None = None) -> Response:
         return Response(to_xml(parts), media_type="text/html", headers=headers or {})
@@ -173,21 +205,24 @@ def register(rt, pool):
         if (d := denied(request)) is not None:
             return d
         with pool.connection() as conn:
-            return page_view(conn, A_.current_session(conn, "falacias"), pw())
+            return page_view(conn, A_.current_session(conn, "falacias"), pw(), show_video=show_video())
 
     @rt("/admin/falacias/start", methods=["POST"])
-    def af_start(request: Request, csrf: str = ""):
+    def af_start(request: Request, csrf: str = "", video: str = ""):
         if (d := denied(request)) is not None:
             return d
         if not A_.start_ok(pw(), csrf):
             return PlainTextResponse("bad csrf token", status_code=403)
         with pool.connection() as conn:
             try:
-                feed.start_falacias_as_admin(conn)
+                if not live.known:
+                    live.refresh()
+                feed.start_falacias_as_admin(conn, feed.choose_source(conn, live.info(), video))
             except S.SessionAlreadyActive:
                 pass
             except feed.FeedError as e:
-                return page_view(conn, A_.current_session(conn, "falacias"), pw(), error=e.code)
+                return page_view(conn, A_.current_session(conn, "falacias"), pw(), error=e.code, show_video=show_video(),
+                                 detail=getattr(e, "video_id", None))
         return RedirectResponse("/admin/falacias", status_code=303)
 
     @rt("/admin/falacias/finish", methods=["POST"])

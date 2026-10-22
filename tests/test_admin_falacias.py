@@ -142,7 +142,7 @@ def test_start_needs_csrf_then_creates_an_admin_started_session(web, conn):
 def test_start_is_refused_without_the_feed_and_says_so(web, conn):
     conn.execute("TRUNCATE replay_events")
     r = web(IP_ADMIN).post("/admin/falacias/start", data={"csrf": A.start_token(PW)}, headers=basic())
-    assert r.status_code == 200 and T.FEED_UNAVAILABLE in r.text and S.get_active_session(conn, "falacias") is None
+    assert r.status_code == 200 and "corpus replay-import" in r.text and S.get_active_session(conn, "falacias") is None
 
 
 def test_finish_needs_the_session_csrf_and_ends_only_falacias(web, conn, game):

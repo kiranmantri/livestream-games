@@ -524,6 +524,23 @@ Also state what the agent itself already ran and its real output; never claim su
     #   "no SIGTERM" (the 5 s wait then SIGKILLs the child). Not checked: the thread against a real live session end to end (needs step 3 pages).
     # Fly: yt-dlp needs a WRITABLE temp dir (root fs is read-only): configure in Task 7. Risks: `.part` is a yt-dlp internal; YouTube may block it.
 
+### Validation for L4 (live-source step 3: pages — source choice, typed quotes, chat-down banner, admin)
+    uv run pytest tests/test_live_pages.py -q           # expect: 51 passed (collection error before the texts/code existed)
+    uv run pytest -q                                    # expect: 914 passed, 1 skipped (2 old tests adapted: the "feed refused" message now names the video + import command)
+    uv run migrate                                      # YOU: dev DB needs 0009
+    uv run uvicorn app.main:app --port 8001             # open http://127.0.0.1:8001/falacias (and /admin/falacias, user admin)
+    # Start (player OR admin): a HORIZONTAL live of the channel always wins (a replay is never used while one exists; a typed URL is ignored).
+    #   No horizontal live => a "Link do vídeo gravado (replay)" field appears; empty => "O canal não está ao vivo na horizontal. Cole o link...";
+    #   not imported => "O vídeo <id> ainda não foi importado. No servidor, rode: uv run corpus replay-import <id>"; bad/foreign URL => "Link inválido".
+    #   FALACIAS_VIDEO_ID set in the env = default replay when nothing else is given (tests/demos). The first start waits for the live lookup (~15 s).
+    # Live game page: source line "Transmissão ao vivo da partida" (title + URL), chat pane fed by the chat worker, transcript pane says there is none,
+    #   box "Frase falada" (<=300 chars + fallacy <select>) -> POST /falacias/spoken (same limits as picks; works while the chat is down).
+    #   Chat worker down -> red banner "Chat ao vivo fora do ar..." and selected pairs are refused (typed ones are not).
+    # /admin/falacias: shows the session source; typed pairs carry a "digitada" tag, no context, no timing; identical typed pairs group.
+    # Mutation check (repo COPY): 35/35 killed (mutate_L4.py). NOT checked: any of this in a real browser (htmx swaps, box clearing via the
+    #   fal:spoken-sent event in falacias.js, mobile layout), nor against the real live end to end. Do that before the deploy.
+    # reset: TRUNCATE game_sessions, users CASCADE.
+
 ## Conventions log
 (Append new conventions below as they are agreed.)
 - DB access from services: ALWAYS use an autocommit connection (`app.db.connect()` / pool with

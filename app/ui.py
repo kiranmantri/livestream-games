@@ -62,10 +62,10 @@ def name_gate(next_path: str = "/", error: str | None = None, value: str = ""):
         tabs=False)
 
 
-def play_form(action: str, button: str, name: str, next_path: str):
+def play_form(action: str, button: str, name: str, next_path: str, extra=None):
     """Start/join with the remembered nickname: one button, no name field."""
     return Form(P(T.PLAYING_AS, " ", B(name), " · ", A(T.CHANGE_NAME, href=f"/name?next={next_path}"), cls="muted who"),
-                Button(button, type="submit", cls="primary"), method="post", action=action, cls="entry")
+                extra, Button(button, type="submit", cls="primary"), method="post", action=action, cls="entry")
 
 
 def name_error_gate(code: str, next_path: str, value: str):

@@ -97,7 +97,7 @@ def test_start_sets_only_the_falacias_cookie_and_shows_both_panes(web, conn):
 def test_start_is_refused_without_feed_and_creates_no_session(web, conn):
     conn.execute("TRUNCATE replay_events")
     r = web().post("/falacias/start", data={"name": "Ana"})
-    assert r.status_code == 200 and T.FEED_UNAVAILABLE in r.text and "set-cookie" not in r.headers
+    assert r.status_code == 200 and T.FAL_REPLAY_MISSING.format(id=VID) in r.text and "set-cookie" not in r.headers
     assert S.get_active_session(conn, "falacias") is None
 
 

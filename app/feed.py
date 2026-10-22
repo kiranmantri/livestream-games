@@ -167,6 +167,18 @@ def resolve_source(conn: psycopg.Connection, live: StreamInfo | None, requested:
     return Source("replay", video_id)
 
 
+def choose_source(conn: psycopg.Connection, live: StreamInfo | None, requested: str | None = None) -> Source:
+    """resolve_source plus the test/demo default: without a horizontal live and without a video from the player, an EXPLICIT
+    FALACIAS_VIDEO_ID (env) is the replay. No env either => NoSource."""
+    try:
+        return resolve_source(conn, live, requested)
+    except NoSource:
+        env = os.environ.get("FALACIAS_VIDEO_ID")
+        if not env:
+            raise
+        return Source("replay", _check_video_id(env))
+
+
 def start_falacias(conn: psycopg.Connection, name: str, ip: str, source: Source | None = None):
     """First visitor starts the Falácias session: refused (no session row) when the replay is not ready. `source` None = the
     legacy env replay (FALACIAS_VIDEO_ID). A live source needs no replay rows."""

@@ -34,6 +34,8 @@ ERRORS = {
     "no_phrases": "Não foi possível montar sua cartela (poucas expressões cadastradas).",
     "feed_unavailable": FEED_UNAVAILABLE,
     "feed_down": FEED_UNAVAILABLE,
+    "no_source": "O canal não está ao vivo na horizontal. Cole o link de um vídeo gravado (replay) já importado.",
+    "invalid_video": "Link inválido. Use um link do YouTube (youtube.com ou youtu.be).",
     "generic": "Algo deu errado. Tente de novo.",
 }
 
@@ -220,3 +222,26 @@ SRC_LIVE_NOW = "Ao vivo agora"
 SRC_LIVE_VERTICAL = "Transmissão ao vivo na vertical, não usada"
 SRC_LIVE_OFFLINE = "O canal não está ao vivo agora."
 SRC_ONLY_HORIZONTAL = "Só transmissões na horizontal são usadas."
+
+# ---- Falácias: live source (L4)
+FAL_VIDEO_FIELD = "Link do vídeo gravado (replay)"
+FAL_REPLAY_MISSING = "O vídeo {id} ainda não foi importado. No servidor, rode: uv run corpus replay-import {id}"
+SRC_SESSION_LIVE = "Transmissão ao vivo da partida"
+FAL_NO_TRANSCRIPT = "Sem transcrição ao vivo: digite abaixo a frase que você ouviu e escolha a falácia."
+FAL_CHAT_DOWN = "Chat ao vivo fora do ar. Tentando reconectar..."
+FAL_LIVE_HOW_TO = "Acompanhe o chat (direita) na transmissão ao vivo. Frases faladas: digite-as na caixa abaixo."
+FAL_SPOKEN_HEADING = "Frase falada"
+FAL_SPOKEN_HELP = "Ouviu uma falácia na transmissão? Digite a frase (até 300 caracteres) e escolha a falácia."
+FAL_SPOKEN_PLACEHOLDER = "O que foi dito..."
+FAL_SPOKEN_SEND = "Enviar frase"
+FAL_SPOKEN_FALLACY = "Falácia"
+FAL_SPOKEN_ERRORS = {
+    "bad_selection": "Digite a frase falada.",
+    "spoken_too_long": "Frase grande demais (máximo 300 caracteres).",
+    "unknown_fallacy": FAL_ERRORS["unknown_fallacy"],
+    "rate_limited": FAL_ERRORS["rate_limited"],
+    "duplicate_mark": FAL_ERRORS["duplicate_mark"],
+    "generic": FAL_ERRORS["generic"],
+}
+AF_TYPED = "digitada"
+AF_VIDEO_FIELD = "Link do vídeo gravado (replay), se o canal não estiver ao vivo"
