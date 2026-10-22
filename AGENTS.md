@@ -315,6 +315,29 @@ Also state what the agent itself already ran and its real output; never claim su
     #   a Falácias start detected the horizontal live (Ko_lIgMJudY, source_mode live) and the chat worker stored chat rows from inside the container (yt-dlp works there).
     # The Fly rootfs is writable, so tempfile.mkdtemp in /tmp works; an app without a home dir only needs XDG_CACHE_HOME for yt-dlp's cache.
 
+### Validation for the fallacy admin page (/admin/fallacies: app/fallacies_admin.py, app/fallacies_web.py)
+    uv run pytest tests/test_fallacies_admin.py tests/test_fallacies_admin_web.py -q   # expect: 48 passed
+    uv run uvicorn app.main:app --port 8001             # then http://127.0.0.1:8001/admin/fallacies (user admin, ADMIN_PASSWORD); 4th admin tab "Falácias"
+    # List with search (name, category, description; accent/case-insensitive), filters (origin, active), uses per fallacy. Add -> source manual, active.
+    # Edit inline (name, category, description, active): same row id, so marks keep pointing at it; the game picker reads the table.
+    # Refused (message in the row): fewer than 5 active after the change; deleting a fallacy players already used (disable it instead).
+    # `uv run corpus fallacies-top` (manual, never at boot) renames/toggles Wikipedia rows by their ORIGINAL names and WOULD overwrite online edits of them.
+    uv run corpus fallacies-manual                      # adds "Deus das lacunas (God of the gaps)" and "Ônus da prova invertido (Shift the burden of proof)" if missing BY NAME
+                                                        #   expect: fallacies: {'added': 2}, then {'added': 0}. Not run at boot.
+    # Cloud, once after the deploy: fly ssh console --app livebingo --container app -C "python -m corpus.cli fallacies-manual"
+    # Mutation check (repo COPY): 32/32 killed (mutate_fa.py). NOT checked: the page in a real browser (htmx row swaps).
+
+### Validation for R1 (replay catalogue: migration 0010, app/replays.py)
+    uv run pytest tests/test_replays.py -q              # expect: 33 passed
+    uv run pytest -q                                    # expect: 1004 passed, 1 skipped
+    uv run migrate                                      # YOU, dev DB: expect "applied: 0010_replays.sql"; videos already in replay_events become 'ready' (backfill)
+    docker compose exec db psql -U livegames -c "select video_id, status, transcript_rows, chat_rows from replays"   # expect _nVWPIFCUzQ | ready | 13535 | 2725
+    # Service only (no page, no downloader yet): submit(url) queues a video (states queued -> downloading -> importing -> ready | failed), at most 5 queued,
+    #   a failed one can be submitted again (goes to the back), claim_next() is atomic (SKIP LOCKED), mark_ready needs BOTH tracks in replay_events,
+    #   mark_failed drops partial rows, recover_interrupted() fails jobs left running by a restart, delete() refuses queued/running (busy) and videos
+    #   followed by an ACTIVE game (in_use). corpus replay-import and the SQL seed loader register the video as ready.
+    # Mutation check (repo COPY): 28/28 killed (mutate_r1.py; the first run had 5 survivors -> tests added).
+
 ### Deploying to Fly.io - checklist (every release)
     # 0. Local: tests green and everything committed + pushed.
     uv run ruff check . && uv run pytest -q                    # expect: All checks passed! / N passed
