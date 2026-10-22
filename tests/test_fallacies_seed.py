@@ -176,14 +176,28 @@ def test_main_refuses_another_revision_and_a_page_that_changed_shape(tmp_path, c
 
 
 # ---------------------------------------------------------------- display names (pt name + English name in parentheses)
-def test_every_top_fallacy_has_one_display_name_with_the_english_name_in_parentheses():
+def test_every_top_fallacy_has_one_display_name_in_the_agreed_format():
+    """<Portuguese name> (<English name>) or <Portuguese name> (<English name> - <Latin name>), colloquial names for long ones."""
     import re
 
     from app.falacias import FALLACY_NAMES, TOP_FALLACIES
     assert set(FALLACY_NAMES) == set(TOP_FALLACIES)                       # keyed by the pt.wikipedia name
     shown = list(FALLACY_NAMES.values())
     assert len(set(shown)) == 21
-    assert all(re.fullmatch(r"[^()]+ \([A-Za-z][A-Za-z' /-]+\)", n) and len(n) <= 120 for n in shown), shown
+    pat = r"[^()-]+ \([A-Z][A-Za-z' ]+( - [A-Z][A-Za-z ]+)?\)"
+    assert all(re.fullmatch(pat, n) and len(n) <= 70 for n in shown), [n for n in shown if not re.fullmatch(pat, n) or len(n) > 70]
+
+
+def test_latin_names_appear_after_the_english_one():
+    from app.falacias import FALLACY_NAMES as N
+    with_latin = [v for v in N.values() if " - " in v]
+    assert len(with_latin) >= 9
+    assert "Ataque pessoal (Personal Attack - Ad hominem)" in N.values()
+    assert "Apelo à autoridade (Appeal to Authority - Argumentum ad verecundiam)" in N.values()
+    assert "Falácia da falácia (Fallacy Fallacy - Argumentum ad logicam)" in N.values()
+    assert "Petição de princípio (Begging the Question - Petitio principii)" in N.values()
+    assert "Falácia do espantalho (Straw Man)" in N.values()                 # no Latin name: nothing invented
+    assert "Apelo à hipocrisia (Appeal to Hypocrisy - Tu quoque)" in N.values()
 
 
 def test_the_names_the_admin_asked_for():
@@ -191,10 +205,9 @@ def test_the_names_the_admin_asked_for():
     assert N["Pista falsa"] == "Pista Falsa (Red Herring)"
     assert N["Bola de neve (Slippery slope)"] == "Ladeira escorregadia (Slippery Slope)"
     assert N["Equívoco"] == "Equívoco (Equivocation)"
-    assert N["Falácia divina (apelo à incredulidade)"] == "Apelo à incredulidade (Argument from Incredulity)"
+    assert N["Falácia divina (apelo à incredulidade)"].startswith("Apelo à incredulidade (Argument from Incredulity")
     post_hoc = next(v for k, v in N.items() if k.startswith("Post hoc ergo propter hoc"))
-    assert post_hoc == "Falácia post hoc (Post Hoc Ergo Propter Hoc)"
-    assert N["Argumento ad logicam (falácia da falácia)"] == "Falácia da falácia (Fallacy Fallacy)"
+    assert post_hoc.startswith("Falácia post hoc (") and "Post hoc ergo propter hoc" in post_hoc
 
 
 def test_the_seed_sql_uses_display_names_for_the_top_20_and_wikipedia_names_for_the_rest(items):

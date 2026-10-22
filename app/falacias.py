@@ -188,37 +188,37 @@ TOP_FALLACIES: tuple[str, ...] = (
     "Argumentum ad consequentiam (Apelo à consequências)",
     "Argumentum ad antiquitatem",
     "Falácia divina (apelo à incredulidade)",
-    "Argumento ad logicam (falácia da falácia)",     # added on request; added on request, so the list has 21
+    "Argumento ad logicam (falácia da falácia)",     # added on request: the list has 21
 )
 
 
 FALLACY_NAMES: dict[str, str] = {   # pt.wikipedia name (the key the seed/sync match on) -> the name players and the admin see
     "Ad hominem":
-        "Ad hominem (Personal Attack)",
+        "Ataque pessoal (Personal Attack - Ad hominem)",
     "Falácia do espantalho":
         "Falácia do espantalho (Straw Man)",
     "Falsa dicotomia":
         "Falsa dicotomia (False Dilemma)",
     "Argumentum ad verecundiam (Apelo à autoridade)":
-        "Apelo à autoridade (Appeal to Authority)",
+        "Apelo à autoridade (Appeal to Authority - Argumentum ad verecundiam)",
     "Argumentum ad populum (apelo à desinformação, apelo à maioria)":
-        "Apelo à maioria (Appeal to the Majority)",
+        "Apelo à maioria (Appeal to the Majority - Argumentum ad populum)",
     "Bola de neve (Slippery slope)":
         "Ladeira escorregadia (Slippery Slope)",
     "Petitio principii":
-        "Petição de princípio (Begging the Question)",
+        "Petição de princípio (Begging the Question - Petitio principii)",
     "Pista falsa":
         "Pista Falsa (Red Herring)",
     "Tu quoque (Apelo à hipocrisia)":
-        "Tu quoque (Appeal to Hypocrisy)",
+        "Apelo à hipocrisia (Appeal to Hypocrisy - Tu quoque)",
     "Falsa analogia":
         "Falsa analogia (False Analogy)",
     "Generalização precipitada":
         "Generalização precipitada (Hasty Generalization)",
     'Post hoc ergo propter hoc (Latim para "após isso, portanto por causa disso"; sequência temporal não implica causalidade)':
-        "Falácia post hoc (Post Hoc Ergo Propter Hoc)",
+        "Falácia post hoc (Post Hoc Fallacy - Post hoc ergo propter hoc)",
     "Argumentum ad ignorantiam (Apelo à ignorância)":
-        "Apelo à ignorância (Argument from Ignorance)",
+        "Apelo à ignorância (Argument from Ignorance - Ad ignorantiam)",
     "Falácia do escocês de verdade":
         "Falácia do escocês de verdade (No True Scotsman)",
     "Equívoco":
@@ -228,13 +228,13 @@ FALLACY_NAMES: dict[str, str] = {   # pt.wikipedia name (the key the seed/sync m
     "Apelo à emoção":
         "Apelo à emoção (Appeal to Emotion)",
     "Argumentum ad consequentiam (Apelo à consequências)":
-        "Apelo às consequências (Appeal to Consequences)",
+        "Apelo às consequências (Appeal to Consequences - Ad consequentiam)",
     "Argumentum ad antiquitatem":
-        "Apelo à antiguidade (Appeal to Tradition)",
+        "Apelo à tradição (Appeal to Tradition - Ad antiquitatem)",
     "Falácia divina (apelo à incredulidade)":
         "Apelo à incredulidade (Argument from Incredulity)",
     "Argumento ad logicam (falácia da falácia)":
-        "Falácia da falácia (Fallacy Fallacy)",
+        "Falácia da falácia (Fallacy Fallacy - Argumentum ad logicam)",
 }
 
 

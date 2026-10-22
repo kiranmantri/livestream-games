@@ -616,7 +616,7 @@ def test_sync_top_fallacies_enables_only_the_curated_wikipedia_rows(conn):
     F.load_fallacy_seed(conn)
     conn.execute("UPDATE fallacies SET enabled = true")                       # an old DB where all 97 were switched on
     manual = fallacy(conn, "Deus das lacunas")                                # manual rows are never touched
-    conn.execute("UPDATE fallacies SET enabled = false WHERE name = 'Ad hominem (Personal Attack)'")      # a curated one switched off
+    conn.execute("UPDATE fallacies SET enabled = false WHERE name = 'Ataque pessoal (Personal Attack - Ad hominem)'")      # a curated one switched off
     r = F.sync_top_fallacies(conn)
     assert r == {"renamed": 0, "enabled": 1, "disabled": 76, "missing": []}     # Ad hominem back on; the 76 others off
     on = {n for (n,) in conn.execute("SELECT name FROM fallacies WHERE enabled AND source = 'wikipedia'")}
@@ -669,6 +669,6 @@ def test_sync_skips_a_rename_whose_new_name_is_already_taken(conn):
 
 
 def test_sync_top_fallacies_reports_names_missing_from_the_table(conn):
-    fallacy(conn, "Ad hominem (Personal Attack)")
+    fallacy(conn, "Ataque pessoal (Personal Attack - Ad hominem)")
     r = F.sync_top_fallacies(conn)
-    assert len(r["missing"]) == 20 and "Ad hominem (Personal Attack)" not in r["missing"]
+    assert len(r["missing"]) == 20 and "Ataque pessoal (Personal Attack - Ad hominem)" not in r["missing"]
