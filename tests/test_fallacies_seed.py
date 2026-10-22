@@ -173,3 +173,34 @@ def test_main_refuses_another_revision_and_a_page_that_changed_shape(tmp_path, c
     tiny.write_text(json.dumps({"parse": {**data["parse"], "text": "<p>vazio</p>"}}), encoding="utf-8")
     assert M.main(["--from-file", str(tiny), "--out", str(tmp_path / "o.sql")]) == 1
     assert not (tmp_path / "o.sql").exists() and "error" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------- display names (pt name + English name in parentheses)
+def test_every_top_fallacy_has_one_display_name_with_the_english_name_in_parentheses():
+    import re
+
+    from app.falacias import FALLACY_NAMES, TOP_FALLACIES
+    assert set(FALLACY_NAMES) == set(TOP_FALLACIES)                       # keyed by the pt.wikipedia name
+    shown = list(FALLACY_NAMES.values())
+    assert len(set(shown)) == 20
+    assert all(re.fullmatch(r"[^()]+ \([A-Za-z][A-Za-z' /-]+\)", n) and len(n) <= 120 for n in shown), shown
+
+
+def test_the_names_the_admin_asked_for():
+    from app.falacias import FALLACY_NAMES as N
+    assert N["Pista falsa"] == "Pista Falsa (Red Herring)"
+    assert N["Bola de neve (Slippery slope)"] == "Ladeira escorregadia (Slippery Slope)"
+    assert N["Equívoco"] == "Equívoco (Equivocation)"
+    assert N["Falácia divina (apelo à incredulidade)"] == "Apelo à incredulidade (Argument from Incredulity)"
+    post_hoc = next(v for k, v in N.items() if k.startswith("Post hoc ergo propter hoc"))
+    assert post_hoc == "Falácia post hoc (Post Hoc Ergo Propter Hoc)"
+
+
+def test_the_seed_sql_uses_display_names_for_the_top_20_and_wikipedia_names_for_the_rest(items):
+    from app.falacias import FALLACY_NAMES
+    sql = M.to_sql(items)
+    for wiki, shown in FALLACY_NAMES.items():
+        assert M.lit(shown) in sql, shown
+        assert f"({M.lit(wiki)}," not in sql, wiki                         # the old name is not inserted any more
+    rest = [f for f in items if f.name not in FALLACY_NAMES]
+    assert len(rest) == 77 and all(M.lit(f.name) in sql for f in rest)

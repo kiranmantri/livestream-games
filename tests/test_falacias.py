@@ -616,16 +616,59 @@ def test_sync_top_fallacies_enables_only_the_curated_wikipedia_rows(conn):
     F.load_fallacy_seed(conn)
     conn.execute("UPDATE fallacies SET enabled = true")                       # an old DB where all 97 were switched on
     manual = fallacy(conn, "Deus das lacunas")                                # manual rows are never touched
-    conn.execute("UPDATE fallacies SET enabled = false WHERE name = 'Ad hominem'")        # a curated one that was switched off
+    conn.execute("UPDATE fallacies SET enabled = false WHERE name = 'Ad hominem (Personal Attack)'")      # a curated one switched off
     r = F.sync_top_fallacies(conn)
-    assert r == {"enabled": 1, "disabled": 77, "missing": []}          # Ad hominem back on; the 77 others off
+    assert r == {"renamed": 0, "enabled": 1, "disabled": 77, "missing": []}     # Ad hominem back on; the 77 others off
     on = {n for (n,) in conn.execute("SELECT name FROM fallacies WHERE enabled AND source = 'wikipedia'")}
-    assert on == set(F.TOP_FALLACIES)
+    assert on == set(F.FALLACY_NAMES.values())
     assert conn.execute("SELECT enabled FROM fallacies WHERE id = %s", (manual,)).fetchone() == (True,)
-    assert F.sync_top_fallacies(conn) == {"enabled": 0, "disabled": 0, "missing": []}     # idempotent: nothing left to change
+    assert F.sync_top_fallacies(conn) == {"renamed": 0, "enabled": 0, "disabled": 0, "missing": []}     # idempotent
+
+
+def old_named(conn, *names, source="wikipedia"):
+    return {n: conn.execute("INSERT INTO fallacies (name, category, source, enabled) VALUES (%s,'C',%s,true) RETURNING id",
+                            (n, source)).fetchone()[0] for n in names}
+
+
+def test_sync_renames_old_wikipedia_rows_keeping_their_ids(conn):
+    ids = old_named(conn, "Pista falsa", "Bola de neve (Slippery slope)", "Equívoco")
+    r = F.sync_top_fallacies(conn)
+    assert r["renamed"] == 3
+    got = dict(conn.execute("SELECT id, name FROM fallacies WHERE id = ANY(%s)", (list(ids.values()),)).fetchall())
+    assert got == {ids["Pista falsa"]: "Pista Falsa (Red Herring)",
+                   ids["Bola de neve (Slippery slope)"]: "Ladeira escorregadia (Slippery Slope)",
+                   ids["Equívoco"]: "Equívoco (Equivocation)"}
+    assert F.sync_top_fallacies(conn)["renamed"] == 0                             # idempotent
+
+
+def test_sync_renames_all_twenty_old_names(conn):
+    old_named(conn, *F.FALLACY_NAMES)
+    assert F.sync_top_fallacies(conn)["renamed"] == 20
+    assert {n for (n,) in conn.execute("SELECT name FROM fallacies")} == set(F.FALLACY_NAMES.values())
+
+
+def test_a_rename_keeps_marks_pointing_at_the_same_fallacy(conn):
+    s, (u,) = game(conn)
+    fid = old_named(conn, "Pista falsa")["Pista falsa"]
+    m = mark(conn, u, ev(conn, s.id), fid)
+    F.sync_top_fallacies(conn)
+    assert conn.execute("SELECT f.name FROM fallacy_marks k JOIN fallacies f ON f.id = k.fallacy_id WHERE k.id = %s",
+                        (m.id,)).fetchone() == ("Pista Falsa (Red Herring)",)
+
+
+def test_sync_never_renames_manual_rows(conn):
+    ids = old_named(conn, "Pista falsa", source="manual")
+    assert F.sync_top_fallacies(conn)["renamed"] == 0
+    assert conn.execute("SELECT name FROM fallacies WHERE id = %s", (ids["Pista falsa"],)).fetchone() == ("Pista falsa",)
+
+
+def test_sync_skips_a_rename_whose_new_name_is_already_taken(conn):
+    old_named(conn, "Pista falsa")
+    old_named(conn, "Pista Falsa (Red Herring)", source="manual")                # the unique name is occupied
+    assert F.sync_top_fallacies(conn)["renamed"] == 0                            # no crash, nothing renamed
 
 
 def test_sync_top_fallacies_reports_names_missing_from_the_table(conn):
-    fallacy(conn, "Ad hominem")
+    fallacy(conn, "Ad hominem (Personal Attack)")
     r = F.sync_top_fallacies(conn)
-    assert len(r["missing"]) == 19 and "Ad hominem" not in r["missing"]
+    assert len(r["missing"]) == 19 and "Ad hominem (Personal Attack)" not in r["missing"]

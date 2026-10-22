@@ -191,18 +191,66 @@ TOP_FALLACIES: tuple[str, ...] = (
 )
 
 
+FALLACY_NAMES: dict[str, str] = {   # pt.wikipedia name (the key the seed/sync match on) -> the name players and the admin see
+    "Ad hominem":
+        "Ad hominem (Personal Attack)",
+    "Falácia do espantalho":
+        "Falácia do espantalho (Straw Man)",
+    "Falsa dicotomia":
+        "Falsa dicotomia (False Dilemma)",
+    "Argumentum ad verecundiam (Apelo à autoridade)":
+        "Apelo à autoridade (Appeal to Authority)",
+    "Argumentum ad populum (apelo à desinformação, apelo à maioria)":
+        "Apelo à maioria (Appeal to the Majority)",
+    "Bola de neve (Slippery slope)":
+        "Ladeira escorregadia (Slippery Slope)",
+    "Petitio principii":
+        "Petição de princípio (Begging the Question)",
+    "Pista falsa":
+        "Pista Falsa (Red Herring)",
+    "Tu quoque (Apelo à hipocrisia)":
+        "Tu quoque (Appeal to Hypocrisy)",
+    "Falsa analogia":
+        "Falsa analogia (False Analogy)",
+    "Generalização precipitada":
+        "Generalização precipitada (Hasty Generalization)",
+    'Post hoc ergo propter hoc (Latim para "após isso, portanto por causa disso"; sequência temporal não implica causalidade)':
+        "Falácia post hoc (Post Hoc Ergo Propter Hoc)",
+    "Argumentum ad ignorantiam (Apelo à ignorância)":
+        "Apelo à ignorância (Argument from Ignorance)",
+    "Falácia do escocês de verdade":
+        "Falácia do escocês de verdade (No True Scotsman)",
+    "Equívoco":
+        "Equívoco (Equivocation)",
+    "Envenenando o poço":
+        "Envenenando o poço (Poisoning the Well)",
+    "Apelo à emoção":
+        "Apelo à emoção (Appeal to Emotion)",
+    "Argumentum ad consequentiam (Apelo à consequências)":
+        "Apelo às consequências (Appeal to Consequences)",
+    "Argumentum ad antiquitatem":
+        "Apelo à antiguidade (Appeal to Tradition)",
+    "Falácia divina (apelo à incredulidade)":
+        "Apelo à incredulidade (Argument from Incredulity)",
+}
+
+
 def sync_top_fallacies(conn: psycopg.Connection) -> dict:
-    """Make `enabled` of the Wikipedia rows match TOP_FALLACIES (for a DB seeded before the list was cut). Idempotent: the
-    result counts the rows that CHANGED; `missing` lists curated names not found in the table."""
+    """Bring the Wikipedia rows to the curated state: rename them to their display names (FALLACY_NAMES; same row id, so marks keep
+    pointing at it; skipped when the new name is taken), then enable only the curated ones. Idempotent: the result counts the rows
+    that CHANGED; `missing` lists curated display names not found in the table."""
     ensure_autocommit(conn)
-    top = list(TOP_FALLACIES)
+    top = list(FALLACY_NAMES.values())
     with conn.transaction():
+        renamed = sum(conn.execute("UPDATE fallacies SET name = %s WHERE source = 'wikipedia' AND name = %s "
+                                   "AND NOT EXISTS (SELECT 1 FROM fallacies WHERE name = %s)", (new, old, new)).rowcount
+                      for old, new in FALLACY_NAMES.items())
         on = conn.execute("UPDATE fallacies SET enabled = true WHERE source = 'wikipedia' AND name = ANY(%s) AND NOT enabled",
                           (top,)).rowcount
         off = conn.execute("UPDATE fallacies SET enabled = false WHERE source = 'wikipedia' AND NOT (name = ANY(%s)) AND enabled",
                            (top,)).rowcount
         present = {n for (n,) in conn.execute("SELECT name FROM fallacies WHERE name = ANY(%s)", (top,))}
-    return {"enabled": on, "disabled": off, "missing": [n for n in top if n not in present]}
+    return {"renamed": renamed, "enabled": on, "disabled": off, "missing": [n for n in top if n not in present]}
 
 
 def load_fallacy_seed(conn: psycopg.Connection, path: Path = SEED_PATH) -> dict:
