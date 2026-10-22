@@ -27,6 +27,7 @@ from fasthtml.common import (
     Small,
     Span,
     fast_app,
+    to_xml,
 )
 from psycopg_pool import ConnectionPool
 from starlette.requests import Request
@@ -91,6 +92,36 @@ def cell_size_cls(text: str) -> str:
     return "xlong" if len(text) > 48 else "long" if len(text) > 26 else ""
 
 
+_KIND_RE = re.compile(r"^(.*\S)\s*\((falácia[^)]*)\)\s*$")
+
+
+def split_kind(text: str) -> tuple[str, str | None]:
+    """'ad populum (falácia)' -> ('ad populum', 'falácia'): the repeated word becomes a small tag under the phrase."""
+    m = _KIND_RE.match(text)
+    return (m.group(1), m.group(2)) if m else (text, None)
+
+
+def cell_button(i: int, cell: dict, marked: dict[int, datetime], revoked: frozenset[int]):
+    on = i in marked
+    text, kind = split_kind(cell["text"])
+    cls = " ".join(x for x in ("cell", "revoked" if i in revoked else "", cell_size_cls(text)) if x)
+    return Button(
+        text, Small(kind, cls="kind") if kind else None, Small(timefmt.hms(marked[i]), cls="at") if on else None,
+        type="button", cls=cls, id=f"cell-{i}",
+        title=T.CELL_REVOKED if i in revoked else None,
+        aria_pressed="true" if on else "false",
+        hx_post=f"/mark/{i}", hx_target="this", hx_swap="outerHTML")     # a tap swaps only this cell (+ count and lines, out of band);
+                                                                         # game.js sends the taps one at a time (this is the no-JS-queue fallback)
+
+
+def count_view(marked: dict[int, datetime], card: C.Card, oob: bool = False):
+    return Span(f"{T.MARKED}: {len(marked)}/{card.max_marks}", cls="count", id="count", hx_swap_oob="true" if oob else None)
+
+
+def lines_view(card: C.Card, marked: dict[int, datetime], oob: bool = False):
+    return Div(*line_boxes(card.cells, marked), cls="lines", id="lines", hx_swap_oob="true" if oob else None)
+
+
 def board(card: C.Card, marked: dict[int, datetime], player_name: str, revoked: frozenset[int] = frozenset(),
           error: str | None = None):
     cells = []
@@ -99,20 +130,11 @@ def board(card: C.Card, marked: dict[int, datetime], player_name: str, revoked: 
             cells.append(Div(Img(src="/center.jpg", alt=T.AVATAR_ALT, width=160, height=160),
                              cls="cell free", aria_label=T.AVATAR_ALT))
         else:
-            on = i in marked
-            cls = " ".join(x for x in ("cell", "revoked" if i in revoked else "", cell_size_cls(cell["text"])) if x)
-            cells.append(Button(
-                cell["text"], Small(timefmt.hms(marked[i]), cls="at") if on else None, type="button", cls=cls,
-                title=T.CELL_REVOKED if i in revoked else None,
-                aria_pressed="true" if on else "false",
-                hx_post=f"/mark/{i}", hx_target="#game-board", hx_swap="outerHTML",
-                hx_sync="closest .cardbox:queue all"))   # taps run one after another; the last answer is the final state
+            cells.append(cell_button(i, cell, marked, revoked))
     return Div(
-        Div(Span(f"{player_name} ({T.YOU})", cls="who"),
-            Span(f"{T.MARKED}: {len(marked)}/{card.max_marks}", cls="count", id="count"),
-            cls="bar"),
+        Div(Span(f"{player_name} ({T.YOU})", cls="who"), count_view(marked, card), cls="bar"),
         Div(error, cls="cellerr", role="alert") if error else None,
-        Div(*cells, *line_boxes(card.cells, marked), cls="board", lang="pt-BR", style=f"--cols: {card.size}"),
+        Div(*cells, lines_view(card, marked), cls="board", lang="pt-BR", style=f"--cols: {card.size}"),
         id="game-board")
 
 
@@ -202,7 +224,8 @@ def game_page(card: C.Card, marked: dict[int, datetime], me: S.Player, others: l
     return page(
         H1(T.TITLE), P(T.HOW_TO, cls="tag"),
         Div(Button(Span(T.LIVE_HIDE, cls="when-shown"), Span(T.LIVE_SHOW, cls="when-hidden"), type="button",
-                   cls="pref", data_pref="live:toggle", aria_pressed="false"), cls="gamebar"),
+                   cls="pref", data_pref="live:toggle", aria_pressed="false"),
+            None if video_id else Span(T.OFFLINE_NOTE, cls="offline-note"), cls=f"gamebar{'' if video_id else ' nolive'}"),
         Div(Div(stream_panel(video_id, live_known), chat_panel(video_id, host), cls="leftcol"),
             Div(board(card, marked, me.name, revoked), cls="cardbox mine"), cls="toprow"),
         Div(Button("▦", type="button", cls="pref icon", data_pref="view:grid", aria_pressed="true",
@@ -320,19 +343,28 @@ def create_app(db_url: str | None = None, live: livestream.LiveStream | None = N
             if me is None:
                 return Response(status_code=401, headers={"HX-Refresh": "true"})
             card = C.get_card(conn, me.session_id, me.id)
+            ajax = request.headers.get("hx-request") == "true"
             try:
                 M.toggle_mark(conn, me.id, idx)
             except M.CellRevoked:       # the admin removed this mark: show the board again with the reason
                 assert card is not None
-                return board(card, M.marked_times(conn, card.id), me.name, M.revoked_cells(conn, card.id),
-                             error=T.CELL_REVOKED)
+                shown = board(card, M.marked_times(conn, card.id), me.name, M.revoked_cells(conn, card.id),
+                              error=T.CELL_REVOKED)
+                if ajax:                # the button swaps only itself, so redirect this answer to the whole board
+                    return Response(to_xml(shown), media_type="text/html",
+                                    headers={"HX-Retarget": "#game-board", "HX-Reswap": "outerHTML"})
+                return shown
             except M.InvalidCell:
                 return PlainTextResponse("invalid cell", status_code=400)
             except M.SessionNotActive:
                 return Response(status_code=409, headers={"HX-Refresh": "true"})  # game just ended
             card = C.get_card(conn, me.session_id, me.id)
             assert card is not None
-            return board(card, M.marked_times(conn, card.id), me.name, M.revoked_cells(conn, card.id))
+            marked, revoked = M.marked_times(conn, card.id), M.revoked_cells(conn, card.id)
+            if ajax:                    # this cell + the count and the blue lines (out of band): nothing else is redrawn
+                return cell_button(idx, card.cells[idx], marked, revoked), count_view(marked, card, oob=True), \
+                    lines_view(card, marked, oob=True)
+            return board(card, marked, me.name, revoked)
 
     @rt("/leaderboard")
     def leaderboard(request: Request):

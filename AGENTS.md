@@ -375,8 +375,7 @@ Also state what the agent itself already ran and its real output; never claim su
     uv run pytest tests/test_major_bugs.py tests/test_falacias_web.py -q   # expect: all passed (red run before the code: 7 failed)
     uv run pytest -q                                    # expect: 1089 passed, 1 skipped
     # 1. Names: the `lg_name` cookie is stored percent-encoded (quote/unquote in app/ui.py); emoji, Cyrillic and CJK names no longer give HTTP 500.
-    # 2. Taps: every cell button has hx-sync="closest .cardbox:queue all" (the .cardbox is never swapped), so taps run in order and the screen
-    #    ends equal to the server. Real browser (throwaway DB): cell0 x3, cell1 x2, cell2 x6 -> screen "1/16", same after reload.
+    # 2. Taps: see "Validation for backlog Group 2" (the first fix with hx-sync did NOT work: htmx's queue drops requests of replaced buttons).
     # 3. Lost cookie / other device: the player's own page has "Salvar link para voltar nesta partida" -> /r/<bingo|falacias>/<token>.
     #    Opening it sets the cookie again (same card, marks kept). SECURITY: whoever holds the link IS the player; unknown tokens do nothing.
     #    Open the link in a private window to try it. The token travels in the URL (browser history, proxy logs): acceptable for a low-stakes game.
@@ -393,6 +392,19 @@ Also state what the agent itself already ran and its real output; never claim su
     #   expect: 401 401 401 401 401 429. Reset: restart the server. Behind Fly the IP comes from CLIENT_IP_HEADER (fly-client-ip).
     # Also: singular/plural player count, friendly 404 page, name gate titled "Jogos da Live", labels on /admin/fallacies inputs.
     # Real browser (throwaway DB): 404 page, name gate, taken-name flow checked; curl for the 429. NOT checked: phone, Safari, Firefox.
+
+### Validation for backlog Group 2 (phone layout of the Bingo player page, per-cell taps)
+    uv run pytest -q                                    # expect: 1119 passed, 1 skipped (tests/test_phone_ui.py is new; red run: collection error)
+    # Phones (<= 760 px): MY board comes first with a sticky "Ana (você) / Marcadas n/16" bar; video+chat start hidden (a saved choice in
+    #   localStorage `lg_prefs` wins; the toggle button shows them); with no live there is no toggle and no empty boxes, just "Canal fora do ar agora.".
+    #   Cells: 13 px text, rows >= 88 px, a trailing "(falácia ...)" is drawn as a small tag under the phrase (split_kind in app/main.py).
+    #   Tap targets >= 44 px (view toggles, hide-video, "trocar nome", "Ver o canal", menu, recovery summary). Desktop layout unchanged.
+    # Taps: /mark/<i> answers an htmx request with ONLY that cell + out-of-band #count and #lines (blue boxes); a plain POST (tests, curl) still gets the
+    #   whole board; a revoked cell answers the whole board via HX-Retarget. game.js flips the cell at once, then sends taps ONE AT A TIME in order
+    #   (promise chain around htmx.ajax). htmx's own sync queue was tried first and dropped queued taps (replaced buttons), so it is NOT used.
+    # Real Chrome, 390 px, throwaway DB (you can repeat: lg_qa via ~/.hermes/cache/scratch/qa_setup.py): bursts of 1-7 taps on several cells ->
+    #   expected parity == screen == server (after reload) in 3 of 3 runs, no cell left "pending". Board top y: 841 px -> 177 px.
+    # NOT checked: a real touch device, Safari, Firefox; the sticky bar was checked by scrolling (bar stayed at top: 0).
 
 ### Deploying to Fly.io - checklist (every release)
     # 0. Local: tests green and everything committed + pushed.

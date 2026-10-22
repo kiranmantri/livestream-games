@@ -44,15 +44,14 @@ def test_any_unicode_name_is_remembered_and_can_play(web, name):
     assert name in b.get("/").text
 
 
-def test_board_taps_are_serialised_by_a_container_that_is_never_swapped(web):
+def test_board_taps_are_serialised_by_the_page_script(web):
     b = web()
     b.post("/name", data={"name": "Ana", "next": "/"})
     b.post("/start", data={"name": "Ana"})
     html = b.get("/").text
-    assert 'class="cardbox mine"' in html
-    buttons = re.findall(r'<button[^>]*hx-post="/mark/\d+"[^>]*>', html)
-    assert len(buttons) == 16
-    assert all('hx-sync="closest .cardbox:queue all"' in x for x in buttons)
+    assert 'class="cardbox mine"' in html and 'src="/game.js"' in html
+    js = b.get("/game.js").text
+    assert "chain = chain.then" in js                   # one request at a time, in tap order (htmx's queue drops them)
 
 
 def test_recovery_link_restores_the_player_on_a_new_device(web):

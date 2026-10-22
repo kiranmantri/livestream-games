@@ -18,12 +18,8 @@ Bugs
   uses the same formatter on timestamptz columns), and the admin replay URL (the admin shows the SESSION's video, the entry page used to show the
   default replay; the entry page no longer shows one). The "unnamed buttons" on /admin/falacias were elements inside the closed replay <details>.
 
-Phone layout (Bingo, 390 px)
-- The player's own board starts a full screen down (y=841 px), behind the empty video and chat boxes. Show the board first with a sticky
-  "Marcadas n/16" bar; collapse video+chat into one line by default; hide empty boxes.
-- Cell text is 7.7-9.2 px (aim >= 13 px); move the repeated "(falácia)" into a small tag.
-- Tap targets under 44 px: "trocar nome" 17, "Ver o canal" 19, view toggles 28, "Ocultar vídeo e chat" 29.
-- Each tap re-renders the whole board over the network; swap only the tapped cell and give instant feedback.
+Phone layout (Bingo)
+- Not done / not checked: touch devices, Safari and Firefox; the Falácias game page on phones (panes, picker) was not part of this pass.
 
 Admin
 - Navigation mixes game admin and content lists: group as "Partidas: Bingo | Falácias" and "Conteúdo: Frases | Lista de falácias";

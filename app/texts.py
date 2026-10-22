@@ -121,6 +121,7 @@ STREAM_OFFLINE = "O canal não está ao vivo agora. Assim que começar, o vídeo
 STREAM_OPEN = "Abrir no YouTube"
 STREAM_CHANNEL = "Ver o canal"
 OTHERS_HEADING = "Outros jogadores"
+OFFLINE_NOTE = "Canal fora do ar agora."
 LIVE_HIDE = "Ocultar vídeo e chat"
 LIVE_SHOW = "Mostrar vídeo e chat"
 VIEW_GRID = "Ver em grade"

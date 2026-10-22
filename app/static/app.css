@@ -341,3 +341,23 @@ table.replays button.act.danger { background: transparent; color: var(--warn); b
   table.replays .acts { flex-direction: row; flex-wrap: wrap; }
   table.replays .acts form { flex: 1 1 9em; }
 }
+
+/* phone (group 2): the board first, readable cells, 44 px tap targets */
+.lines { display: contents; }                       /* wrapper of the blue boxes: they still position against .board */
+.cell .kind { display: block; font-size: 11px; font-weight: 400; opacity: .75; text-transform: uppercase; letter-spacing: .03em; margin-top: 1px; }
+.cell.pending { opacity: .7; }
+.offline-note { display: none; color: var(--muted); font-size: .85rem; }
+@media (max-width: 760px) {
+  .toprow .cardbox.mine { order: -1; }
+  .cardbox.mine .bar { position: sticky; top: 0; z-index: 5; background: var(--panel); margin: 0 0 6px; padding: 6px 4px;
+                       border-bottom: 1px solid var(--line); font-size: 1rem; }
+  .cardbox.mine .board { grid-auto-rows: minmax(88px, auto); }
+  .cardbox.mine .cell, .cardbox.mine .cell.long, .cardbox.mine .cell.xlong {
+    aspect-ratio: auto; font-size: 13px; line-height: 1.2; padding: 4px 3px; }
+  .cardbox.mine .cell .at { font-size: 11px; }
+  button.pref, button.pref.icon { min-height: 44px; min-width: 44px; }
+  .entry .who a, .chat .bar a, .menu a, a.recover, summary { display: inline-flex; align-items: center; min-height: 44px; }
+  .gamebar.nolive .offline-note { display: inline; }
+  .gamebar.nolive button.pref { display: none; }
+  .gamebar.nolive ~ .toprow .leftcol { display: none; }     /* nothing to watch: no empty video/chat boxes */
+}

@@ -5,6 +5,8 @@
   if (!root) return;
   var KEY = 'lg_prefs', prefs = {};
   try { prefs = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { prefs = {}; }
+  // phones: video and chat start hidden (the board comes first); a saved choice always wins
+  if (prefs.hideLive === undefined && window.matchMedia && window.matchMedia('(max-width: 760px)').matches) prefs.hideLive = true;
 
   function apply() {
     root.classList.toggle('hide-live', !!prefs.hideLive);
@@ -31,5 +33,21 @@
     try { localStorage.setItem(KEY, JSON.stringify(prefs)); } catch (err) { /* private mode: works for this visit */ }
     apply();
   });
+  // Taps: flip my cell at once, then send the taps ONE AT A TIME in the order they were made. htmx's own queue cannot be used: after
+  // the first answer the buttons it queued for have been replaced, and it silently drops them. Each answer (cell + count + lines)
+  // replaces the live cell, so the screen always ends equal to the server.
+  var chain = Promise.resolve();
+  root.addEventListener('click', function (e) {
+    var c = e.target.closest('.cardbox.mine button.cell');
+    if (!c || !c.id) return;
+    e.stopPropagation();                                  // htmx must not also send this tap
+    var id = c.id;
+    c.setAttribute('aria-pressed', c.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+    c.classList.add('pending');
+    chain = chain.then(function () {
+      return htmx.ajax('POST', '/mark/' + id.replace('cell-', ''), { target: '#' + id, swap: 'outerHTML' });
+    }).catch(function () { location.reload(); });
+  }, true);
+  document.body.addEventListener('htmx:sendError', function () { location.reload(); });   // offline: resync with the server
   apply();
 })();
