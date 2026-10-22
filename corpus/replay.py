@@ -118,6 +118,10 @@ def import_video(conn: psycopg.Connection, video_id: str, corpus_dir: Path, forc
         with conn.cursor() as cur:
             cur.executemany("INSERT INTO replay_events (video_id, kind, offset_ms, author, text) VALUES (%s,%s,%s,%s,%s) "
                             "ON CONFLICT DO NOTHING", rows)
+    from app import (
+        replays,  # list it in the admin's replay catalogue (lazy: corpus must stay importable alone)
+    )
+    replays.register_ready(conn, video_id)
     return dict(conn.execute("SELECT kind, count(*) FROM replay_events WHERE video_id = %s GROUP BY 1 ORDER BY 1",
                              (video_id,)).fetchall())
 

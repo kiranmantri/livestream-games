@@ -25,7 +25,7 @@ from uuid import UUID
 
 import psycopg
 
-from app import chatworker
+from app import chatworker, replays
 from app import sessions as S
 from app.config import ROOT
 from app.db import ensure_autocommit
@@ -325,4 +325,9 @@ def load_replay_seed(conn: psycopg.Connection, video_id: str | None = None, path
         if have:
             return {"skipped": f"{video_id} already has {have} replay rows"}
         conn.execute(sql)
-        return {"inserted": conn.execute("SELECT count(*) FROM replay_events WHERE video_id = %s", (video_id,)).fetchone()[0]}
+        n = conn.execute("SELECT count(*) FROM replay_events WHERE video_id = %s", (video_id,)).fetchone()[0]
+    try:
+        replays.register_ready(conn, video_id)           # list it in the admin's replay catalogue
+    except replays.ReplayError:
+        pass                                             # a seed with only one track is not a usable replay
+    return {"inserted": n}
