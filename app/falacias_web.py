@@ -36,6 +36,7 @@ from fasthtml.common import (
     Textarea,
     Th,
     Thead,
+    Time,
     Tr,
     to_xml,
 )
@@ -43,7 +44,7 @@ from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 
 from app import falacias as F
-from app import feed, livestream
+from app import feed, livestream, timefmt
 from app import host_messages as H
 from app import sessions as S
 from app import texts as T
@@ -78,7 +79,9 @@ def fal_page(*content, cls: str | None = None):
 def line_view(e: feed.Event):
     """One line. The text sits alone in its own span (Task 4 computes selection offsets inside it); the author is
     outside it and cannot be selected."""
-    return Div(Span(e.author, cls="au") if e.author else None, Span(e.text, cls="tx"), cls="pline", data_id=e.id)
+    stamp = Time(f"[{timefmt.hms(e.fed_at)}]", datetime=e.fed_at.isoformat()) if e.fed_at else None
+    who = Span(e.author, " " if (stamp and e.author) else None, stamp, cls="au") if (e.author or stamp) else None      # "name [HH:MM:SS]:"
+    return Div(who, Span(e.text, cls="tx"), cls="pline", data_id=e.id)
 
 
 def pane_view(kind: str, title: str, events: list[feed.Event], note: str | None = None):

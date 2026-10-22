@@ -96,6 +96,14 @@ def start_ok(password: str, token: str | None) -> bool:
     return bool(token) and hmac.compare_digest(start_token(password), token or "")
 
 
+def settings_token(password: str) -> str:
+    return hmac.new(password.encode(), b"settings", hashlib.sha256).hexdigest()
+
+
+def settings_ok(password: str, token: str | None) -> bool:
+    return bool(token) and hmac.compare_digest(settings_token(password), token or "")
+
+
 def phrases_token(password: str) -> str:
     """One token for every state-changing phrase action (add / edit / delete)."""
     return hmac.new(password.encode(), b"phrases", hashlib.sha256).hexdigest()

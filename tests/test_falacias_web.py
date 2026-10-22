@@ -130,7 +130,7 @@ def test_page_shows_only_lines_that_are_due_and_escapes_text(web, conn):
 
 def test_authors_are_outside_the_selectable_text_span(web, conn):
     a = web(); start(a); age(conn, 10)
-    assert '<span class="au">@au</span><span class="tx">chat um</span>' in a.get("/falacias").text
+    assert re.search(r'<span class="au">@au <time[^>]*>\[\d\d:\d\d:\d\d\]</time></span><span class="tx">chat um</span>', a.get("/falacias").text)
 
 
 def test_page_does_not_show_lines_before_their_time(web, conn):

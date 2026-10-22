@@ -14,6 +14,7 @@ from fasthtml.common import (
     Div,
     Form,
     Input,
+    Label,
     Main,
     Nav,
     P,
@@ -128,6 +129,17 @@ def start_form(start_token: str):
                 method="post", action="/admin/start", cls="startform")
 
 
+def ip_limit_form(limit: int, token: str, bad: bool = False):
+    return Form(
+        Label(T.ADMIN_IPLIMIT_LABEL, Input(type="number", name="limit", value=str(limit), min="1", max=str(S.IP_LIMIT_MAX),
+                                           required=True, inputmode="numeric")),
+        Input(type="hidden", name="csrf", value=token),
+        Button(T.ADMIN_IPLIMIT_SAVE, type="submit"),
+        Small(T.ADMIN_IPLIMIT_HELP, cls="muted"),
+        P(T.ADMIN_IPLIMIT_BAD, cls="error", role="alert") if bad else None,
+        method="post", action="/admin/settings/ip-limit", cls="iplimit")
+
+
 def users_panel(rows: list[A_.PlayerRow], rank: dict, sort: str = "rank", direction: str = "asc", oob: bool = False,
                 poll: bool = False):
     """The users table. While the game is active it re-reads itself every 5 s (keeping the sort order)."""
@@ -149,7 +161,8 @@ def card_panel(r: A_.PlayerRow, session_id: uuid.UUID, token: str, active: bool,
 
 
 def admin_page(session: S.GameSession, rows: list[A_.PlayerRow], standings: list[G.Standing],
-               token: str, start_token: str, sort: str = "rank", direction: str = "asc", open_uid: str = ""):
+               token: str, start_token: str, sort: str = "rank", direction: str = "asc", open_uid: str = "",
+               settings=None):
     rank = {s.user_id: s.rank for s in standings}
     active = session.status == "active"
     winner = next((r for r in rows if r.user_id == session.winner_user_id), None)
@@ -165,7 +178,7 @@ def admin_page(session: S.GameSession, rows: list[A_.PlayerRow], standings: list
             Main(admin_tabs("bingo"), H1(f"{T.TITLE} - admin"), bar,
                  start_form(start_token) if not active else "",
                  users_panel(rows, rank, sort, direction, poll=active),
-                 H2(T.ADMIN_CARDS), *cards, Script(src="/admin.js", defer=True), cls="wide"))
+                 H2(T.ADMIN_CARDS), *cards, settings, Script(src="/admin.js", defer=True), cls="wide"))
 
 
 def admin_tabs(active: str):
@@ -224,19 +237,21 @@ def denied(request: Request):
 
 def register(rt, pool):
     @rt("/admin")
-    def admin_get(request: Request, sort: str = "rank", dir: str = "", open: str = ""):
+    def admin_get(request: Request, sort: str = "rank", dir: str = "", open: str = "", err: str = ""):
         if (d := denied(request)) is not None:
             return d
         with pool.connection() as conn:
             session = A_.current_session(conn)
             pw = A_.admin_password() or ""
+            settings = ip_limit_form(S.max_users_per_ip(conn), A_.settings_token(pw), err == "ip_limit")
             if session is None:
                 return Main(admin_tabs("bingo"), H1(f"{T.TITLE} - admin"), P(T.ADMIN_NO_SESSION, cls="muted"),
                             start_form(A_.start_token(pw)),
+                            settings,
                             Div(A(T.ADMIN_PHRASES_LINK, href="/admin/phrases", cls="btn"),
                                 A(T.ADMIN_REFRESH, href="/admin", cls="btn"), cls="adminbar"), cls="wide")
             return admin_page(session, A_.players(conn, session.id), G.leaderboard(conn, session.id),
-                              A_.csrf_token(pw, session.id), A_.start_token(pw), sort, dir, open)
+                              A_.csrf_token(pw, session.id), A_.start_token(pw), sort, dir, open, settings)
 
     @rt("/admin/live")
     def admin_live(request: Request, sort: str = "rank", dir: str = ""):
@@ -251,6 +266,19 @@ def register(rt, pool):
             rows = A_.players(conn, session.id)
             rank = {s.user_id: s.rank for s in G.leaderboard(conn, session.id)}
             return (users_panel(rows, rank, sort, dir, poll=True), player_count(len(rows), oob=True))
+
+    @rt("/admin/settings/ip-limit", methods=["POST"])
+    def admin_ip_limit(request: Request, limit: str = "", csrf: str = ""):
+        if (d := denied(request)) is not None:
+            return d
+        if not A_.settings_ok(A_.admin_password() or "", csrf):
+            return PlainTextResponse("bad csrf token", status_code=403)
+        with pool.connection() as conn:
+            try:
+                S.set_max_users_per_ip(conn, limit)
+            except ValueError:
+                return RedirectResponse("/admin?err=ip_limit", status_code=303)
+        return RedirectResponse("/admin", status_code=303)
 
     @rt("/admin/start", methods=["POST"])
     def admin_start(request: Request, csrf: str = ""):

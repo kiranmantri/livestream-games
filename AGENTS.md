@@ -421,6 +421,25 @@ Also state what the agent itself already ran and its real output; never claim su
     #   except the "Apenas pendentes" checkbox itself (its label is 44 px) and text links inside paragraphs/tables were padded.
     # Existing tests adapted: users-table regexes now accept <td data-label=...>.
 
+### Validation for the two bugs + "name [timestamp]: text" (migration 0011, corpus/emoji.py, app/feed.py, app/admin_web.py)
+    uv run pytest tests/test_bugs_followup.py -q        # expect: 18 passed (red run before the code: 15 failed)
+    uv run pytest -q                                    # expect: 1147 passed, 1 skipped (1 old test adapted: the author span now also holds the time)
+    uv run migrate                                      # YOU, dev DB: expect "applied: 0011_app_settings.sql"
+    uv run corpus replay-emoji                          # YOU, dev DB: rewrites YouTube emoji shortcodes in replay_events (":face-blue-smiling:" -> 😊); idempotent
+    #   expect "replay rows rewritten: N" (N ~ 70 for _nVWPIFCUzQ), then 0. Games already running keep their old text (stored quote offsets refer to it).
+    #   Then `uv run corpus replay-seed _nVWPIFCUzQ` so the Fly seed has the new text (the seed only fills an EMPTY table).
+    #   New imports and the live chat worker map the emoji by themselves (corpus/replay.py _runs_text). A YouTube-style name that is not in the table
+    #   (corpus/emoji.py) is dropped; a channel emoji (":canal:") stays as typed.
+    # Panes: chat "@name [HH:MM:SS]: text", transcript "[HH:MM:SS]: text". The time is when the line reached the pane (stream_events.fed_at, TIMEZONE),
+    #   not the video offset; name and time are outside the selectable text, so quote offsets are unchanged.
+    # IP limit: /admin (bottom of the page, both with and without a running game) "Jogadores por rede (IP), nos dois jogos", 1..50, saved in table app_settings;
+    #   it overrides MAX_USERS_PER_IP (env stays the default while nothing is saved). Applies from the next join, both games. Player messages show the saved number.
+    #   curl check: POST /admin/settings/ip-limit with the page's csrf token: limit=4 -> 303 /admin; limit=99 -> 303 /admin?err=ip_limit (nothing saved).
+    docker compose exec db psql -U livegames -c "select key, value, updated_at from app_settings"
+    # Real check (throwaway DB, Chrome, replay at 60x): both panes show the new format with Unicode emoji; saved 2 -> 4 via the form, 99 refused.
+    # NOT checked: the cloud (needs the deploy checklist: migration 0011 => backup first; then run replay-emoji once in the app container:
+    #   fly ssh console --app livebingo --container app -C "sh -c 'cd /app && python -m corpus.cli replay-emoji'"), phones, Safari/Firefox.
+
 ### Deploying to Fly.io - checklist (every release)
     # 0. Local: tests green and everything committed + pushed.
     uv run ruff check . && uv run pytest -q                    # expect: All checks passed! / N passed

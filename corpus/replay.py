@@ -16,6 +16,8 @@ from pathlib import Path
 
 import psycopg
 
+from corpus.emoji import replace_shortcodes
+
 VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 CUE_RE = re.compile(r"^(\d+):(\d\d):(\d\d)\.(\d{3}) -->")
 TIMED_RE = re.compile(r"<\d\d:\d\d:\d\d\.\d+>")
@@ -63,7 +65,7 @@ def _runs_text(runs: list[dict]) -> str:
         elif "emoji" in run:
             e = run["emoji"]
             if e.get("isCustomEmoji") or "/" in e.get("emojiId", ""):
-                parts.append((e.get("shortcuts") or [""])[0])        # channel emoji: its :shortcut:, else nothing
+                parts.append(replace_shortcodes((e.get("shortcuts") or [""])[0]))   # YouTube's named emoji -> Unicode; a channel emoji keeps its :shortcut:
             else:
                 parts.append(e.get("emojiId", ""))
     return clean("".join(parts))

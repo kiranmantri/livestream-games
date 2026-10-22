@@ -47,6 +47,8 @@ def main(argv: list[str] | None = None) -> int:
     rl = sub.add_parser("replay-load", help="apply the video's SQL seed, only if the DB has no rows of that video")
     rl.add_argument("video_id", nargs="?", default=None, help="default: FALACIAS_VIDEO_ID")
 
+    sub.add_parser("replay-emoji", help="rewrite YouTube emoji shortcodes (:face-blue-smiling:) in replay_events to Unicode; idempotent, never touches running games")
+
     sub.add_parser("fallacies-load", help="apply deploy/seed/fallacies_seed.sql, only if the fallacies table is EMPTY")
     sub.add_parser("fallacies-manual", help="add the requested manual fallacies (Deus das lacunas, Ônus da prova invertido) if missing by name")
     sub.add_parser("fallacies-top", help="rename/enable the curated Wikipedia fallacies and disable the other Wikipedia rows (OVERWRITES online edits of those rows; manual, never at boot)")
@@ -76,6 +78,15 @@ def main(argv: list[str] | None = None) -> int:
         conn = connect()
         try:
             print("fallacies:", load_fallacy_seed(conn))
+        finally:
+            conn.close()
+        return 0
+    if args.cmd == "replay-emoji":
+        from app.db import connect
+        from corpus.emoji import fix_replay_events
+        conn = connect()
+        try:
+            print("replay rows rewritten:", fix_replay_events(conn))
         finally:
             conn.close()
         return 0

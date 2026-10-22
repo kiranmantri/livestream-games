@@ -38,8 +38,30 @@ def cookie_name(game_type: str = "bingo") -> str:
     return COOKIE_NAME if check_game(game_type) == "bingo" else f"{COOKIE_NAME}_{game_type}"
 
 
-def max_users_per_ip() -> int:
+IP_LIMIT_MAX = 50
+
+
+def max_users_per_ip(conn: psycopg.Connection | None = None) -> int:
+    """The admin's online setting (table app_settings) wins; else MAX_USERS_PER_IP from the environment; else 3."""
+    if conn is not None:
+        row = conn.execute("SELECT value FROM app_settings WHERE key = 'max_users_per_ip'").fetchone()
+        if row is not None:
+            return int(row[0])
     return int(os.environ.get("MAX_USERS_PER_IP", "3"))
+
+
+def set_max_users_per_ip(conn: psycopg.Connection, value) -> int:
+    """Store the limit (1..50). Raises ValueError for anything else. Applies to both games, from the next join on."""
+    ensure_autocommit(conn)
+    try:
+        n = int(str(value).strip())
+    except (TypeError, ValueError):
+        raise ValueError("the limit must be a whole number") from None
+    if not 1 <= n <= IP_LIMIT_MAX:
+        raise ValueError(f"the limit must be between 1 and {IP_LIMIT_MAX}")
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('max_users_per_ip', %s) "
+                 "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()", (str(n),))
+    return n
 
 
 # ------------------------------------------------------------------ errors
@@ -281,8 +303,9 @@ def join_session(conn: psycopg.Connection, name: str, ip: str, existing_token: s
             # serialise joins per (session, ip) so the IP limit cannot be raced past
             conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
                          (f"{session.id}:{ip}",))
-            if _count_ip(conn, session.id, ip) >= max_users_per_ip():
-                raise IpLimitReached(f"at most {max_users_per_ip()} players per IP address")
+            limit = max_users_per_ip(conn)
+            if _count_ip(conn, session.id, ip) >= limit:
+                raise IpLimitReached(f"at most {limit} players per IP address")
             conn.execute(
                 "INSERT INTO users (id, session_id, name, ip, token_hash) VALUES (%s,%s,%s,%s,%s)",
                 (uid, session.id, name, ip, hash_token(token)))

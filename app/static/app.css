@@ -247,6 +247,7 @@ main.fal { max-width: 1180px; }
 .pline { padding: 3px 0; line-height: 1.4; overflow-wrap: anywhere; }
 .pline .au { color: var(--accent); font-weight: 600; margin-right: 6px; user-select: none; -webkit-user-select: none; }
 .pline .au::after { content: ":"; }
+.pline .au time { color: var(--muted, #8b98a9); font-weight: 400; font-size: .85em; }
 @media (max-width: 760px) { .panes { grid-template-columns: 1fr; } .scroll { height: 40vh; } }
 
 .entry .who a, .muted a { color: var(--accent); }

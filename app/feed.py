@@ -18,6 +18,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass, replace
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlparse
@@ -256,19 +257,20 @@ class Event:
     kind: str
     author: str | None
     text: str
+    fed_at: datetime | None = None             # when the line reached the pane (shown as [HH:MM:SS])
 
 
 def recent_events(conn: psycopg.Connection, session_id: UUID, per_kind: int = 120) -> list[Event]:
     """The last `per_kind` lines of EACH pane, oldest first (what a player sees when opening the page)."""
     rows = conn.execute(
-        "SELECT id, kind, author, text FROM (SELECT *, row_number() OVER (PARTITION BY kind ORDER BY id DESC) AS rn "
+        "SELECT id, kind, author, text, fed_at FROM (SELECT *, row_number() OVER (PARTITION BY kind ORDER BY id DESC) AS rn "
         "FROM stream_events WHERE session_id = %s AND kind IN ('transcript', 'chat')) t WHERE rn <= %s ORDER BY id",
         (session_id, per_kind)).fetchall()
     return [Event(*r) for r in rows]
 
 
 def events_after(conn: psycopg.Connection, session_id: UUID, after_id: int, limit: int = 300) -> list[Event]:
-    rows = conn.execute("SELECT id, kind, author, text FROM stream_events WHERE session_id = %s AND id > %s "
+    rows = conn.execute("SELECT id, kind, author, text, fed_at FROM stream_events WHERE session_id = %s AND id > %s "
                         "AND kind IN ('transcript', 'chat') ORDER BY id LIMIT %s", (session_id, after_id, limit)).fetchall()
     return [Event(*r) for r in rows]
 

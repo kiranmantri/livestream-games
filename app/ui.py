@@ -47,10 +47,19 @@ def page(*content, title: str = T.TITLE, cls: str | None = None, current: str = 
     return Title(title), Main(menu(current) if tabs else None, *content, cls=cls)
 
 
-def error_box(code: str | None):
+_pool = None
+
+
+def error_box(code: str | None, limit: int | None = None):
     if not code:
         return None
-    msg = T.ERRORS.get(code, T.ERRORS["generic"]).format(n=S.max_users_per_ip())
+    if limit is None:
+        if _pool is not None:
+            with _pool.connection() as conn:
+                limit = S.max_users_per_ip(conn)
+        else:
+            limit = S.max_users_per_ip()
+    msg = T.ERRORS.get(code, T.ERRORS["generic"]).format(n=limit)
     return Div(msg, cls="error", role="alert")
 
 
@@ -112,6 +121,9 @@ def recovery_view(request: Request, game_type: str):
 
 
 def register(rt, pool) -> None:
+    global _pool
+    _pool = pool
+
     @rt("/r/{game_type}/{token}", methods=["GET"])
     def recover(request: Request, game_type: str, token: str):
         if game_type not in ("bingo", "falacias") or len(token) > 200:

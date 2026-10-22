@@ -12,8 +12,6 @@ Fixed already (see AGENTS.md "Validation for the adversarial-test fixes"): non-L
 board out of sync with the server; a lost cookie locked the player out of their own name (now: personal recovery link).
 
 Bugs
-- Chat shows raw `:face-green-smiling:` shortcodes (YouTube standard emoji): needs a shortcode -> emoji map, in the replay import and the chat worker.
-- IP limit (MAX_USERS_PER_IP) is still an env variable; making it editable in the admin needs a DB setting (migration) - not done.
 - Checked and NOT bugs: the "Início" vs "Entrou" one-hour gap (the session was started an hour before my players joined; every timestamp
   uses the same formatter on timestamptz columns), and the admin replay URL (the admin shows the SESSION's video, the entry page used to show the
   default replay; the entry page no longer shows one). The "unnamed buttons" on /admin/falacias were elements inside the closed replay <details>.
