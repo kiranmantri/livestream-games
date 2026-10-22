@@ -269,7 +269,7 @@ def test_cli_fallacies_load_seeds_an_empty_table_once(conn, test_db_url, monkeyp
     conn.execute("DELETE FROM fallacies")
     assert cli.main(["fallacies-load"]) == 0
     assert "'inserted': 97" in capsys.readouterr().out
-    assert conn.execute("SELECT count(*) FILTER (WHERE enabled), count(*) FROM fallacies").fetchone() == (20, 97)
+    assert conn.execute("SELECT count(*) FILTER (WHERE enabled), count(*) FROM fallacies").fetchone() == (21, 97)
     assert cli.main(["fallacies-load"]) == 0
     assert "skipped" in capsys.readouterr().out
     conn.execute("DELETE FROM fallacies")
@@ -284,6 +284,6 @@ def test_cli_fallacies_top_syncs_the_enabled_flags(conn, test_db_url, monkeypatc
     capsys.readouterr()
     assert cli.main(["fallacies-top"]) == 0
     out = capsys.readouterr().out
-    assert "'enabled': 0" in out and "'disabled': 77" in out and "'missing': []" in out      # the seed already had only 20 on, then all 97 were switched on
-    assert conn.execute("SELECT count(*) FILTER (WHERE enabled) FROM fallacies").fetchone()[0] == 20
+    assert "'enabled': 0" in out and "'disabled': 76" in out and "'missing': []" in out      # the seed already had only 21 on, then all 97 were switched on
+    assert conn.execute("SELECT count(*) FILTER (WHERE enabled) FROM fallacies").fetchone()[0] == 21
     conn.execute("DELETE FROM fallacies")

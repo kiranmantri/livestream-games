@@ -362,14 +362,14 @@ Also state what the agent itself already ran and its real output; never claim su
     uv run python -m deploy.make_fallacies_seed        # same, but fetches revision 70610117 from the MediaWiki API (needs network)
     head -c 600 deploy/seed/fallacies_seed.sql         # expect: INSERT INTO fallacies (name, category, description, wikipedia_url, source, enabled) VALUES ...
     # The `fallacies` table does not exist yet (migration 0008, Task 1b): the seed is tested against a TEMP table with the planned layout.
-    # ONLY the curated top 20 (app/falacias.py TOP_FALLACIES) are enabled; the other 77 rows stay in the table, disabled. Missing must-haves
+    # ONLY the curated 21 (top 20 + "falácia da falácia", app/falacias.py TOP_FALLACIES) are enabled; the other 76 rows stay in the table, disabled. Missing must-haves
     #   (deus das lacunas, onus da prova invertido) are added later as source='manual' (manual rows are never touched by the sync).
-    # DB seeded before the cut: `uv run corpus fallacies-top` -> fallacies: {'renamed': R, 'enabled': N, 'disabled': M, 'missing': []}; verify with the psql line above (20 | 97).
-    # DISPLAY NAMES: the 20 enabled fallacies show "<pt name> (<English name>)" (app/falacias.py FALLACY_NAMES, keyed by the pt.wikipedia name, e.g.
+    # DB seeded before the cut: `uv run corpus fallacies-top` -> fallacies: {'renamed': R, 'enabled': N, 'disabled': M, 'missing': []}; verify with the psql line above (21 | 97).
+    # DISPLAY NAMES: the 21 enabled fallacies show "<pt name> (<English name>)" (app/falacias.py FALLACY_NAMES, keyed by the pt.wikipedia name, e.g.
     #   "Pista Falsa (Red Herring)", "Ladeira escorregadia (Slippery Slope)", "Equívoco (Equivocation)", "Apelo à incredulidade (Argument from Incredulity)",
     #   "Falácia post hoc (Post Hoc Ergo Propter Hoc)"). The seed file carries the display names; `fallacies-top` renames an existing DB (same row id, marks
-    #   unaffected; skipped if the new name is taken; manual rows untouched): first run on a DB with the old names prints renamed: 20, then 0.
-    #   psql check: select name from fallacies where enabled order by 1  -> 20 names, each ending in (English name). Change a name = edit FALLACY_NAMES,
+    #   unaffected; skipped if the new name is taken; manual rows untouched): first run on a DB with the old names prints renamed: 21, then 0.
+    #   psql check: select name from fallacies where enabled order by 1  -> 21 names, each ending in (English name). Change a name = edit FALLACY_NAMES,
     #   `uv run python -m deploy.make_fallacies_seed --from-file tests/fixtures/lista_de_falacias_70610117.json`, then `fallacies-top` (a name already
     #   renamed cannot be renamed again by the sync: edit it in the DB with UPDATE fallacies SET name=... or add the previous display name as a key).
     # Text (c) Wikipedia contributors, CC BY-SA 4.0: show the attribution wherever the list appears.

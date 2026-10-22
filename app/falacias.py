@@ -188,6 +188,7 @@ TOP_FALLACIES: tuple[str, ...] = (
     "Argumentum ad consequentiam (Apelo à consequências)",
     "Argumentum ad antiquitatem",
     "Falácia divina (apelo à incredulidade)",
+    "Argumento ad logicam (falácia da falácia)",     # added on request; added on request, so the list has 21
 )
 
 
@@ -232,6 +233,8 @@ FALLACY_NAMES: dict[str, str] = {   # pt.wikipedia name (the key the seed/sync m
         "Apelo à antiguidade (Appeal to Tradition)",
     "Falácia divina (apelo à incredulidade)":
         "Apelo à incredulidade (Argument from Incredulity)",
+    "Argumento ad logicam (falácia da falácia)":
+        "Falácia da falácia (Fallacy Fallacy)",
 }
 
 

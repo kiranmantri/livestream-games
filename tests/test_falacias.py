@@ -193,7 +193,7 @@ def test_list_fallacies_filters_disabled_and_keeps_id_order(conn):
 def test_seed_loads_the_real_file_once_and_never_resurrects(conn):
     first = F.load_fallacy_seed(conn)
     assert first == {"inserted": 97}
-    assert conn.execute("SELECT count(*) FILTER (WHERE enabled), count(*) FILTER (WHERE source = 'wikipedia') FROM fallacies").fetchone() == (20, 97)
+    assert conn.execute("SELECT count(*) FILTER (WHERE enabled), count(*) FILTER (WHERE source = 'wikipedia') FROM fallacies").fetchone() == (21, 97)
     conn.execute("DELETE FROM fallacies WHERE name LIKE 'Falácia do espantalho%'")
     fallacy(conn, "Deus das lacunas")
     again = F.load_fallacy_seed(conn)
@@ -618,7 +618,7 @@ def test_sync_top_fallacies_enables_only_the_curated_wikipedia_rows(conn):
     manual = fallacy(conn, "Deus das lacunas")                                # manual rows are never touched
     conn.execute("UPDATE fallacies SET enabled = false WHERE name = 'Ad hominem (Personal Attack)'")      # a curated one switched off
     r = F.sync_top_fallacies(conn)
-    assert r == {"renamed": 0, "enabled": 1, "disabled": 77, "missing": []}     # Ad hominem back on; the 77 others off
+    assert r == {"renamed": 0, "enabled": 1, "disabled": 76, "missing": []}     # Ad hominem back on; the 76 others off
     on = {n for (n,) in conn.execute("SELECT name FROM fallacies WHERE enabled AND source = 'wikipedia'")}
     assert on == set(F.FALLACY_NAMES.values())
     assert conn.execute("SELECT enabled FROM fallacies WHERE id = %s", (manual,)).fetchone() == (True,)
@@ -641,9 +641,9 @@ def test_sync_renames_old_wikipedia_rows_keeping_their_ids(conn):
     assert F.sync_top_fallacies(conn)["renamed"] == 0                             # idempotent
 
 
-def test_sync_renames_all_twenty_old_names(conn):
+def test_sync_renames_all_old_names(conn):
     old_named(conn, *F.FALLACY_NAMES)
-    assert F.sync_top_fallacies(conn)["renamed"] == 20
+    assert F.sync_top_fallacies(conn)["renamed"] == 21
     assert {n for (n,) in conn.execute("SELECT name FROM fallacies")} == set(F.FALLACY_NAMES.values())
 
 
@@ -671,4 +671,4 @@ def test_sync_skips_a_rename_whose_new_name_is_already_taken(conn):
 def test_sync_top_fallacies_reports_names_missing_from_the_table(conn):
     fallacy(conn, "Ad hominem (Personal Attack)")
     r = F.sync_top_fallacies(conn)
-    assert len(r["missing"]) == 19 and "Ad hominem (Personal Attack)" not in r["missing"]
+    assert len(r["missing"]) == 20 and "Ad hominem (Personal Attack)" not in r["missing"]

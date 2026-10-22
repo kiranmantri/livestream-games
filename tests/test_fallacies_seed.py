@@ -39,17 +39,17 @@ def test_fixture_is_the_pinned_revision(page):
 
 def test_counts_on_the_pinned_page(items):
     assert len(items) == 97
-    assert sum(f.enabled for f in items) == 20
+    assert sum(f.enabled for f in items) == 21
     assert {f.kind for f in items} == {"formal", "informal"}
     assert len({M.fold(f.name) for f in items}) == len(items)            # names unique (table key)
 
 
 def test_only_the_top_20_are_enabled(items):
     from app.falacias import TOP_FALLACIES
-    assert len(TOP_FALLACIES) == 20 and len(set(TOP_FALLACIES)) == 20
+    assert len(TOP_FALLACIES) == 21 and len(set(TOP_FALLACIES)) == 21
     assert {f.name for f in items if f.enabled} == set(TOP_FALLACIES)
     assert {f.name for f in items} >= set(TOP_FALLACIES)           # every curated name exists on the pinned page (no typos)
-    assert not by_name(items, "Argumento ad logicam").enabled      # formal ones and the rest stay in the table, disabled
+    assert by_name(items, "Argumento ad logicam").enabled          # the 21st: "falácia da falácia", added on request
     assert not by_name(items, "Pooh-pooh").enabled
     assert by_name(items, "Falácia do espantalho").enabled
 
@@ -152,7 +152,7 @@ def test_seed_applies_twice_without_duplicates(items, test_db_url):
         c.execute(sql)
         c.execute(sql)
         n, on = c.execute("SELECT count(*), count(*) FILTER (WHERE enabled) FROM fallacies").fetchone()
-        assert (n, on) == (97, 20)
+        assert (n, on) == (97, 21)
         assert c.execute("SELECT count(*) FROM fallacies WHERE source <> 'wikipedia'").fetchone()[0] == 0
 
 
@@ -182,7 +182,7 @@ def test_every_top_fallacy_has_one_display_name_with_the_english_name_in_parenth
     from app.falacias import FALLACY_NAMES, TOP_FALLACIES
     assert set(FALLACY_NAMES) == set(TOP_FALLACIES)                       # keyed by the pt.wikipedia name
     shown = list(FALLACY_NAMES.values())
-    assert len(set(shown)) == 20
+    assert len(set(shown)) == 21
     assert all(re.fullmatch(r"[^()]+ \([A-Za-z][A-Za-z' /-]+\)", n) and len(n) <= 120 for n in shown), shown
 
 
@@ -194,6 +194,7 @@ def test_the_names_the_admin_asked_for():
     assert N["Falácia divina (apelo à incredulidade)"] == "Apelo à incredulidade (Argument from Incredulity)"
     post_hoc = next(v for k, v in N.items() if k.startswith("Post hoc ergo propter hoc"))
     assert post_hoc == "Falácia post hoc (Post Hoc Ergo Propter Hoc)"
+    assert N["Argumento ad logicam (falácia da falácia)"] == "Falácia da falácia (Fallacy Fallacy)"
 
 
 def test_the_seed_sql_uses_display_names_for_the_top_20_and_wikipedia_names_for_the_rest(items):
@@ -203,4 +204,4 @@ def test_the_seed_sql_uses_display_names_for_the_top_20_and_wikipedia_names_for_
         assert M.lit(shown) in sql, shown
         assert f"({M.lit(wiki)}," not in sql, wiki                         # the old name is not inserted any more
     rest = [f for f in items if f.name not in FALLACY_NAMES]
-    assert len(rest) == 77 and all(M.lit(f.name) in sql for f in rest)
+    assert len(rest) == 76 and all(M.lit(f.name) in sql for f in rest)
