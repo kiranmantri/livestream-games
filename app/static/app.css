@@ -309,3 +309,35 @@ main.fal .opts { max-height: 110px; padding: 2px 6px; }
 main.fal .opts label { padding: 3px 2px; font-size: .8rem; gap: 6px; }
 main.fal .opts .cat { margin: 3px 0 1px; font-size: .68rem; }
 main.fal .sendrow { margin: 4px 0; }
+
+/* admin/falacias: replay catalogue */
+.replaypanel a { color: var(--accent); overflow-wrap: anywhere; }
+.replaypanel .addrow { display: flex; gap: 10px; align-items: flex-end; }
+.replaypanel .addrow .videofield { flex: 1; margin: 0; }
+.replaypanel .addrow button { margin: 0; white-space: nowrap; }
+table.replays { table-layout: auto; }
+table.replays th { white-space: nowrap; overflow-wrap: normal; }
+table.replays td.num { white-space: nowrap; overflow-wrap: normal; font-variant-numeric: tabular-nums; }
+table.replays td.rp-video { min-width: 14em; }
+table.replays td.rp-status { min-width: 16em; max-width: 30em; }
+table.replays td.rp-acts { width: 1%; white-space: nowrap; }
+table.replays .acts { display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
+table.replays .acts form { margin: 0; }
+table.replays button.act { width: 100%; margin: 0; padding: 5px 12px; font-size: .85rem; border-radius: 6px; white-space: nowrap; cursor: pointer;
+                           border: 1px solid var(--line); background: var(--panel); color: var(--text); font-weight: 600; }
+table.replays button.act.primary { background: var(--accent); color: #082f49; border-color: var(--accent); }
+table.replays button.act.danger { background: transparent; color: var(--warn); border-color: var(--warn); }
+@media (max-width: 640px) {
+  .replaypanel .addrow { flex-direction: column; align-items: stretch; }
+  /* phones: one card per replay instead of a table that scrolls sideways (the buttons would be off-screen) */
+  table.replays, table.replays tbody, table.replays tr, table.replays td { display: block; }
+  table.replays thead { display: none; }
+  table.replays tr { border-bottom: 1px solid var(--line); padding: 8px 0; }
+  table.replays td { border: 0; padding: 3px 8px; }
+  table.replays td.num { display: inline-block; margin-right: 14px; }
+  table.replays td.num::before { content: attr(data-label) ": "; color: var(--muted); font-size: .8rem; }
+  table.replays td.rp-video, table.replays td.rp-status { min-width: 0; max-width: none; }
+  table.replays td.rp-acts { width: auto; padding-top: 6px; }
+  table.replays .acts { flex-direction: row; flex-wrap: wrap; }
+  table.replays .acts form { flex: 1 1 9em; }
+}

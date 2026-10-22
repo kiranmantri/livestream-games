@@ -365,7 +365,7 @@ Also state what the agent itself already ran and its real output; never claim su
 
 ### Validation for R4 (players never pick a replay)
     uv run pytest tests/test_live_pages.py -q           # expect: 49 passed (red run: 7 failed before the code)
-    uv run pytest -q                                    # expect: 1073 passed, 1 skipped
+    uv run pytest -q                                    # expect: 1076 passed, 1 skipped (after the browser QA layout fixes)
     # /falacias: no "Link do vídeo" field any more. A player's start follows a HORIZONTAL live only; a posted `video` value is ignored.
     #   No horizontal live => "Não há partida disponível agora... Aguarde o administrador iniciar uma partida." and no session is created.
     #   Joining a game the admin started (live OR replay, even while a live exists) works as before. FALACIAS_VIDEO_ID (env, tests/demos) is still a fallback.

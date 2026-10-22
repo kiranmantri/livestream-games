@@ -315,3 +315,27 @@ def test_a_ready_row_has_no_retry_button(adm, conn):
 def test_the_link_text_falls_back_to_the_video_id(adm, conn):
     R.submit(conn, VID)
     assert f">{VID}</a>" in adm.get(f"{Q}/replays", headers=basic()).text
+
+
+# ------------------------------------------------------------------ layout found in the browser QA
+def test_the_replay_panel_is_collapsed_at_the_bottom_while_a_game_runs(adm, conn):
+    make_ready(conn)
+    idle = adm.get(Q, headers=basic()).text
+    assert not re.search(r"<details[^>]*replaypanel", idle) and "replaypanel" in idle
+    S.start_session_as_admin(conn, game_type="falacias", video_id=VID, source_mode="replay")
+    html = adm.get(Q, headers=basic()).text
+    assert re.search(r"<details[^>]*replaypanel", html) and html.index("adminside") < html.index("replaypanel")
+
+
+def test_a_failed_action_keeps_the_collapsed_panel_open(adm, conn):
+    make_ready(conn)
+    S.start_session_as_admin(conn, game_type="falacias", video_id=VID, source_mode="replay")
+    r = post(adm, f"{Q}/replays/add", {"video": "nope"})
+    tag = re.search(r"<details[^>]*replaypanel[^>]*>", r.text)
+    assert r.status_code == 200 and tag and " open" in tag.group(0)
+
+
+def test_rows_carry_data_labels_for_the_phone_layout(adm, conn):
+    make_ready(conn)
+    html = adm.get(f"{Q}/replays", headers=basic()).text
+    assert f'data-label="{T.AF_REPLAY_COLS[1]}"' in html and f'data-label="{T.AF_REPLAY_COLS[2]}"' in html

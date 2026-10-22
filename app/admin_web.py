@@ -198,8 +198,8 @@ def register(rt, pool):
             if session is None:
                 return Main(admin_tabs("bingo"), H1(f"{T.TITLE} - admin"), P(T.ADMIN_NO_SESSION, cls="muted"),
                             start_form(A_.start_token(pw)),
-                            A(T.ADMIN_PHRASES_LINK, href="/admin/phrases", cls="btn small"),
-                            A(T.ADMIN_REFRESH, href="/admin", cls="btn"), cls="wide")
+                            Div(A(T.ADMIN_PHRASES_LINK, href="/admin/phrases", cls="btn"),
+                                A(T.ADMIN_REFRESH, href="/admin", cls="btn"), cls="adminbar"), cls="wide")
             return admin_page(session, A_.players(conn, session.id), G.leaderboard(conn, session.id),
                               A_.csrf_token(pw, session.id), A_.start_token(pw), sort, dir, open)
 

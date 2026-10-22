@@ -150,7 +150,7 @@ def replay_error_text(code: str) -> str:
 def _action(path: str, video_id: str, label: str, token: str, cls: str = "", confirm: str | None = None, ajax: bool = True):
     kw = {"hx_post": path, "hx_target": "#replaylist", "hx_swap": "outerHTML"} if ajax else {}
     return Form(Input(type="hidden", name="csrf", value=token), Input(type="hidden", name="video_id", value=video_id),
-                Button(label, type="submit", cls=cls), method="post", action=path, cls="inline",
+                Button(label, type="submit", cls=("act " + cls).strip()), method="post", action=path, cls="inline",
                 onsubmit=f"return confirm({confirm!r})" if confirm else None, **kw)
 
 
@@ -167,8 +167,10 @@ def replay_row(r: R.Replay, token: str, can_start: bool):
     if r.status in ("ready", "failed"):
         acts.append(_action("/admin/falacias/replays/delete", r.video_id, T.AF_REPLAY_DELETE, token, "danger",
                             confirm=T.AF_REPLAY_DELETE_CONFIRM))
-    return Tr(Td(link, Div(r.video_id, cls="muted small")), Td(fmt_duration(r.duration_s)),
-              Td(f"{r.transcript_rows} / {r.chat_rows}" if r.status == "ready" else "—", cls="num"), Td(*status), Td(*acts))
+    return Tr(Td(link, Div(r.video_id, cls="muted small") if r.title else None, cls="rp-video"), Td(fmt_duration(r.duration_s), cls="num", data_label=T.AF_REPLAY_COLS[1]),
+              Td(f"{r.transcript_rows} / {r.chat_rows}" if r.status == "ready" else "—", cls="num", data_label=T.AF_REPLAY_COLS[2]),
+              Td(*status, cls="rp-status"),
+              Td(Div(*acts, cls="acts"), cls="rp-acts"))
 
 
 def replay_list(conn, pw: str, error: str | None = None):
@@ -179,18 +181,23 @@ def replay_list(conn, pw: str, error: str | None = None):
     running = any(r.status in R.RUNNING for r in rows)
     kw = {"hx_get": "/admin/falacias/replays", "hx_trigger": QUEUE_POLL, "hx_swap": "outerHTML"} if running else {}
     table = Div(Table(Thead(Tr(*[Th(c) for c in T.AF_REPLAY_COLS])), Tbody(*[replay_row(r, token, can_start) for r in rows]),
-                      cls="users"), cls="tablewrap") if rows else P(T.AF_REPLAY_EMPTY, cls="muted")
+                      cls="users replays"), cls="tablewrap") if rows else P(T.AF_REPLAY_EMPTY, cls="muted")
     return Div(Div(error, cls="error", role="alert") if error else None, table, id="replaylist", **kw)
 
 
-def replays_panel(conn, pw: str, error: str | None = None):
-    return Div(H2(T.AF_REPLAYS), P(T.AF_REPLAY_HELP, cls="muted small"),
+def replays_panel(conn, pw: str, error: str | None = None, fold: bool = False):
+    """fold=True (a game is running): collapsed at the bottom so the queue, messages and leaderboard stay in view."""
+    head = (Summary(T.AF_REPLAYS),) if fold else (H2(T.AF_REPLAYS),)
+    box = Details if fold else Div
+    extra = {"open": True} if fold and error else {}
+    return box(*head, P(T.AF_REPLAY_HELP, cls="muted small"),
                Form(Input(type="hidden", name="csrf", value=A_.replays_token(pw)),
-                    Label(T.AF_REPLAY_ADD_LABEL, Input(type="url", name="video", placeholder="https://www.youtube.com/watch?v=...",
-                                                       autocomplete="off", required=True), cls="videofield"),
-                    Button(T.AF_REPLAY_ADD, type="submit"), method="post", action="/admin/falacias/replays/add",
-                    hx_post="/admin/falacias/replays/add", hx_target="#replaylist", hx_swap="outerHTML", cls="startform"),
-               replay_list(conn, pw, error), cls="panel")
+                    Div(Label(T.AF_REPLAY_ADD_LABEL, Input(type="url", name="video", placeholder="https://www.youtube.com/watch?v=...",
+                                                           autocomplete="off", required=True), cls="videofield"),
+                        Button(T.AF_REPLAY_ADD, type="submit", cls="primary"), cls="addrow"),
+                    method="post", action="/admin/falacias/replays/add",
+                    hx_post="/admin/falacias/replays/add", hx_target="#replaylist", hx_swap="outerHTML"),
+               replay_list(conn, pw, error), cls="panel replaypanel", **extra)
 
 
 def error_text(error: str, detail: str | None) -> str:
@@ -239,8 +246,8 @@ def page_view(conn, session: S.GameSession | None, pw: str, error: str | None = 
                          P(T.AF_QUEUE_EMPTY, cls="muted empty"), poller(after), cls="panel"))
     else:
         parts.append(start_form(pw))
-    parts.append(replays_panel(conn, pw, replay_error))
     parts.append(side_view(conn, session, token))
+    parts.append(replays_panel(conn, pw, replay_error, fold=active))
     return (Title(T.AF_TITLE), Main(*parts, cls="wide"))
 
 
