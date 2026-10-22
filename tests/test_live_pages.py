@@ -48,7 +48,7 @@ def test_a_horizontal_live_is_the_source(conn, test_db_url, no_env_video):
     assert r.status_code == 303 and sessions(conn) == [(LIVE_ID, "live")]
 
 
-def test_a_horizontal_live_beats_a_video_url_typed_by_the_player(conn, test_db_url):
+def test_a_horizontal_live_ignores_a_video_url_posted_by_a_player(conn, test_db_url):
     r = post_start(test_db_url, make_live(HORIZONTAL), {"video": f"https://www.youtube.com/watch?v={VID}"})
     assert r.status_code == 303 and sessions(conn) == [(LIVE_ID, "live")]
 
@@ -65,33 +65,25 @@ def test_the_lookup_that_is_still_running_is_awaited_at_start(conn, test_db_url,
     assert r.status_code == 303 and sessions(conn) == [(LIVE_ID, "live")]
 
 
-def test_a_vertical_live_is_ignored_and_without_a_url_nothing_starts(conn, test_db_url, no_env_video):
+def test_a_vertical_live_is_ignored_and_nothing_starts(conn, test_db_url, no_env_video):
     r = post_start(test_db_url, make_live(VERTICAL))
     assert r.status_code == 200 and sessions(conn) == [] and T.ERRORS["no_source"] in r.text
-    assert 'name="video"' in r.text
+    assert 'name="video"' not in r.text
 
 
-def test_offline_without_a_url_asks_for_one(conn, test_db_url, no_env_video):
+def test_offline_players_are_told_to_wait_for_the_admin(conn, test_db_url, no_env_video):
     r = post_start(test_db_url, make_live(None))
     assert r.status_code == 200 and sessions(conn) == [] and T.ERRORS["no_source"] in r.text
+    assert "administrador" in T.ERRORS["no_source"].lower() and "cole" not in T.ERRORS["no_source"].lower()
 
 
-def test_offline_with_an_imported_replay_url_starts_that_replay(conn, test_db_url, no_env_video):
-    r = post_start(test_db_url, make_live(None), {"video": f"https://youtu.be/{VID}"})
-    assert r.status_code == 303 and sessions(conn) == [(VID, "replay")]
-
-
-def test_offline_with_a_replay_that_was_not_imported_names_the_video_and_the_command(conn, test_db_url, no_env_video):
-    r = post_start(test_db_url, make_live(None), {"video": "https://youtu.be/zzzzzzzzzzz"})
-    assert r.status_code == 200 and sessions(conn) == []
-    assert "zzzzzzzzzzz" in r.text and "corpus replay-import zzzzzzzzzzz" in r.text
-
-
-@pytest.mark.parametrize("bad", ["not a link", "https://evil.example/watch?v=abcdefghijk", "javascript:alert(1)",
-                                 "https://www.youtube.com.evil.com/watch?v=abcdefghijk"])
-def test_a_bad_url_is_refused_without_a_session(conn, test_db_url, no_env_video, bad):
-    r = post_start(test_db_url, make_live(None), {"video": bad})
-    assert r.status_code == 200 and sessions(conn) == [] and T.ERRORS["invalid_video"] in r.text
+@pytest.mark.parametrize("link", [f"https://youtu.be/{VID}", "https://youtu.be/zzzzzzzzzzz", "not a link",
+                                  "https://evil.example/watch?v=abcdefghijk"])
+def test_a_link_posted_by_a_player_is_ignored_when_offline(conn, test_db_url, no_env_video, link):
+    """Only the admin chooses replays (catalogue). Even an imported video does not start for a player."""
+    r = post_start(test_db_url, make_live(None), {"video": link})
+    assert r.status_code == 200 and sessions(conn) == [] and T.ERRORS["no_source"] in r.text
+    assert T.ERRORS["invalid_video"] not in r.text and "corpus replay-import" not in r.text
 
 
 def test_env_replay_still_works_when_nothing_else_is_given(conn, test_db_url):             # test/demo mode (FALACIAS_VIDEO_ID)
@@ -108,11 +100,21 @@ def test_joining_never_needs_a_source(conn, test_db_url, no_env_video):
 
 
 # ---------------------------------------------------------------- the entry page
-def test_entry_offers_the_url_field_when_there_is_no_horizontal_live(conn, test_db_url, no_env_video):
-    tc, b = page_for(test_db_url, make_live(VERTICAL))
+def test_entry_never_offers_a_url_field_to_players(conn, test_db_url, no_env_video):
+    for info in (VERTICAL, None):
+        tc, b = page_for(test_db_url, make_live(info))
+        with tc:
+            html = named(b, "Ana").get("/falacias").text
+        assert 'name="video"' not in html and "Link do vídeo" not in html
+
+
+def test_players_join_a_game_the_admin_started_from_a_replay(conn, test_db_url, no_env_video):
+    S.start_session_as_admin(conn, game_type="falacias", video_id=VID, source_mode="replay")
+    tc, b = page_for(test_db_url, make_live(HORIZONTAL))                       # a live exists too: the admin's pick still wins
     with tc:
-        html = named(b, "Ana").get("/falacias").text
-    assert 'name="video"' in html and T.FAL_VIDEO_FIELD in html
+        html = named(b, "Bia").get("/falacias").text
+        r = named(b, "Bia").post("/falacias/join")
+    assert "/falacias/join" in html and 'name="video"' not in html and r.status_code == 303
 
 
 def test_entry_hides_the_url_field_and_the_replay_line_when_a_horizontal_live_exists(conn, test_db_url):

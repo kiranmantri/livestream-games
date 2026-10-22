@@ -352,7 +352,7 @@ Also state what the agent itself already ran and its real output; never claim su
 
 ### Validation for R3 (admin replay catalogue on /admin/falacias)
     uv run pytest tests/test_replays_admin_web.py -q    # expect: 39 passed (red run: 34 failed before the code)
-    uv run pytest -q                                    # expect: 1074 passed, 1 skipped (3 old tests in test_live_pages.py were replaced: the admin start form has no link field any more)
+    uv run pytest -q                                    # expect: 1074 passed at R3, 1073 after R4 (3 old tests in test_live_pages.py were replaced: the admin start form has no link field any more)
     uv run migrate                                      # YOU: 0010 on the dev DB
     uv run uvicorn app.main:app --port 8001             # http://127.0.0.1:8001/admin/falacias (user admin, ADMIN_PASSWORD)
     # Panel "Replays disponíveis": paste a link of a FINISHED horizontal stream -> "Coletar" -> row "Na fila" -> "Baixando" -> "Importando" -> "Pronto"
@@ -361,8 +361,15 @@ Also state what the agent itself already ran and its real output; never claim su
     #   (the admin's explicit pick wins). "Excluir" asks to confirm; refused while queued/running or while an active game uses the replay.
     #   The plain "Iniciar partida de Falácias" button is automatic: horizontal live, else a message telling you to pick a replay.
     docker compose exec db psql -U livegames -c "select video_id, status, transcript_rows, chat_rows, error from replays order by created_at"
-    # Not built yet (R4): players can still type a replay link on /falacias; the field goes away there.
     # Mutation check (repo COPY): 27/27 killed (mutate_r3.py; the first run had 5 survivors -> tests added). NOT checked: the page in a real browser (htmx swaps).
+
+### Validation for R4 (players never pick a replay)
+    uv run pytest tests/test_live_pages.py -q           # expect: 49 passed (red run: 7 failed before the code)
+    uv run pytest -q                                    # expect: 1073 passed, 1 skipped
+    # /falacias: no "Link do vídeo" field any more. A player's start follows a HORIZONTAL live only; a posted `video` value is ignored.
+    #   No horizontal live => "Não há partida disponível agora... Aguarde o administrador iniciar uma partida." and no session is created.
+    #   Joining a game the admin started (live OR replay, even while a live exists) works as before. FALACIAS_VIDEO_ID (env, tests/demos) is still a fallback.
+    # Mutation check (repo COPY): 6/6 killed (mutate_r4.py). NOT checked: the entry page in a real browser.
 
 ### Deploying to Fly.io - checklist (every release)
     # 0. Local: tests green and everything committed + pushed.

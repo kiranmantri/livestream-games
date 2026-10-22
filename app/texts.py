@@ -34,7 +34,7 @@ ERRORS = {
     "no_phrases": "Não foi possível montar sua cartela (poucas expressões cadastradas).",
     "feed_unavailable": FEED_UNAVAILABLE,
     "feed_down": FEED_UNAVAILABLE,
-    "no_source": "O canal não está ao vivo na horizontal. Cole o link de um vídeo gravado (replay) já importado.",
+    "no_source": "Não há partida disponível agora: o canal não está ao vivo na horizontal. Aguarde o administrador iniciar uma partida.",
     "invalid_video": "Link inválido. Use um link do YouTube (youtube.com ou youtu.be).",
     "generic": "Algo deu errado. Tente de novo.",
 }
@@ -224,7 +224,6 @@ SRC_LIVE_OFFLINE = "O canal não está ao vivo agora."
 SRC_ONLY_HORIZONTAL = "Só transmissões na horizontal são usadas."
 
 # ---- Falácias: live source (L4)
-FAL_VIDEO_FIELD = "Link do vídeo gravado (replay)"
 FAL_REPLAY_MISSING = "O vídeo {id} ainda não foi importado. No servidor, rode: uv run corpus replay-import {id}"
 SRC_SESSION_LIVE = "Transmissão ao vivo da partida"
 FAL_NO_TRANSCRIPT = (

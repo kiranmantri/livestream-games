@@ -194,11 +194,6 @@ def source_view(live: livestream.LiveStream, sess: tuple[str | None, str | None]
                id="source", cls="source", hx_get="/falacias/source", hx_trigger=poll, hx_swap="outerHTML")
 
 
-def video_field():
-    return Label(T.FAL_VIDEO_FIELD, Input(type="url", name="video", placeholder="https://www.youtube.com/watch?v=...", autocomplete="off"),
-                 cls="videofield")
-
-
 def spoken_view(fallacies: list[F.Fallacy]):
     return Form(H2(T.FAL_SPOKEN_HEADING), P(T.FAL_SPOKEN_HELP, cls="muted"),
                 Textarea(id="sp-text", name="text", maxlength=F.MAX_SPOKEN, rows=3, required=True, placeholder=T.FAL_SPOKEN_PLACEHOLDER,
@@ -216,10 +211,10 @@ def spoken_feedback_view(code: str | None = None):
 
 
 def entry_view(active: S.GameSession | None, n_players: int = 0, error: str | None = None, name: str = "", source=None,
-               show_video: bool = False, detail: str | None = None):
+               detail: str | None = None):
     if active is None:
         panel = Div(H2(T.FAL_START_HEADING), P(T.START_HELP, cls="muted"),
-                    play_form("/falacias/start", T.START_BUTTON, name, "/falacias", extra=video_field() if show_video else None), cls="panel")
+                    play_form("/falacias/start", T.START_BUTTON, name, "/falacias"), cls="panel")
     else:
         panel = Div(H2(T.FAL_JOIN_HEADING), P(T.JOIN_HELP.format(n=n_players), cls="muted"),
                     play_form("/falacias/join", T.JOIN_BUTTON, name, "/falacias"), cls="panel")
@@ -272,15 +267,11 @@ def ended_view(conn, session: S.GameSession, me: S.Player, rows: list[F.LeaderRo
 def register(rt, pool, live: livestream.LiveStream | None = None) -> None:
     live = live or livestream.LiveStream()
 
-    def show_video_field() -> bool:
-        info = live.info()
-        return not (info is not None and info.horizontal)
-
     def session_src(conn, request: Request):
         me = S.resume(conn, token_of(request, GAME), GAME)
         return feed.session_source(conn, me.session_id) if me is not None else None
 
-    def enter(request: Request, kind: str, name: str, video: str = ""):
+    def enter(request: Request, kind: str, name: str):
         ip = client_ip_of(request)
         name = name or name_of(request) or ""
         with pool.connection() as conn:
@@ -288,7 +279,7 @@ def register(rt, pool, live: livestream.LiveStream | None = None) -> None:
                 if kind == "start":
                     if not live.known:
                         live.refresh()                 # the first visitor waits for the answer: a live must never be missed
-                    source = feed.choose_source(conn, live.info(), video)
+                    source = feed.choose_source(conn, live.info(), None)   # players never pick a replay: the admin does
                     _, player, token = feed.start_falacias(conn, name, ip, source)
                 else:
                     _, player, token = S.join_session(conn, name, ip, existing_token=token_of(request, GAME), game_type=GAME)
@@ -297,7 +288,7 @@ def register(rt, pool, live: livestream.LiveStream | None = None) -> None:
                     return name_gate("/falacias", error=e.code, value=name)
                 active = S.get_active_session(conn, GAME)
                 n = S.count_players(conn, active.id) if active else 0
-                return entry_view(active, n, error=e.code, name=name, source=source_view(live), show_video=show_video_field(),
+                return entry_view(active, n, error=e.code, name=name, source=source_view(live),
                                   detail=getattr(e, "video_id", None))
         return remember_name(set_token_cookie(RedirectResponse("/falacias", status_code=303), GAME, token), player.name)
 
@@ -319,12 +310,11 @@ def register(rt, pool, live: livestream.LiveStream | None = None) -> None:
             name = name_of(request)
             if name is None:
                 return name_gate("/falacias")
-            return entry_view(active, S.count_players(conn, active.id) if active else 0, name=name, source=source_view(live),
-                              show_video=show_video_field())
+            return entry_view(active, S.count_players(conn, active.id) if active else 0, name=name, source=source_view(live))
 
     @rt("/falacias/start", methods=["POST"])
-    def falacias_start(request: Request, name: str = "", video: str = ""):
-        return enter(request, "start", name, video)
+    def falacias_start(request: Request, name: str = ""):
+        return enter(request, "start", name)
 
     @rt("/falacias/join", methods=["POST"])
     def falacias_join(request: Request, name: str = ""):
