@@ -151,8 +151,17 @@ def test_entry_page_shows_the_replay_video_url_and_escaped_title(conn, test_db_u
     tc, b = page_for(test_db_url, make_live())
     with tc:
         html = named(b, "Ana").get("/falacias").text
-    assert T.SRC_VIDEO in html and replay_url() in html and "Debate de teste &lt;b&gt;x&lt;/b&gt;" in html and "<b>x</b>" not in html
+    # players cannot start a replay, so the entry page names none (the admin's pick shows on the game page)
+    assert replay_url() not in html and T.SRC_VIDEO not in html
     assert 'id="source"' in html and T.SRC_ONLY_HORIZONTAL in html
+
+
+def test_game_page_escapes_the_title(conn, test_db_url):
+    tc, b = page_for(test_db_url, make_live())
+    with tc:
+        start(named(b, "Ana"), "Ana")
+        html = b.get("/falacias").text
+    assert "Debate de teste &lt;b&gt;x&lt;/b&gt;" in html and "<b>x</b>" not in html
 
 
 def test_game_page_shows_it_too(conn, test_db_url):
@@ -166,7 +175,8 @@ def test_game_page_shows_it_too(conn, test_db_url):
 def test_unknown_title_shows_the_url_and_a_notice(conn, test_db_url):
     tc, b = page_for(test_db_url, make_live(title=None))
     with tc:
-        html = named(b, "Ana").get("/falacias").text
+        start(named(b, "Ana"), "Ana")
+        html = b.get("/falacias").text
     assert replay_url() in html and T.SRC_TITLE_UNKNOWN in html
 
 

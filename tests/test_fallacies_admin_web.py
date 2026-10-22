@@ -51,6 +51,7 @@ def test_every_route_requires_credentials(web, conn):
     for method, url in [("get", "/admin/fallacies"), ("post", "/admin/fallacies/add"), ("get", f"/admin/fallacies/{i}"),
                         ("get", f"/admin/fallacies/{i}/edit"), ("post", f"/admin/fallacies/{i}/save"),
                         ("post", f"/admin/fallacies/{i}/delete")]:
+        A.reset_throttle()                       # this test sends a wrong password on every route: not what the lock is for
         assert getattr(web, method)(url).status_code == 401, (method, url)
         bad = {"authorization": "Basic " + base64.b64encode(b"admin:wrong").decode()}
         assert getattr(web, method)(url, headers=bad).status_code == 401, (method, url)
@@ -202,3 +203,18 @@ def test_the_picker_of_a_game_page_uses_the_edited_and_new_names_and_hides_disab
     web.post(f"/admin/fallacies/{ids[1]}/save", headers=HX, data={"name": "Falácia 1", "category": "Relevância"})   # disabled
     names = {f.name for f in F.list_fallacies(conn)}
     assert "Nome editado (Edited)" in names and "Falácia 1" not in names
+
+
+def test_every_input_of_the_page_has_an_accessible_name(web, conn):
+    import re
+    rows(conn)
+    html = web.get("/admin/fallacies", headers=AUTH).text
+    labels = set(re.findall(r'<label[^>]*for="([^"]+)"', html))
+    bad = []
+    for tag in re.findall(r"<input[^>]*>", html):
+        if 'type="hidden"' in tag:
+            continue
+        iid = re.search(r'id="([^"]+)"', tag)
+        if 'aria-label=' not in tag and not (iid and iid.group(1) in labels):
+            bad.append(tag)
+    assert not bad, bad[:3]

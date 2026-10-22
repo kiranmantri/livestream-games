@@ -71,14 +71,14 @@ def safe_next(value: str | None) -> str:
 def name_gate(next_path: str = "/", error: str | None = None, value: str = ""):
     """The FIRST thing a visitor sees: ask for a nickname. No tabs yet."""
     return page(
-        H1(T.TITLE), H2(T.NAME_HEADING), P(T.NAME_HELP, cls="tag"), error_box(error),
+        H1(T.SITE_TITLE), H2(T.NAME_HEADING), P(T.NAME_HELP, cls="tag"), error_box(error),
         Div(Form(Label(T.NAME_LABEL, fr="name"),
                  Input(type="text", id="name", name="name", value=value, maxlength=S.MAX_NAME_LEN,
-                       required=True, autocomplete="nickname", autofocus=True),
+                       required=True, autocomplete="nickname", autofocus=True, onfocus="this.select()"),
                  Input(type="hidden", name="next", value=safe_next(next_path)),
                  Button(T.NAME_BUTTON, type="submit", cls="primary"),
                  method="post", action="/name", cls="entry"), cls="panel"),
-        tabs=False)
+        title=T.SITE_TITLE, tabs=False)
 
 
 def play_form(action: str, button: str, name: str, next_path: str, extra=None):
@@ -93,6 +93,12 @@ def name_error_gate(code: str, next_path: str, value: str):
 
 
 NAME_ERRORS = ("invalid_name", "name_taken")
+URL_ERRORS = ("ip_limit_reached",)       # errors that survive a redirect (post/redirect/get): only these codes are read from ?err=
+
+
+def url_error(request: Request) -> str | None:
+    code = request.query_params.get("err")
+    return code if code in URL_ERRORS else None
 
 
 def recovery_view(request: Request, game_type: str):

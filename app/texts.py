@@ -7,7 +7,14 @@ START_HEADING = "Nenhuma partida em andamento"
 START_HELP = "Você será o primeiro: comece a partida."
 START_BUTTON = "Começar partida"
 JOIN_HEADING = "Tem uma partida rolando!"
-JOIN_HELP = "{n} jogador(es) na partida."
+SITE_TITLE = "Jogos da Live"
+NOT_FOUND = "Página não encontrada."
+BACK_HOME = "Voltar ao início"
+ADMIN_LOCKED = "Muitas tentativas erradas. Tente de novo em alguns minutos."
+
+
+def players_in_game(n: int) -> str:
+    return f"{n} jogador na partida." if n == 1 else f"{n} jogadores na partida."
 JOIN_BUTTON = "Entrar na partida"
 NAME_LABEL = "Seu nome (máx. 20 letras)"
 NAME_HEADING = "Qual é o seu nome?"
@@ -28,7 +35,7 @@ AVATAR_ALT = "Logo do canal"
 ERRORS = {
     "invalid_name": "Nome inválido: use de 1 a 20 caracteres, sem símbolos de controle.",
     "name_taken": "Esse nome já está em uso nesta partida. Escolha outro.",
-    "ip_limit_reached": "Já há jogadores demais entrando desta rede (limite {n}).",
+    "ip_limit_reached": "Já há {n} jogadores entrando desta rede, que é o limite. Peça ao apresentador para liberar mais vagas.",
     "session_already_active": "Alguém acabou de começar a partida. Entre nela!",
     "no_active_session": "A partida acabou ou ainda não começou.",
     "no_phrases": "Não foi possível montar sua cartela (poucas expressões cadastradas).",
@@ -286,6 +293,7 @@ FA_TITLE = "Lista de falácias"
 FA_ADD_LABEL = "Nova falácia"
 FA_ADD_HELP = "Formato: Nome em português (English name - Nome em latim). Use nomes curtos; o latim só quando existir."
 FA_NAME, FA_CATEGORY, FA_DESCRIPTION = "Nome", "Categoria", "Descrição"
+FA_ACTIVE = "Ativa"
 FA_ADD_BUTTON = "Adicionar"
 FA_TOTAL = "{n} falácias"
 FA_EMPTY = "Nenhuma falácia encontrada."

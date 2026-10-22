@@ -288,3 +288,48 @@ def test_start_token_pure():
     assert A.start_ok(PW, A.start_token(PW))
     assert not A.start_ok(PW, "") and not A.start_ok(PW, None) and not A.start_ok("other", A.start_token(PW))
     assert A.start_token(PW) != A.csrf_token(PW, uuid.uuid4())
+
+
+# ------------------------------------------------------------ brute force throttle
+def test_admin_locks_an_ip_after_five_wrong_passwords(web, monkeypatch):
+    from app import admin as A_
+    now = [1000.0]
+    monkeypatch.setattr(A_, "_now", lambda: now[0])
+    A_.reset_throttle()
+    b = web()
+    for _ in range(5):
+        assert b.get("/admin", headers=basic(pw="wrong")).status_code == 401
+    r = b.get("/admin", headers=basic(pw="wrong"))
+    assert r.status_code == 429 and int(r.headers["retry-after"]) > 0
+    assert b.get("/admin", headers=basic()).status_code == 429          # the right password is refused too while locked
+    assert web("203.0.113.99").get("/admin", headers=basic()).status_code == 200    # other IPs are unaffected
+    now[0] += A_.LOCK_SECONDS + 1
+    assert b.get("/admin", headers=basic()).status_code == 200
+
+
+def test_admin_success_and_missing_header_do_not_count_as_failures(web, monkeypatch):
+    from app import admin as A_
+    monkeypatch.setattr(A_, "_now", lambda: 1000.0)
+    A_.reset_throttle()
+    b = web()
+    for _ in range(10):
+        assert b.get("/admin").status_code == 401                       # the browser's first, header-less request
+    for _ in range(4):
+        b.get("/admin", headers=basic(pw="wrong"))
+    assert b.get("/admin", headers=basic()).status_code == 200          # success clears the counter
+    for _ in range(4):
+        assert b.get("/admin", headers=basic(pw="wrong")).status_code == 401
+    assert b.get("/admin", headers=basic()).status_code == 200
+
+
+def test_admin_throttle_forgets_old_failures(web, monkeypatch):
+    from app import admin as A_
+    now = [1000.0]
+    monkeypatch.setattr(A_, "_now", lambda: now[0])
+    A_.reset_throttle()
+    b = web()
+    for _ in range(4):
+        b.get("/admin", headers=basic(pw="wrong"))
+    now[0] += A_.FAIL_WINDOW + 1
+    for _ in range(4):
+        assert b.get("/admin", headers=basic(pw="wrong")).status_code == 401

@@ -6,6 +6,7 @@ import binascii
 import hashlib
 import hmac
 import os
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -22,6 +23,43 @@ def admin_password() -> str | None:
     """None = admin disabled (unset or placeholder password)."""
     pw = os.environ.get("ADMIN_PASSWORD", "")
     return None if pw.strip() in _REFUSED_PASSWORDS else pw
+
+
+# Brute-force throttle (in memory, per client IP; the app runs as ONE process/Machine). A request WITHOUT credentials is the
+# browser's normal first call and never counts; only a wrong password does.
+MAX_FAILS = 5
+FAIL_WINDOW = 300.0      # failures older than this are forgotten
+LOCK_SECONDS = 300.0     # lock length, counted from the last failure
+_fails: dict[str, list[float]] = {}
+
+
+def _now() -> float:
+    return time.monotonic()
+
+
+def reset_throttle() -> None:
+    _fails.clear()
+
+
+def lock_remaining(ip: str) -> int:
+    """Seconds the IP stays locked (0 = free)."""
+    now = _now()
+    recent = [t for t in _fails.get(ip, []) if now - t < FAIL_WINDOW]
+    if recent:
+        _fails[ip] = recent
+    else:
+        _fails.pop(ip, None)
+    if len(recent) >= MAX_FAILS:
+        return max(1, int(LOCK_SECONDS - (now - recent[-1])) + 1) if now - recent[-1] < LOCK_SECONDS else 0
+    return 0
+
+
+def record_failure(ip: str) -> None:
+    _fails.setdefault(ip, []).append(_now())
+
+
+def record_success(ip: str) -> None:
+    _fails.pop(ip, None)
 
 
 def check_basic(header: str | None, password: str) -> bool:

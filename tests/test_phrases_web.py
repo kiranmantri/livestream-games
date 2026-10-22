@@ -47,6 +47,8 @@ def test_every_phrase_route_requires_credentials(web, conn):
                         ("get", f"/admin/phrases/{pid}/edit"), ("post", f"/admin/phrases/{pid}/save"),
                         ("post", f"/admin/phrases/{pid}/delete"), ("post", "/admin/phrases/bulk-delete"),
                         ("post", "/admin/phrases/bulk-enable"), ("post", "/admin/phrases/bulk-disable")]:
+        from app import admin as _A
+        _A.reset_throttle()                      # one wrong password per route is fine; the lock has its own tests
         r = getattr(web, method)(url)
         assert r.status_code == 401, (method, url)
         r = getattr(web, method)(url, headers={"authorization": "Basic " + base64.b64encode(b"admin:wrong").decode()})

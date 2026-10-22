@@ -171,7 +171,8 @@ def test_ip_limit_enforced_on_join(web, monkeypatch):
     start(web(IP_A))
     assert web(IP_A).post("/join", data={"name": "B"}).status_code == 303
     r = web(IP_A).post("/join", data={"name": "C"})
-    assert r.status_code == 200 and "limite 2" in r.text
+    assert r.status_code == 303 and r.headers["location"] == "/?err=ip_limit_reached"
+    assert "apresentador" in named(web(IP_A), "C").get(r.headers["location"]).text
 
 
 def test_name_is_html_escaped(web):

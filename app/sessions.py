@@ -190,6 +190,16 @@ def find_player(conn: psycopg.Connection, raw_token: str | None) -> tuple[Player
     return (player, _get_session(conn, player.session_id)) if player else None
 
 
+def name_taken(conn: psycopg.Connection, session_id: uuid.UUID, name: str) -> bool:
+    """True when a player of the session already has this name (case-insensitive, same rule as the DB's name_ci)."""
+    try:
+        clean = normalize_name(name)
+    except InvalidName:
+        return False
+    return conn.execute("SELECT 1 FROM users WHERE session_id = %s AND name_ci = lower(btrim(%s))",
+                        (session_id, clean)).fetchone() is not None
+
+
 def count_players(conn: psycopg.Connection, session_id: uuid.UUID) -> int:
     row = conn.execute("SELECT count(*) FROM users WHERE session_id = %s", (session_id,)).fetchone()
     return row[0] if row else 0

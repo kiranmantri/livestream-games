@@ -284,3 +284,23 @@ def test_falacias_recovery_link_restores_the_player(web, conn):
     assert r.status_code == 303 and r.headers["location"] == "/falacias"
     assert S.cookie_name("falacias") in r.headers["set-cookie"] and "lg_token=" not in r.headers["set-cookie"]
     assert "Ana" in other.get("/falacias").text and 'id="pane-chat"' in other.get("/falacias").text
+
+
+def test_falacias_entry_page_does_not_show_a_replay_players_cannot_start(web, conn):
+    html = named(web(), "Zed").get("/falacias").text
+    assert "watch?v=" not in html
+
+
+def test_falacias_entry_does_not_offer_join_for_a_taken_name(web, conn):
+    start(web())                                            # Ana
+    b = named(web("203.0.113.11"), "ANA")
+    html = b.get("/falacias").text
+    assert 'action="/falacias/join"' not in html and "já está em uso" in html
+    assert 'action="/falacias/join"' in named(web("203.0.113.12"), "Bia").get("/falacias").text
+
+
+def test_falacias_ip_limit_redirects_after_post(web, conn, monkeypatch):
+    monkeypatch.setenv("MAX_USERS_PER_IP", "1")
+    start(web())
+    r = named(web(), "Bia").post("/falacias/join", data={"name": "Bia"})
+    assert r.status_code == 303 and r.headers["location"] == "/falacias?err=ip_limit_reached"

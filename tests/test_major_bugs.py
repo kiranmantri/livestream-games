@@ -79,3 +79,65 @@ def test_recovery_link_is_not_shown_on_the_entry_page(web):
     b = web()
     b.post("/name", data={"name": "Ana", "next": "/"})
     assert "/r/bingo/" not in b.get("/").text
+
+
+# ---------------------------------------------------------------- group 1 (backlog bugs)
+def _named(b, name):
+    b.post("/name", data={"name": name, "next": "/"})
+    return b
+
+
+def test_entry_page_does_not_offer_join_for_a_name_that_is_already_taken(web):
+    a = _named(web(), "Ana")
+    a.post("/start", data={"name": "Ana"})
+    b = _named(web("203.0.113.11"), "ANA")                      # same name, other letters' case, no cookie
+    html = b.get("/").text
+    assert 'action="/join"' not in html and S_ERR_TAKEN in html
+    assert 'name="name"' in html                                # the name form is back, to pick another one
+    c = _named(web("203.0.113.12"), "Bia")
+    assert 'action="/join"' in c.get("/").text                  # a free name still gets the one-button join
+
+
+S_ERR_TAKEN = "Esse nome já está em uso nesta partida."
+
+
+def test_name_field_is_selected_on_focus_so_typing_replaces_it(web):
+    html = web().get("/name?next=/").text
+    assert 'onfocus="this.select()"' in html
+
+
+def test_ip_limit_redirects_after_post_and_explains(web, monkeypatch):
+    monkeypatch.setenv("MAX_USERS_PER_IP", "1")
+    _named(web(), "Ana").post("/start", data={"name": "Ana"})
+    b = _named(web(), "Bia")                                    # same IP
+    r = b.post("/join", data={"name": "Bia"})
+    assert r.status_code == 303 and r.headers["location"] == "/?err=ip_limit_reached"
+    page = b.get(r.headers["location"]).text
+    assert "apresentador" in page and "set-cookie" not in b.get("/").headers
+
+
+def test_unknown_err_codes_in_the_url_are_ignored(web):
+    b = _named(web(), "Ana")
+    html = b.get("/?err=%3Cscript%3E").text
+    assert "<script>" not in html and 'role="alert"' not in html
+
+
+def test_player_count_has_correct_singular_and_plural(web):
+    a = _named(web(), "Ana")
+    a.post("/start", data={"name": "Ana"})
+    one = _named(web("203.0.113.11"), "Bia").get("/").text
+    assert "1 jogador na partida" in one and "jogador(es)" not in one
+    _named(web("203.0.113.11"), "Bia").post("/join", data={"name": "Bia"})
+    two = _named(web("203.0.113.12"), "Cris").get("/").text
+    assert "2 jogadores na partida" in two
+
+
+def test_unknown_page_is_a_friendly_404_with_a_way_back(web):
+    r = web().get("/nao-existe")
+    assert r.status_code == 404 and 'href="/"' in r.text and "<html" in r.text
+
+
+def test_name_gate_is_not_titled_as_bingo(web):
+    html = web().get("/").text
+    assert "<title>Bingo da Live</title>" not in html and "<title>Jogos da Live</title>" in html
+    assert "<h1>Jogos da Live</h1>" in html

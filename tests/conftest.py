@@ -105,3 +105,12 @@ def no_replay_collector(monkeypatch):
     yield
     from app import replaycollector
     replaycollector.stop()
+
+
+@pytest.fixture(autouse=True)
+def _admin_throttle_reset():
+    """The admin brute-force throttle is process-wide state: every test starts with nobody locked."""
+    from app import admin
+    admin.reset_throttle()
+    yield
+    admin.reset_throttle()

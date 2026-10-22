@@ -49,6 +49,7 @@ from app import sessions as S
 from app import texts as T
 from app.ui import (
     NAME_ERRORS,
+    URL_ERRORS,
     client_ip_of,
     error_box,
     menu,
@@ -60,6 +61,7 @@ from app.ui import (
     remember_name,
     set_token_cookie,
     token_of,
+    url_error,
 )
 
 GAME = "falacias"
@@ -177,7 +179,7 @@ def source_view(live: livestream.LiveStream, sess: tuple[str | None, str | None]
         vid, label = sess_vid, (T.SRC_SESSION_LIVE if sess_mode == "live" else T.SRC_VIDEO)
     else:
         vid, label = feed.feed_config().video_id, T.SRC_VIDEO
-    show_video = not (sess_vid is None and info is not None and info.horizontal)
+    show_video = sess_vid is not None            # without a session (entry page) players cannot start a replay: nothing to show
     title = info.title if info is not None and info.id == vid and info.title else live.title_of(vid)
     poll = "every 5s" if title is None or not live.known else "every 60s"
     url = f"https://www.youtube.com/watch?v={vid}"
@@ -217,7 +219,7 @@ def entry_view(active: S.GameSession | None, n_players: int = 0, error: str | No
         panel = Div(H2(T.FAL_START_HEADING), P(T.START_HELP, cls="muted"),
                     play_form("/falacias/start", T.START_BUTTON, name, "/falacias"), cls="panel")
     else:
-        panel = Div(H2(T.FAL_JOIN_HEADING), P(T.JOIN_HELP.format(n=n_players), cls="muted"),
+        panel = Div(H2(T.FAL_JOIN_HEADING), P(T.players_in_game(n_players), cls="muted"),
                     play_form("/falacias/join", T.JOIN_BUTTON, name, "/falacias"), cls="panel")
     err = Div(T.FAL_REPLAY_MISSING.format(id=detail), cls="error", role="alert") if error == "feed_unavailable" and detail \
         else error_box(error)
@@ -288,6 +290,8 @@ def register(rt, pool, live: livestream.LiveStream | None = None) -> None:
             except S.SessionError as e:
                 if e.code in NAME_ERRORS:
                     return name_gate("/falacias", error=e.code, value=name)
+                if e.code in URL_ERRORS:
+                    return RedirectResponse(f"/falacias?err={e.code}", status_code=303)
                 active = S.get_active_session(conn, GAME)
                 n = S.count_players(conn, active.id) if active else 0
                 return entry_view(active, n, error=e.code, name=name, source=source_view(live),
@@ -312,7 +316,10 @@ def register(rt, pool, live: livestream.LiveStream | None = None) -> None:
             name = name_of(request)
             if name is None:
                 return name_gate("/falacias")
-            return entry_view(active, S.count_players(conn, active.id) if active else 0, name=name, source=source_view(live))
+            if active is not None and S.name_taken(conn, active.id, name):
+                return name_gate("/falacias", error="name_taken", value=name)
+            return entry_view(active, S.count_players(conn, active.id) if active else 0, name=name, source=source_view(live),
+                              error=url_error(request))
 
     @rt("/falacias/start", methods=["POST"])
     def falacias_start(request: Request, name: str = ""):

@@ -382,6 +382,18 @@ Also state what the agent itself already ran and its real output; never claim su
     #    Open the link in a private window to try it. The token travels in the URL (browser history, proxy logs): acceptable for a low-stakes game.
     # NOT checked: touch devices, Safari/Firefox. All other findings are in docs/backlog.md.
 
+### Validation for backlog Group 1 (bugs: name pre-check, IP limit redirect, admin throttle, 404, labels)
+    uv run pytest -q                                    # expect: 1104 passed, 1 skipped (red run before the code: 13 failed)
+    # Entry page: a visitor whose remembered name is already taken in the running game goes straight to the name form with the message
+    #   (Bingo and Falacias); "trocar nome" selects the old name on focus. The entry page of Falacias no longer shows a replay line.
+    # IP limit: the join POST answers 303 to /?err=ip_limit_reached (/falacias?err=...), the page says to ask the presenter. Only codes in
+    #   app.ui.URL_ERRORS are read from the URL. The limit itself is still MAX_USERS_PER_IP (env).
+    # Admin throttle (app/admin.py, in memory, per client IP): 5 WRONG passwords in 5 min -> 429 + Retry-After for 5 min, even with the right
+    #   password. No Authorization header never counts; a success clears the counter. Try: for i in 1 2 3 4 5 6; do curl -s -o /dev/null -w "%{http_code} " -u admin:x http://127.0.0.1:8000/admin; done
+    #   expect: 401 401 401 401 401 429. Reset: restart the server. Behind Fly the IP comes from CLIENT_IP_HEADER (fly-client-ip).
+    # Also: singular/plural player count, friendly 404 page, name gate titled "Jogos da Live", labels on /admin/fallacies inputs.
+    # Real browser (throwaway DB): 404 page, name gate, taken-name flow checked; curl for the 429. NOT checked: phone, Safari, Firefox.
+
 ### Deploying to Fly.io - checklist (every release)
     # 0. Local: tests green and everything committed + pushed.
     uv run ruff check . && uv run pytest -q                    # expect: All checks passed! / N passed

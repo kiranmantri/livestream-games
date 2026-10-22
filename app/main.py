@@ -52,6 +52,7 @@ from app.config import ROOT, database_url
 from app.lines import line_boxes
 from app.ui import (
     NAME_ERRORS,
+    URL_ERRORS,
     client_ip_of,
     error_box,
     name_gate,
@@ -61,6 +62,7 @@ from app.ui import (
     remember_name,
     set_token_cookie,
     token_of,
+    url_error,
 )
 
 STATIC_DIR = ROOT / "app" / "static"
@@ -70,13 +72,17 @@ POLL_CARDS = "every 5s"
 
 
 # ------------------------------------------------------------------ views
+def not_found(req, exc):
+    return page(H1(T.NOT_FOUND), P(A(T.BACK_HOME, href="/")), title=T.SITE_TITLE, tabs=False)
+
+
 def entry_page(active: S.GameSession | None, n_players: int = 0, error: str | None = None,
                name: str = ""):
     if active is None:
         panel = Div(H2(T.START_HEADING), P(T.START_HELP, cls="muted"),
                     play_form("/start", T.START_BUTTON, name, "/"), cls="panel")
     else:
-        panel = Div(H2(T.JOIN_HEADING), P(T.JOIN_HELP.format(n=n_players), cls="muted"),
+        panel = Div(H2(T.JOIN_HEADING), P(T.players_in_game(n_players), cls="muted"),
                     play_form("/join", T.JOIN_BUTTON, name, "/"), cls="panel")
     return page(H1(T.TITLE), P(T.TAGLINE, cls="tag"), error_box(error), panel)
 
@@ -245,7 +251,7 @@ def create_app(db_url: str | None = None, live: livestream.LiveStream | None = N
     app, rt = fast_app(
         lifespan=lifespan, pico=False, htmx=False, surreal=False, canonical=False, title=T.TITLE,
         static_path=str(STATIC_DIR), secret_key=os.environ.get("SESSION_SECRET") or "dev-only-not-used",
-        htmlkw={"lang": "pt-BR"},
+        htmlkw={"lang": "pt-BR"}, exception_handlers={404: not_found},
         hdrs=(Link(rel="stylesheet", href="/app.css"), Script(src="/htmx.min.js")))   # self-hosted
 
     ip_of = client_ip_of
@@ -266,6 +272,8 @@ def create_app(db_url: str | None = None, live: livestream.LiveStream | None = N
             except S.SessionError as e:
                 if e.code in NAME_ERRORS:
                     return name_gate("/", error=e.code, value=name)
+                if e.code in URL_ERRORS:                 # post/redirect/get: reloading must not re-post the join
+                    return RedirectResponse(f"/?err={e.code}", status_code=303)
                 active = S.get_active_session(conn)
                 n = S.count_players(conn, active.id) if active else 0
                 return entry_page(active, n, error=e.code, name=name)
@@ -292,7 +300,10 @@ def create_app(db_url: str | None = None, live: livestream.LiveStream | None = N
             name = name_of(request)
             if name is None:
                 return name_gate("/")
-            return entry_page(active, S.count_players(conn, active.id) if active else 0, name=name)
+            if active is not None and S.name_taken(conn, active.id, name):
+                return name_gate("/", error="name_taken", value=name)    # tell them BEFORE the button, not after the tap
+            return entry_page(active, S.count_players(conn, active.id) if active else 0, name=name,
+                              error=url_error(request))
 
     @rt("/start", methods=["POST"])
     def start(request: Request, name: str = ""):

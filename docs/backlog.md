@@ -12,16 +12,11 @@ Fixed already (see AGENTS.md "Validation for the adversarial-test fixes"): non-L
 board out of sync with the server; a lost cookie locked the player out of their own name (now: personal recovery link).
 
 Bugs
-- Entry page offers "Entrar" for a name already taken in the session; the error only appears after tapping. Pre-check on the entry page.
-- "trocar nome" field is prefilled but not selected (typing appends to the old name). Select it on focus.
-- 4th person behind one IP (MAX_USERS_PER_IP=3) gets a dead-end message and the URL stays on the POST route (/join). Redirect after POST,
-  tell them to ask the presenter, make the limit editable in the admin.
-- No throttle on wrong admin passwords (30 attempts in ~10 ms). Add a delay/lockout per IP (security as much as UX).
-- Admin Bingo: "Início" shows 1 h earlier than "Entrou"/"Visto por último" (looks like a timezone bug, code not checked).
-- Admin Falácias replay line showed `7Y89JM-wDk4` (no title) while the player page showed `_nVWPIFCUzQ` (with title): unexplained, investigate.
-- Bare "404 Not Found" page; "1 jogador(es)" wording; raw `:face-green-smiling:` shortcodes in the chat pane.
-- Page title/heading says "Bingo da Live" before a game is chosen (name gate).
-- /admin/fallacies: category and description inputs have no labels; /admin/falacias has unnamed links/buttons for assistive tech.
+- Chat shows raw `:face-green-smiling:` shortcodes (YouTube standard emoji): needs a shortcode -> emoji map, in the replay import and the chat worker.
+- IP limit (MAX_USERS_PER_IP) is still an env variable; making it editable in the admin needs a DB setting (migration) - not done.
+- Checked and NOT bugs: the "Início" vs "Entrou" one-hour gap (the session was started an hour before my players joined; every timestamp
+  uses the same formatter on timestamptz columns), and the admin replay URL (the admin shows the SESSION's video, the entry page used to show the
+  default replay; the entry page no longer shows one). The "unnamed buttons" on /admin/falacias were elements inside the closed replay <details>.
 
 Phone layout (Bingo, 390 px)
 - The player's own board starts a full screen down (y=841 px), behind the empty video and chat boxes. Show the board first with a sticky

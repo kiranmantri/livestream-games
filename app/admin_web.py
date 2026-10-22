@@ -38,6 +38,7 @@ from app import sessions as S
 from app import texts as T
 from app import timefmt
 from app.lines import complete_lines, is_full, line_boxes
+from app.ui import client_ip_of
 
 _ts = timefmt.dmy_hms
 
@@ -181,9 +182,17 @@ def denied(request: Request):
     pw = A_.admin_password()
     if pw is None:
         return PlainTextResponse("admin disabled: set ADMIN_PASSWORD in the environment", status_code=503)
-    if not A_.check_basic(request.headers.get("authorization"), pw):
+    ip = client_ip_of(request)
+    wait = A_.lock_remaining(ip)
+    if wait:
+        return PlainTextResponse(T.ADMIN_LOCKED, status_code=429, headers={"Retry-After": str(wait)})
+    header = request.headers.get("authorization")
+    if not A_.check_basic(header, pw):
+        if header:                         # a request without credentials is the browser's first call, not an attack
+            A_.record_failure(ip)
         return Response("authentication required", status_code=401,
                         headers={"WWW-Authenticate": 'Basic realm="Live Games admin", charset="UTF-8"'})
+    A_.record_success(ip)
     return None
 
 
