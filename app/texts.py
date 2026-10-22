@@ -227,7 +227,11 @@ SRC_ONLY_HORIZONTAL = "Só transmissões na horizontal são usadas."
 FAL_VIDEO_FIELD = "Link do vídeo gravado (replay)"
 FAL_REPLAY_MISSING = "O vídeo {id} ainda não foi importado. No servidor, rode: uv run corpus replay-import {id}"
 SRC_SESSION_LIVE = "Transmissão ao vivo da partida"
-FAL_NO_TRANSCRIPT = "Sem transcrição ao vivo: digite abaixo a frase que você ouviu e escolha a falácia."
+FAL_NO_TRANSCRIPT = (
+    "Estamos ainda sem transcrição ao vivo.\n"
+    "Digite abaixo a frase que você ouviu e escolha a falácia. Se acertar vc acumulará pontos.\n\n"
+    "A transcrição automática será implementada em breve. Fique ligado."
+)
 FAL_CHAT_DOWN = "Chat ao vivo fora do ar. Tentando reconectar..."
 FAL_LIVE_HOW_TO = "Acompanhe o chat (direita) na transmissão ao vivo. Frases faladas: digite-as na caixa abaixo."
 FAL_SPOKEN_HEADING = "Frase falada"
