@@ -117,7 +117,7 @@ def test_users_table_sorts_by_column_and_ignores_unknown_columns(web):
 
     def order(q):
         html = adm.get("/admin" + q, headers=basic()).text
-        return re.findall(r"<td>\s*(Zed|Amy|Max)\s*</td>", html)
+        return re.findall(r"<td[^>]*>\s*(Zed|Amy|Max)\s*</td>", html)
     assert order("?sort=name&dir=asc") == ["Amy", "Max", "Zed"]
     assert order("?sort=name&dir=desc") == ["Zed", "Max", "Amy"]
     assert order("?sort=marked") == ["Amy", "Max", "Zed"]            # default direction for marks: most first
@@ -160,7 +160,7 @@ def test_admin_shows_a_yellow_star_only_for_players_with_a_completed_line(web, c
     b.post("/mark/3")                            # Bia: full row
     html = admin.get("/admin", headers=basic()).text
     assert html.count('class="star"') == 2       # Bia: users table + her card header; Ana: none
-    assert re.search(r"<td>\s*Bia\s*<span[^>]*class=\"star\"", html) and not re.search(r"Ana\s*<span[^>]*class=\"star\"", html)
+    assert re.search(r"<td[^>]*>\s*Bia\s*<span[^>]*class=\"star\"", html) and not re.search(r"Ana\s*<span[^>]*class=\"star\"", html)
     assert "1 linha completa" in html and "1 linhas" not in html
     for i in range(4, 16):
         b.post(f"/mark/{i}")

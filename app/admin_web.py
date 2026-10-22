@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from urllib.parse import parse_qs, urlparse
 
 from fasthtml.common import (
@@ -16,6 +17,7 @@ from fasthtml.common import (
     Main,
     Nav,
     P,
+    Script,
     Small,
     Span,
     Summary,
@@ -24,6 +26,7 @@ from fasthtml.common import (
     Td,
     Th,
     Thead,
+    Time,
     Title,
     Tr,
 )
@@ -125,15 +128,19 @@ def start_form(start_token: str):
                 method="post", action="/admin/start", cls="startform")
 
 
-def users_panel(rows: list[A_.PlayerRow], rank: dict, sort: str = "rank", direction: str = "asc", oob: bool = False):
+def users_panel(rows: list[A_.PlayerRow], rank: dict, sort: str = "rank", direction: str = "asc", oob: bool = False,
+                poll: bool = False):
+    """The users table. While the game is active it re-reads itself every 5 s (keeping the sort order)."""
     table_rows, sort, direction = sort_rows(rows, rank, sort, direction)
     table = Table(
         Thead(Tr(*[sort_header(c, sort, direction) for c in SORTS])),
-        Tbody(*[Tr(Td(str(rank.get(r.user_id, "-"))), Td(r.name, star(r)), Td(str(len(r.marked))),
-                   Td(_ts(r.joined_at)), Td(_ts(r.last_seen_at))) for r in table_rows]),
-        cls="users")
+        Tbody(*[Tr(Td(str(rank.get(r.user_id, "-")), data_label=SORTS["rank"][0]), Td(r.name, star(r), data_label=SORTS["name"][0]),
+                   Td(str(len(r.marked)), data_label=SORTS["marked"][0]), Td(_ts(r.joined_at), data_label=SORTS["joined"][0]),
+                   Td(_ts(r.last_seen_at), data_label=SORTS["seen"][0])) for r in table_rows]),
+        cls="users stack")
+    poll_attrs = {"hx_get": f"/admin/live?sort={sort}&dir={direction}", "hx_trigger": "every 5s", "hx_swap": "outerHTML"} if poll else {}
     return Div(H2(T.ADMIN_USERS), table if rows else P(T.ADMIN_NO_USERS, cls="muted"), cls="panel", id="users-panel",
-               hx_swap_oob="outerHTML" if oob else None)
+               hx_swap_oob="outerHTML" if oob else None, **poll_attrs)
 
 
 def card_panel(r: A_.PlayerRow, session_id: uuid.UUID, token: str, active: bool, open_: bool = False):
@@ -146,35 +153,54 @@ def admin_page(session: S.GameSession, rows: list[A_.PlayerRow], standings: list
     rank = {s.user_id: s.rank for s in standings}
     active = session.status == "active"
     winner = next((r for r in rows if r.user_id == session.winner_user_id), None)
-    head = Div(
-        Span(T.ADMIN_ACTIVE if active else T.ADMIN_ENDED, cls="pill on" if active else "pill"),
-        Span(f"{T.ADMIN_STARTED}: {_ts(session.created_at)}", cls="muted"),
-        Span(f"{T.ADMIN_ENDED_AT}: {_ts(session.ended_at)}", cls="muted") if session.ended_at else None,
-        Span(f"{T.ADMIN_PLAYERS}: {len(rows)}", cls="muted"),
-        Span(f"{T.ADMIN_WINNER}: {winner.name}", cls="muted") if winner else None,
-        A(T.ADMIN_PHRASES_LINK, href="/admin/phrases", cls="btn small"),
-        cls="adminbar")
     finish = Form(
         Input(type="hidden", name="session_id", value=str(session.id)),
         Input(type="hidden", name="csrf", value=token),
         Button(T.ADMIN_FINISH, type="submit", cls="primary danger"),
         method="post", action="/admin/finish",
         onsubmit=f"return confirm({T.ADMIN_FINISH_CONFIRM!r})") if active else None
+    bar = status_bar(session, len(rows), finish, "/admin", winner.name if winner else None)
     cards = [card_panel(r, session.id, token, active, str(r.user_id) == open_uid) for r in rows]
     return (Title(f"{T.TITLE} - admin"),
-            Main(admin_tabs("bingo"), H1(f"{T.TITLE} - admin"), head, finish or "",
+            Main(admin_tabs("bingo"), H1(f"{T.TITLE} - admin"), bar,
                  start_form(start_token) if not active else "",
-                 users_panel(rows, rank, sort, direction),
-                 H2(T.ADMIN_CARDS), *cards, A(T.ADMIN_REFRESH, href="/admin", cls="btn"), cls="wide"))
+                 users_panel(rows, rank, sort, direction, poll=active),
+                 H2(T.ADMIN_CARDS), *cards, Script(src="/admin.js", defer=True), cls="wide"))
 
 
 def admin_tabs(active: str):
-    """Tabs shared by every admin page: Bingo | Encontre as Falácias | Frases do Bingo | Falácias."""
-    tabs = (("bingo", T.ADMIN_TAB_BINGO, "/admin"), ("falacias", T.ADMIN_TAB_FALACIAS, "/admin/falacias"),
-            ("phrases", T.ADMIN_TAB_PHRASES, "/admin/phrases"), ("fallacies", T.ADMIN_TAB_FALLACIES, "/admin/fallacies"))
-    return Nav(*[A(label, href=href, cls="active" if key == active else None,
-                   aria_current="page" if key == active else None) for key, label, href in tabs],
+    """Two groups: the games being played, and the content behind them (phrases, fallacies)."""
+    games = (("bingo", T.ADMIN_TAB_BINGO, "/admin"), ("falacias", T.ADMIN_TAB_FALACIAS, "/admin/falacias"))
+    content = (("phrases", T.ADMIN_TAB_PHRASES, "/admin/phrases"), ("fallacies", T.ADMIN_TAB_FALLACIES, "/admin/fallacies"))
+
+    def links(items):
+        return [A(label, href=href, cls="active" if key == active else None,
+                  aria_current="page" if key == active else None) for key, label, href in items]
+    return Nav(Span(T.ADMIN_GROUP_GAMES, cls="admingroup"), *links(games),
+               Span(T.ADMIN_GROUP_CONTENT, cls="admingroup"), *links(content),
                cls="menu admintabs", aria_label="admin")
+
+
+def status_bar(session: S.GameSession, n_players: int, finish=None, refresh_href: str | None = None, winner: str | None = None):
+    """Sticky bar of an admin game page: state, start time, players, elapsed time (admin.js keeps it ticking), the end button at the right."""
+    active = session.status == "active"
+    since = int(session.created_at.timestamp() * 1000)
+    seconds = (datetime.now(session.created_at.tzinfo) - session.created_at).total_seconds()
+    return Div(
+        Span(T.ADMIN_ACTIVE if active else T.ADMIN_ENDED, cls="pill on" if active else "pill"),
+        Span(f"{T.ADMIN_STARTED}: {_ts(session.created_at)}", cls="muted started"),
+        Span(f"{T.ADMIN_ENDED_AT}: {_ts(session.ended_at)}", cls="muted") if session.ended_at else None,
+        player_count(n_players),
+        Span(f"{T.ADMIN_ELAPSED}: ", Time(timefmt.elapsed(seconds), cls="elapsed", data_since=str(since)), cls="muted") if active else None,
+        Span(f"{T.ADMIN_WINNER}: {winner}", cls="muted") if winner else None,
+        A(T.ADMIN_REFRESH, href=refresh_href, cls="btn small") if refresh_href else None,
+        Span(T.ADMIN_UPDATED, id="updated", cls="muted") if active and refresh_href else None,
+        Span(cls="grow"), finish,
+        id="statusbar", cls="adminbar")
+
+
+def player_count(n: int, oob: bool = False):
+    return Span(f"{T.ADMIN_PLAYERS}: {n}", id="playercount", cls="muted", hx_swap_oob="true" if oob else None)
 
 
 def denied(request: Request):
@@ -211,6 +237,20 @@ def register(rt, pool):
                                 A(T.ADMIN_REFRESH, href="/admin", cls="btn"), cls="adminbar"), cls="wide")
             return admin_page(session, A_.players(conn, session.id), G.leaderboard(conn, session.id),
                               A_.csrf_token(pw, session.id), A_.start_token(pw), sort, dir, open)
+
+    @rt("/admin/live")
+    def admin_live(request: Request, sort: str = "rank", dir: str = ""):
+        """Polled every 5 s by the users table: the table again + the player count (out of band). The cards are NOT redrawn:
+        an open card would collapse under the admin's hands."""
+        if (d := denied(request)) is not None:
+            return d
+        with pool.connection() as conn:
+            session = A_.current_session(conn)
+            if session is None or session.status != "active":
+                return Response(status_code=200, headers={"HX-Refresh": "true"})      # the game ended: show the final page
+            rows = A_.players(conn, session.id)
+            rank = {s.user_id: s.rank for s in G.leaderboard(conn, session.id)}
+            return (users_panel(rows, rank, sort, dir, poll=True), player_count(len(rows), oob=True))
 
     @rt("/admin/start", methods=["POST"])
     def admin_start(request: Request, csrf: str = ""):
@@ -262,7 +302,8 @@ def register(rt, pool):
             rank = {s.user_id: s.rank for s in G.leaderboard(conn, session.id)}
             pw = A_.admin_password() or ""
             return (card_panel(row, session.id, A_.csrf_token(pw, session.id), session.status == "active", True),
-                    users_panel(rows, rank, q.get("sort", ["rank"])[0], q.get("dir", [""])[0], oob=True))
+                    users_panel(rows, rank, q.get("sort", ["rank"])[0], q.get("dir", [""])[0], oob=True,
+                              poll=session.status == "active"))
 
     @rt("/admin/unmark", methods=["POST"])
     def admin_unmark(request: Request, session_id: str = "", user_id: str = "", cell: str = "", csrf: str = ""):

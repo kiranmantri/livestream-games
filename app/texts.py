@@ -289,7 +289,13 @@ AF_REPLAY_ERRORS = {
 }
 
 # ---- admin: fallacy list
-ADMIN_TAB_FALLACIES = "Falácias"
+ADMIN_TAB_FALLACIES = "Lista de falácias"
+ADMIN_GROUP_GAMES = "Partidas"
+ADMIN_GROUP_CONTENT = "Conteúdo"
+ADMIN_UPDATED = "atualizado agora"
+ADMIN_ELAPSED = "Tempo"
+AF_ONLY_PENDING = "Apenas pendentes"
+AF_SHORTCUTS = "Atalhos: C correto · E errado · S spam (Shift = todas iguais). Atuam no item destacado."
 FA_TITLE = "Lista de falácias"
 FA_ADD_LABEL = "Nova falácia"
 FA_ADD_HELP = "Formato: Nome em português (English name - Nome em latim). Use nomes curtos; o latim só quando existir."

@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import time
 import uuid
 
 from fasthtml.common import (
@@ -27,6 +28,7 @@ from fasthtml.common import (
     Main,
     Ol,
     P,
+    Script,
     Small,
     Span,
     Summary,
@@ -35,6 +37,7 @@ from fasthtml.common import (
     Td,
     Th,
     Thead,
+    Time,
     Title,
     Tr,
     to_xml,
@@ -49,7 +52,7 @@ from app import host_messages as H
 from app import replays as R
 from app import sessions as S
 from app import texts as T
-from app.admin_web import admin_tabs, denied
+from app.admin_web import admin_tabs, denied, status_bar
 
 QUEUE_POLL = "every 3s"
 VERDICT_LABELS = {"correct": T.AF_CORRECT, "wrong": T.AF_WRONG, "spam": T.AF_SPAM}
@@ -86,7 +89,8 @@ def item_view(it: F.QueueItem, token: str, oob: bool = False):
         Div(Span(it.name, cls="who"), Span(it.fallacy, cls="fl"),
             Span(T.AF_TYPED, cls="badge typed") if typed
             else Small(T.AF_SENT_AFTER.format(s=f"{m.latency_ms / 1000:.1f}".replace(".", ",")), cls="muted"),
-            Span(badge, cls=f"badge {m.status}"), cls="qhead"),
+            Span(badge, cls=f"badge {m.status}"),
+            Time(timefmt.ago(time.time() - it.created_us / 1e6), cls="age", data_us=str(it.created_us)), cls="qhead"),
         context,
         P(f"“{m.quote}”", cls="quote"),
         Div(*[verdict_form(it, v, token) for v in F.VERDICTS], cls="vrow"),
@@ -119,8 +123,9 @@ def side_view(conn, session: S.GameSession, token: str):
     old = [m for m in msgs if m.status != "new"]
     rows = F.leaderboard(conn, session.id)
     board = Table(Thead(Tr(Th("#"), Th(T.AF_COL_PLAYER), Th(T.AF_COL_POINTS), Th(T.AF_COL_PAIRS), Th(T.AF_COL_PENDING))),
-                  Tbody(*[Tr(Td(str(r.rank)), Td(r.name), Td(F.fmt_points(r.points)), Td(str(r.pairs)), Td(str(r.pending)))
-                          for r in rows]), cls="users")
+                  Tbody(*[Tr(Td(str(r.rank), data_label="#"), Td(r.name, data_label=T.AF_COL_PLAYER),
+                             Td(F.fmt_points(r.points), data_label=T.AF_COL_POINTS), Td(str(r.pairs), data_label=T.AF_COL_PAIRS),
+                             Td(str(r.pending), data_label=T.AF_COL_PENDING)) for r in rows]), cls="users stack")
     return Div(
         Div(H2(T.AF_MESSAGES, " ", Span(str(len(new)), cls="pill on" if new else "pill")),
             *[message_card(m, token, session.id) for m in new] or [P(T.AF_NO_MESSAGES, cls="muted")],
@@ -227,23 +232,23 @@ def page_view(conn, session: S.GameSession | None, pw: str, error: str | None = 
         return (Title(T.AF_TITLE), Main(*parts, cls="wide"))
     token = A_.csrf_token(pw, session.id)
     active = session.status == "active"
-    parts.append(Div(Span(T.ADMIN_ACTIVE if active else T.ADMIN_ENDED, cls="pill on" if active else "pill"),
-                     Span(f"{T.ADMIN_STARTED}: {timefmt.dmy_hms(session.created_at)}", cls="muted"),
-                     Span(f"{T.ADMIN_PLAYERS}: {S.count_players(conn, session.id)}", cls="muted"), cls="adminbar"))
+    winner = None if active else next((r for r in F.leaderboard(conn, session.id) if r.user_id == session.winner_user_id), None)
+    finish = Form(Input(type="hidden", name="session_id", value=str(session.id)), Input(type="hidden", name="csrf", value=token),
+                  Button(T.AF_FINISH, type="submit", cls="primary danger"), method="post", action="/admin/falacias/finish",
+                  onsubmit=f"return confirm({T.AF_FINISH_CONFIRM!r})") if active else None
+    parts.append(status_bar(session, S.count_players(conn, session.id), finish, winner=None))
     parts.append(source_line(conn, session))
     if not active:
-        winner = next((r for r in F.leaderboard(conn, session.id) if r.user_id == session.winner_user_id), None)
         parts.append(P(f"{T.ADMIN_WINNER}: {winner.name} ({F.fmt_points(winner.points)})", cls="winner") if winner
                      else P(T.FAL_NO_POINTS, cls="muted"))
     if active:
-        parts.append(Form(Input(type="hidden", name="session_id", value=str(session.id)), Input(type="hidden", name="csrf", value=token),
-                          Button(T.AF_FINISH, type="submit", cls="primary danger"), method="post", action="/admin/falacias/finish",
-                          onsubmit=f"return confirm({T.AF_FINISH_CONFIRM!r})"))
         items = F.queue_items(conn, session.id)
         after = max((i.created_us for i in items), default=0)
         parts.append(Div(H2(T.AF_QUEUE, " ", Span(T.AF_PENDING, cls="muted"), " ", pending_span(F.pending_count(conn, session.id))),
-                         Ol(*[item_view(i, token) for i in items], id="queue", cls="queue"),
-                         P(T.AF_QUEUE_EMPTY, cls="muted empty"), poller(after), cls="panel"))
+                         Div(Label(Input(type="checkbox", id="onlypending", checked=True), " ", T.AF_ONLY_PENDING, fr="onlypending"),
+                             Small(T.AF_SHORTCUTS, cls="muted"), cls="qtools"),
+                         Ol(*[item_view(i, token) for i in items], id="queue", cls="queue only-pending"),
+                         P(T.AF_QUEUE_EMPTY, cls="muted empty"), poller(after), Script(src="/admin.js", defer=True), cls="panel"))
     else:
         parts.append(start_form(pw))
     parts.append(side_view(conn, session, token))

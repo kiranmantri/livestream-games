@@ -406,6 +406,21 @@ Also state what the agent itself already ran and its real output; never claim su
     #   expected parity == screen == server (after reload) in 3 of 3 runs, no cell left "pending". Board top y: 841 px -> 177 px.
     # NOT checked: a real touch device, Safari, Firefox; the sticky bar was checked by scrolling (bar stayed at top: 0).
 
+### Validation for backlog Group 3 (admin: grouped tabs, status bar, auto-refresh, queue filter/shortcuts, phone cards)
+    uv run pytest -q                                    # expect: 1129 passed, 1 skipped (tests/test_admin_group3.py is new; red run: 10 failed)
+    # Tabs: "Partidas: Bingo | Encontre as Falácias" and "Conteúdo: Frases do Bingo | Lista de falácias" (the last one used to be called "Falácias").
+    # Sticky status bar (#statusbar) on both game pages: state, start time, players, elapsed time (admin.js ticks it), "Atualizar", "atualizado há N s",
+    #   and the end button at the far right. On phones it is NOT sticky (3 lines tall) and hides start time / updated label.
+    # Bingo admin: the users table re-reads itself every 5 s via GET /admin/live?sort=&dir= (keeps the sort, updates the player count out of band,
+    #   HX-Refresh when the game ended). Player cards are NOT redrawn (an open card would collapse).
+    # Falácias queue: "Apenas pendentes" (default on, remembered in localStorage lg_admin_prefs) hides reviewed items; each item shows "há N s";
+    #   the OLDEST pending item is highlighted and the keys C / E / S give Correto / Errado / Spam (Shift = all identical pairs). Keys are ignored while typing
+    #   and while a verdict is in flight.
+    # Real Chrome (throwaway DB, 5 players, 4 pending pairs): Shift+C reviewed the identical pair, E and S the next ones, filter toggled; three fast
+    #   presses sent ONE verdict. Phone (390 px): no sideways scroll on /admin, /admin/falacias, /admin/phrases, /admin/fallacies; tap targets >= 44 px
+    #   except the "Apenas pendentes" checkbox itself (its label is 44 px) and text links inside paragraphs/tables were padded.
+    # Existing tests adapted: users-table regexes now accept <td data-label=...>.
+
 ### Deploying to Fly.io - checklist (every release)
     # 0. Local: tests green and everything committed + pushed.
     uv run ruff check . && uv run pytest -q                    # expect: All checks passed! / N passed

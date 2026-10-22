@@ -361,3 +361,47 @@ table.replays button.act.danger { background: transparent; color: var(--warn); b
   .gamebar.nolive button.pref { display: none; }
   .gamebar.nolive ~ .toprow .leftcol { display: none; }     /* nothing to watch: no empty video/chat boxes */
 }
+
+/* admin (group 3): grouped tabs, sticky status bar, bigger controls, queue filter, phone tables */
+.admintabs { flex-wrap: wrap; align-items: center; }
+.admingroup { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; padding: 0 6px 0 14px; align-self: center; }
+.admingroup:first-child { padding-left: 0; }
+#statusbar { position: sticky; top: 0; z-index: 20; background: var(--bg); border-bottom: 1px solid var(--line); margin: 0 0 8px; padding: 8px 4px; }
+#statusbar .grow { flex: 1 1 auto; }
+#statusbar form { margin: 0; }
+#statusbar button.danger { margin: 0; }
+#statusbar .elapsed { font-variant-numeric: tabular-nums; }
+.qtools { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; margin: 4px 0 10px; }
+.qtools label { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; cursor: pointer; }
+.qtools input[type=checkbox] { width: 20px; height: 20px; }
+.only-pending .qitem:not(.pending) { display: none; }
+.qitem.current { outline: 2px solid var(--accent); outline-offset: 2px; }
+.qhead .age { color: var(--muted); font-size: .8rem; margin-left: auto; font-variant-numeric: tabular-nums; }
+.vbtn { min-height: 44px; min-width: 104px; font-size: 1rem; }
+.vrow { gap: 10px; }
+.mcbtn { font-size: 12px; padding: 4px 8px; min-height: 28px; }
+button.link { min-height: 32px; padding: 4px 8px; }
+@media (max-width: 640px) {
+  #statusbar { gap: 6px 12px; padding: 6px 2px; }
+  #statusbar { position: static; }                                    /* three lines tall on a phone: not worth pinning */
+  .qtools small { display: none; }                                     /* no keyboard on a phone */
+  .qtools label { min-height: 44px; }
+  main.wide p.muted a { display: inline-block; padding: 13px 0; }
+  .replaypanel input, .replaypanel button, table.replays button.act { min-height: 44px; }
+  table.replays td a { display: inline-block; padding: 13px 0; }
+  main.wide form button:not(.mcbtn), main.wide form input[type=search], main.wide form select { min-height: 44px; }
+  #statusbar .started, #statusbar #updated { display: none; }        /* keep the sticky bar short: state, players, time, buttons */
+  #statusbar a.btn, #statusbar button { min-height: 44px; display: inline-flex; align-items: center; }
+  .vbtn { flex: 1 1 28%; min-width: 0; }
+  .vform { display: contents; }
+  .mcbtn, button.link { min-height: 44px; }
+  .mini { grid-template-columns: repeat(2, 1fr); }                      /* wide cells: the unmark button fits at 44 px */
+  .mini .mc { aspect-ratio: auto; min-height: 84px; font-size: 13px; padding: 6px; }
+  .mcbtn { font-size: 13px; white-space: nowrap; width: 100%; }
+  /* phones: a card per row instead of a table that scrolls sideways */
+  table.stack, table.stack tbody, table.stack tr, table.stack td { display: block; }
+  table.stack thead { display: none; }
+  table.stack tr { border-bottom: 1px solid var(--line); padding: 8px 0; }
+  table.stack td { border: 0; padding: 3px 8px; }
+  table.stack td[data-label]::before { content: attr(data-label) ": "; color: var(--muted); font-size: .8rem; }
+}

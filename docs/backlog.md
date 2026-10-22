@@ -21,14 +21,11 @@ Bugs
 Phone layout (Bingo)
 - Not done / not checked: touch devices, Safari and Firefox; the Falácias game page on phones (panes, picker) was not part of this pass.
 
-Admin
-- Navigation mixes game admin and content lists: group as "Partidas: Bingo | Falácias" and "Conteúdo: Frases | Lista de falácias";
-  "Falácias" vs "Encontre as Falácias" is confusing. Sticky bar with game state, player count, elapsed time; "Encerrar partida" alone at the right.
-- No auto-refresh on the Bingo admin and "Atualizar" is below the fold: refresh tables every 5 s with "atualizado há 3 s".
-- "Desmarcar" is 9 px text on a 14 px button inside the green cell; Edit/Excluir on lists are 24 px. Put it in the player's row with a confirm.
-- Falácias queue: finished items stay forever and bury the pending ones; add "Apenas pendentes" (default), bigger Correto/Errado/Spam buttons,
-  C/E/S keyboard shortcuts, "há 12 s" per item. Use the phone card layout on every admin table (as done for replays).
-- Not tested: the "Encerrar partida" confirm dialog, /admin/phrases beyond accessibility numbers.
+Admin (left over after group 3)
+- Phrases and fallacies lists still scroll sideways on phones (the users, leaderboard and replay tables are cards now); sort links are hidden on phones.
+- The open player cards on the Bingo admin are not auto-refreshed (only the users table and the count are): an open card would collapse.
+- Keyboard shortcuts ignore extra key presses while a verdict is still on its way (on purpose: never double-send).
+- Not checked: touch devices, Safari, Firefox; the "Encerrar partida" confirm dialog.
 
 ## Falácias
 - Live speech-to-text (auto-transcription) of the horizontal live stream. Until then spoken passages are TYPED by the players

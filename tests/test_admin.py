@@ -133,7 +133,7 @@ def test_users_listed_in_join_order(web):
         c.post("/start" if name == "Zed" else "/join", data={"name": name})
     import re
     html = web().get("/admin", headers=basic()).text
-    names = re.findall(r"<td>\s*(Zed|Amy|Max)\s*</td>", html)
+    names = re.findall(r"<td[^>]*>\s*(Zed|Amy|Max)\s*</td>", html)
     assert names == ["Zed", "Amy", "Max"]
 
 
