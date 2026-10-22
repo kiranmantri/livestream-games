@@ -285,3 +285,27 @@ table.final tr.me td { background: #1e3a5f; font-weight: 700; }
 #spokenbox textarea { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--line); background: #0b1220; color: var(--text); font: inherit; }
 #spokenbox select { width: 100%; padding: 8px; margin-top: 6px; border-radius: 8px; border: 1px solid var(--line); background: #0b1220; color: var(--text); font: inherit; }
 .videofield { display: block; margin: 8px 0; } .videofield input { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: #0b1220; color: var(--text); font: inherit; }
+
+/* ---- /falacias: compact layout (header, source banner, the two panes) */
+main.fal h1 { font-size: 1.05rem; margin: 2px 4px 0; }
+main.fal .tag, main.fal .muted { font-size: .75rem; margin: 0 4px 3px; line-height: 1.3; }
+main.fal .source { margin: 3px 0; font-size: .75rem; } main.fal .source p { margin: 1px 0; } main.fal .source .small { font-size: .7rem; }
+main.fal .error, main.fal .ok { font-size: .8rem; padding: 4px 8px; margin: 3px 0; }
+main.fal .panes { gap: 8px; margin: 4px 0; }
+main.fal .pane { padding: 4px; }
+main.fal .pane .bar { margin: 0 2px 3px; font-size: .78rem; }
+main.fal .pane .pill { padding: 2px 8px; font-size: .7rem; }
+main.fal .scroll { height: 50vh; min-height: 220px; padding: 3px 6px; font-size: .78rem; }
+main.fal .pline { padding: 1px 3px; line-height: 1.3; border-radius: 3px; cursor: pointer; }
+main.fal .pline .au { margin-right: 4px; }
+main.fal .pline.picked { background: #1e3a5f; }
+main.fal .pnote { padding: 4px 6px; font-size: .75rem; }
+@media (max-width: 760px) { main.fal .scroll { height: 36vh; } }
+/* picker (bottom sheet): compact so the panes stay clickable above it */
+main.fal .picker { max-height: 36vh; margin: 4px 0; padding: 6px 10px; }
+main.fal .picker .quote { margin: 2px 0 4px; padding: 3px 6px; font-size: .78rem; }
+main.fal .picker input[type=text] { margin-bottom: 3px; padding: 4px 8px; font-size: .8rem; }
+main.fal .opts { max-height: 110px; padding: 2px 6px; }
+main.fal .opts label { padding: 3px 2px; font-size: .8rem; gap: 6px; }
+main.fal .opts .cat { margin: 3px 0 1px; font-size: .68rem; }
+main.fal .sendrow { margin: 4px 0; }
