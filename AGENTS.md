@@ -324,7 +324,7 @@ Also state what the agent itself already ran and its real output; never claim su
     # `uv run corpus fallacies-top` (manual, never at boot) renames/toggles Wikipedia rows by their ORIGINAL names and WOULD overwrite online edits of them.
     uv run corpus fallacies-manual                      # adds "Deus das lacunas (God of the gaps)" and "Ônus da prova invertido (Shift the burden of proof)" if missing BY NAME
                                                         #   expect: fallacies: {'added': 2}, then {'added': 0}. Not run at boot.
-    # Cloud, once after the deploy: fly ssh console --app livebingo --container app -C "python -m corpus.cli fallacies-manual"
+    # Cloud, once after the deploy: fly ssh console --app livebingo --container app -C "sh -c 'cd /app && python -m corpus.cli fallacies-manual'"
     # Mutation check (repo COPY): 32/32 killed (mutate_fa.py). NOT checked: the page in a real browser (htmx row swaps).
 
 ### Validation for R1 (replay catalogue: migration 0010, app/replays.py)
