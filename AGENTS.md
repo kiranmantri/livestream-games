@@ -338,6 +338,32 @@ Also state what the agent itself already ran and its real output; never claim su
     #   followed by an ACTIVE game (in_use). corpus replay-import and the SQL seed loader register the video as ready.
     # Mutation check (repo COPY): 28/28 killed (mutate_r1.py; the first run had 5 survivors -> tests added).
 
+### Validation for R2 (replay collector: app/replaycollector.py)
+    uv run pytest tests/test_replay_collector.py -q     # expect: 32 passed (red run before the module existed: collection error)
+    # One daemon thread, started by the app's lifespan (off with REPLAY_COLLECTOR=off; tests always run with it off). It takes the oldest queued
+    #   video, probes it with yt-dlp (120 s) and REFUSES BEFORE DOWNLOADING: live / not started / still processing / vertical or square /
+    #   longer than REPLAY_MAX_HOURS (default 12) / no pt captions yet ("podem levar horas") / no chat replay. Then it downloads (30 min limit) into
+    #   a private temp dir, imports with corpus/replay.py, marks ready; ANY failure -> failed with a pt-BR message and no partial rows. Temp dir always removed.
+    #   At start it fails jobs a restart left running (queued ones are kept). Polls every 15 s and is woken by the admin page.
+    # Real smoke (read-only, you ran it): uv run python -c "from app import replaycollector as RC; m = RC.YtdlpDownloader().probe('_nVWPIFCUzQ'); print(m, RC._refusal(m, 12))"
+    #   expect: Meta(... has_pt_captions=True, has_chat=True) and None.
+    # NOT measured: a real download (time, size) and whether Fly's IP is allowed to download captions/chat. Test it after the deploy with a SHORT video.
+    # Mutation check (repo COPY): 28/28 killed (mutate_r2.py; the first run had 5 survivors -> tests added).
+
+### Validation for R3 (admin replay catalogue on /admin/falacias)
+    uv run pytest tests/test_replays_admin_web.py -q    # expect: 39 passed (red run: 34 failed before the code)
+    uv run pytest -q                                    # expect: 1074 passed, 1 skipped (3 old tests in test_live_pages.py were replaced: the admin start form has no link field any more)
+    uv run migrate                                      # YOU: 0010 on the dev DB
+    uv run uvicorn app.main:app --port 8001             # http://127.0.0.1:8001/admin/falacias (user admin, ADMIN_PASSWORD)
+    # Panel "Replays disponíveis": paste a link of a FINISHED horizontal stream -> "Coletar" -> row "Na fila" -> "Baixando" -> "Importando" -> "Pronto"
+    #   (the list redraws itself every 3 s only while a job runs). Failures show the reason (live, vertical, > 12 h, no captions yet...) + "Tentar de novo".
+    #   "Iniciar com este replay" (ready rows, only when no Falácias game is active) starts a game on THAT video, even if the channel is live
+    #   (the admin's explicit pick wins). "Excluir" asks to confirm; refused while queued/running or while an active game uses the replay.
+    #   The plain "Iniciar partida de Falácias" button is automatic: horizontal live, else a message telling you to pick a replay.
+    docker compose exec db psql -U livegames -c "select video_id, status, transcript_rows, chat_rows, error from replays order by created_at"
+    # Not built yet (R4): players can still type a replay link on /falacias; the field goes away there.
+    # Mutation check (repo COPY): 27/27 killed (mutate_r3.py; the first run had 5 survivors -> tests added). NOT checked: the page in a real browser (htmx swaps).
+
 ### Deploying to Fly.io - checklist (every release)
     # 0. Local: tests green and everything committed + pushed.
     uv run ruff check . && uv run pytest -q                    # expect: All checks passed! / N passed

@@ -121,3 +121,12 @@ def fallacies_token(password: str) -> str:
 
 def fallacies_ok(password: str, token: str | None) -> bool:
     return bool(token) and hmac.compare_digest(fallacies_token(password), token or "")
+
+
+def replays_token(password: str) -> str:
+    """One token for every replay-catalogue action (add / start / retry / delete)."""
+    return hmac.new(password.encode(), b"replays", hashlib.sha256).hexdigest()
+
+
+def replays_ok(password: str, token: str | None) -> bool:
+    return bool(token) and hmac.compare_digest(replays_token(password), token or "")

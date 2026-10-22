@@ -44,8 +44,9 @@ from starlette.responses import PlainTextResponse, RedirectResponse, Response
 
 from app import admin as A_
 from app import falacias as F
-from app import feed, livestream, timefmt
+from app import feed, livestream, replaycollector, timefmt
 from app import host_messages as H
+from app import replays as R
 from app import sessions as S
 from app import texts as T
 from app.admin_web import admin_tabs, denied
@@ -129,11 +130,67 @@ def side_view(conn, session: S.GameSession, token: str):
         id="adminside", hx_get="/admin/falacias/side", hx_trigger=QUEUE_POLL, hx_swap="outerHTML")
 
 
-def start_form(pw: str, show_video: bool):
+def start_form(pw: str):
     return Form(Input(type="hidden", name="csrf", value=A_.start_token(pw)),
-                Label(T.AF_VIDEO_FIELD, Input(type="url", name="video", placeholder="https://www.youtube.com/watch?v=...",
-                                              autocomplete="off"), cls="videofield") if show_video else None,
                 Button(T.AF_START, type="submit", cls="primary"), method="post", action="/admin/falacias/start", cls="startform")
+
+
+# ------------------------------------------------------------------ replay catalogue
+def fmt_duration(seconds: int | None) -> str:
+    if not seconds:
+        return "—"
+    h, m = divmod(int(seconds) // 60, 60)
+    return f"{h}h{m:02d}" if h else f"{m} min"
+
+
+def replay_error_text(code: str) -> str:
+    return T.AF_REPLAY_ERRORS.get(code, T.AF_REPLAY_ERRORS["generic"])
+
+
+def _action(path: str, video_id: str, label: str, token: str, cls: str = "", confirm: str | None = None, ajax: bool = True):
+    kw = {"hx_post": path, "hx_target": "#replaylist", "hx_swap": "outerHTML"} if ajax else {}
+    return Form(Input(type="hidden", name="csrf", value=token), Input(type="hidden", name="video_id", value=video_id),
+                Button(label, type="submit", cls=cls), method="post", action=path, cls="inline",
+                onsubmit=f"return confirm({confirm!r})" if confirm else None, **kw)
+
+
+def replay_row(r: R.Replay, token: str, can_start: bool):
+    link = A(r.title or r.video_id, href=r.url, target="_blank", rel="noopener")
+    status = [Span(T.AF_REPLAY_STATUS.get(r.status, r.status), cls="pill on" if r.status == "ready" else "pill")]
+    if r.error:
+        status.append(Div(r.error, cls="muted small", role="alert" if r.status == "failed" else None))
+    acts = []
+    if r.status == "ready" and can_start:
+        acts.append(_action("/admin/falacias/replays/start", r.video_id, T.AF_REPLAY_START, token, "primary", ajax=False))
+    if r.status == "failed":
+        acts.append(_action("/admin/falacias/replays/retry", r.video_id, T.AF_REPLAY_RETRY, token))
+    if r.status in ("ready", "failed"):
+        acts.append(_action("/admin/falacias/replays/delete", r.video_id, T.AF_REPLAY_DELETE, token, "danger",
+                            confirm=T.AF_REPLAY_DELETE_CONFIRM))
+    return Tr(Td(link, Div(r.video_id, cls="muted small")), Td(fmt_duration(r.duration_s)),
+              Td(f"{r.transcript_rows} / {r.chat_rows}" if r.status == "ready" else "—", cls="num"), Td(*status), Td(*acts))
+
+
+def replay_list(conn, pw: str, error: str | None = None):
+    """The part that is polled: the table (and the message of the last action). Polls every 3 s only while a job is running."""
+    rows = R.list_replays(conn)
+    token = A_.replays_token(pw)
+    can_start = S.get_active_session(conn, "falacias") is None
+    running = any(r.status in R.RUNNING for r in rows)
+    kw = {"hx_get": "/admin/falacias/replays", "hx_trigger": QUEUE_POLL, "hx_swap": "outerHTML"} if running else {}
+    table = Div(Table(Thead(Tr(*[Th(c) for c in T.AF_REPLAY_COLS])), Tbody(*[replay_row(r, token, can_start) for r in rows]),
+                      cls="users"), cls="tablewrap") if rows else P(T.AF_REPLAY_EMPTY, cls="muted")
+    return Div(Div(error, cls="error", role="alert") if error else None, table, id="replaylist", **kw)
+
+
+def replays_panel(conn, pw: str, error: str | None = None):
+    return Div(H2(T.AF_REPLAYS), P(T.AF_REPLAY_HELP, cls="muted small"),
+               Form(Input(type="hidden", name="csrf", value=A_.replays_token(pw)),
+                    Label(T.AF_REPLAY_ADD_LABEL, Input(type="url", name="video", placeholder="https://www.youtube.com/watch?v=...",
+                                                       autocomplete="off", required=True), cls="videofield"),
+                    Button(T.AF_REPLAY_ADD, type="submit"), method="post", action="/admin/falacias/replays/add",
+                    hx_post="/admin/falacias/replays/add", hx_target="#replaylist", hx_swap="outerHTML", cls="startform"),
+               replay_list(conn, pw, error), cls="panel")
 
 
 def error_text(error: str, detail: str | None) -> str:
@@ -141,7 +198,7 @@ def error_text(error: str, detail: str | None) -> str:
         return T.FAL_REPLAY_MISSING.format(id=detail)
     if error in ("feed_unavailable", "feed_error"):
         return T.FEED_UNAVAILABLE
-    return T.ERRORS[error] if error in ("no_source", "invalid_video") else T.ERRORS["generic"]
+    return T.AF_NO_SOURCE if error == "no_source" else T.ERRORS["generic"]
 
 
 def source_line(conn, session: S.GameSession):
@@ -153,13 +210,13 @@ def source_line(conn, session: S.GameSession):
              A(url, href=url, target="_blank", rel="noopener"), cls="muted")
 
 
-def page_view(conn, session: S.GameSession | None, pw: str, error: str | None = None, show_video: bool = False,
-              detail: str | None = None):
+def page_view(conn, session: S.GameSession | None, pw: str, error: str | None = None, detail: str | None = None,
+              replay_error: str | None = None):
     parts = [admin_tabs("falacias"), H1(T.AF_TITLE)]
     if error:
         parts.append(Div(error_text(error, detail), cls="error", role="alert"))
     if session is None:
-        parts += [P(T.AF_NO_SESSION, cls="muted"), start_form(pw, show_video)]
+        parts += [P(T.AF_NO_SESSION, cls="muted"), start_form(pw), replays_panel(conn, pw, replay_error)]
         return (Title(T.AF_TITLE), Main(*parts, cls="wide"))
     token = A_.csrf_token(pw, session.id)
     active = session.status == "active"
@@ -181,7 +238,8 @@ def page_view(conn, session: S.GameSession | None, pw: str, error: str | None = 
                          Ol(*[item_view(i, token) for i in items], id="queue", cls="queue"),
                          P(T.AF_QUEUE_EMPTY, cls="muted empty"), poller(after), cls="panel"))
     else:
-        parts.append(start_form(pw, show_video))
+        parts.append(start_form(pw))
+    parts.append(replays_panel(conn, pw, replay_error))
     parts.append(side_view(conn, session, token))
     return (Title(T.AF_TITLE), Main(*parts, cls="wide"))
 
@@ -193,10 +251,6 @@ def register(rt, pool, live: livestream.LiveStream | None = None):
     def pw() -> str:
         return A_.admin_password() or ""
 
-    def show_video() -> bool:
-        info = live.info()
-        return not (info is not None and info.horizontal)
-
     def fragment(*parts, headers: dict | None = None) -> Response:
         return Response(to_xml(parts), media_type="text/html", headers=headers or {})
 
@@ -205,10 +259,10 @@ def register(rt, pool, live: livestream.LiveStream | None = None):
         if (d := denied(request)) is not None:
             return d
         with pool.connection() as conn:
-            return page_view(conn, A_.current_session(conn, "falacias"), pw(), show_video=show_video())
+            return page_view(conn, A_.current_session(conn, "falacias"), pw())
 
     @rt("/admin/falacias/start", methods=["POST"])
-    def af_start(request: Request, csrf: str = "", video: str = ""):
+    def af_start(request: Request, csrf: str = ""):
         if (d := denied(request)) is not None:
             return d
         if not A_.start_ok(pw(), csrf):
@@ -217,12 +271,88 @@ def register(rt, pool, live: livestream.LiveStream | None = None):
             try:
                 if not live.known:
                     live.refresh()
-                feed.start_falacias_as_admin(conn, feed.choose_source(conn, live.info(), video))
+                feed.start_falacias_as_admin(conn, feed.choose_source(conn, live.info(), None))
             except S.SessionAlreadyActive:
                 pass
             except feed.FeedError as e:
-                return page_view(conn, A_.current_session(conn, "falacias"), pw(), error=e.code, show_video=show_video(),
+                return page_view(conn, A_.current_session(conn, "falacias"), pw(), error=e.code,
                                  detail=getattr(e, "video_id", None))
+        return RedirectResponse("/admin/falacias", status_code=303)
+
+    # ---- replay catalogue
+    def replay_response(request: Request, conn, error: str | None = None):
+        """htmx: the redrawn list (with the message). Plain form post: redirect, or the whole page with the message."""
+        if request.headers.get("hx-request") == "true":
+            return fragment(replay_list(conn, pw(), replay_error_text(error) if error else None))
+        if error:
+            return page_view(conn, A_.current_session(conn, "falacias"), pw(), replay_error=replay_error_text(error))
+        return RedirectResponse("/admin/falacias", status_code=303)
+
+    def replay_guard(request: Request, csrf: str):
+        if (d := denied(request)) is not None:
+            return d
+        if not A_.replays_ok(pw(), csrf):
+            return PlainTextResponse("bad csrf token", status_code=403)
+        return None
+
+    @rt("/admin/falacias/replays", methods=["GET"])
+    def af_replays(request: Request):
+        if (d := denied(request)) is not None:
+            return d
+        with pool.connection() as conn:
+            return fragment(replay_list(conn, pw()))
+
+    @rt("/admin/falacias/replays/add", methods=["POST"])
+    def af_replay_add(request: Request, csrf: str = "", video: str = ""):
+        if (d := replay_guard(request, csrf)) is not None:
+            return d
+        with pool.connection() as conn:
+            try:
+                R.submit(conn, video)
+            except (R.ReplayError, feed.InvalidVideo) as e:
+                return replay_response(request, conn, e.code)
+            replaycollector.wake()
+            return replay_response(request, conn)
+
+    @rt("/admin/falacias/replays/retry", methods=["POST"])
+    def af_replay_retry(request: Request, csrf: str = "", video_id: str = ""):
+        if (d := replay_guard(request, csrf)) is not None:
+            return d
+        with pool.connection() as conn:
+            if R.get(conn, video_id) is None:
+                return replay_response(request, conn, "not_found")
+            try:
+                R.submit(conn, video_id)
+            except (R.ReplayError, feed.InvalidVideo) as e:
+                return replay_response(request, conn, e.code)
+            replaycollector.wake()
+            return replay_response(request, conn)
+
+    @rt("/admin/falacias/replays/delete", methods=["POST"])
+    def af_replay_delete(request: Request, csrf: str = "", video_id: str = ""):
+        if (d := replay_guard(request, csrf)) is not None:
+            return d
+        with pool.connection() as conn:
+            try:
+                R.delete(conn, video_id)
+            except R.ReplayError as e:
+                return replay_response(request, conn, e.code)
+            return replay_response(request, conn)
+
+    @rt("/admin/falacias/replays/start", methods=["POST"])
+    def af_replay_start(request: Request, csrf: str = "", video_id: str = ""):
+        """The admin's explicit pick: starts even while a horizontal live exists (only the AUTOMATIC choice never uses a replay then)."""
+        if (d := replay_guard(request, csrf)) is not None:
+            return d
+        with pool.connection() as conn:
+            if not R.is_ready(conn, video_id):
+                return page_view(conn, A_.current_session(conn, "falacias"), pw(), replay_error=replay_error_text("not_ready"))
+            try:
+                feed.start_falacias_as_admin(conn, feed.Source("replay", video_id))
+            except S.SessionAlreadyActive:
+                return page_view(conn, A_.current_session(conn, "falacias"), pw(), replay_error=replay_error_text("session_active"))
+            except feed.FeedError:
+                return page_view(conn, A_.current_session(conn, "falacias"), pw(), replay_error=replay_error_text("not_ready"))
         return RedirectResponse("/admin/falacias", status_code=303)
 
     @rt("/admin/falacias/finish", methods=["POST"])

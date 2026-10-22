@@ -333,28 +333,23 @@ def test_admin_start_follows_a_horizontal_live(conn, test_db_url, pw, no_env_vid
     assert r.status_code == 303 and sessions(conn) == [(LIVE_ID, "live")] and LIVE_ID in page.text
 
 
-def test_admin_start_without_live_or_url_shows_the_need_url_message(conn, test_db_url, pw, no_env_video):
+def test_admin_auto_start_without_a_live_tells_to_pick_a_replay(conn, test_db_url, pw, no_env_video):
     r, _ = admin_start(test_db_url, make_live(None))
-    assert r.status_code == 200 and sessions(conn) == [] and T.ERRORS["no_source"] in r.text and 'name="video"' in r.text
+    assert r.status_code == 200 and sessions(conn) == [] and T.AF_NO_SOURCE in r.text
 
 
-def test_admin_start_with_a_replay_url(conn, test_db_url, pw, no_env_video):
+def test_admin_auto_start_ignores_a_typed_link(conn, test_db_url, pw, no_env_video):
     r, _ = admin_start(test_db_url, make_live(None), {"video": f"https://www.youtube.com/watch?v={VID}"})
-    assert r.status_code == 303 and sessions(conn) == [(VID, "replay")]
+    assert r.status_code == 200 and sessions(conn) == []                       # replays are chosen from the catalogue list now
 
 
-def test_admin_start_names_a_missing_replay_import(conn, test_db_url, pw, no_env_video):
-    r, _ = admin_start(test_db_url, make_live(None), {"video": "abcdefghijl"})
-    assert "corpus replay-import abcdefghijl" in r.text and sessions(conn) == []
-
-
-def test_admin_start_page_has_the_video_field_only_without_a_horizontal_live(conn, test_db_url, pw, no_env_video):
-    tc, adm = admin_app(test_db_url, make_live(HORIZONTAL))
-    with tc:
-        assert 'name="video"' not in adm.get("/admin/falacias", headers=basic()).text
-    tc, adm = admin_app(test_db_url, make_live(None))
-    with tc:
-        assert 'name="video"' in adm.get("/admin/falacias", headers=basic()).text
+def test_admin_start_page_never_has_a_video_field_in_the_start_form(conn, test_db_url, pw, no_env_video):
+    for info in (HORIZONTAL, None):
+        tc, adm = admin_app(test_db_url, make_live(info))
+        with tc:
+            html = adm.get("/admin/falacias", headers=basic()).text
+        assert 'name="video"' in html                                           # the catalogue's own link form
+        assert 'name="video"' not in html.split('action="/admin/falacias/start"')[1].split("</form>")[0]
 
 
 def test_admin_shows_the_session_source(conn, test_db_url, pw, no_env_video):

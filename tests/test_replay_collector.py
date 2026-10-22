@@ -243,8 +243,9 @@ def wait_for(cond, timeout=5.0):
 
 
 def test_the_thread_collects_when_woken_and_stops(conn, mk):
-    c = mk(FakeDownloader())
+    c = mk(FakeDownloader(), poll_s=60)
     c.start()
+    time.sleep(0.3)                                                # the first (empty) loop is over; now only a wake can help
     try:
         R.submit(conn, VID)
         c.wake()
@@ -352,3 +353,46 @@ def test_the_module_helpers_respect_the_off_switch(monkeypatch, test_db_url):
     assert RC.current() is None
     monkeypatch.setenv("REPLAY_COLLECTOR", "on")
     assert RC.enabled() is True
+
+
+# ------------------------------------------------------------------ gaps found by the mutation check
+def test_empty_tracks_give_a_specific_message(conn, mk):
+    R.submit(conn, VID)
+    mk(FakeDownloader(vtt="WEBVTT\n\n")).step()
+    assert "vazios" in R.get(conn, VID).error.lower()
+
+
+def test_the_thread_drains_the_whole_queue_on_one_wake(conn, mk):
+    R.submit(conn, VID)
+    R.submit(conn, VID2)
+    c = mk(FakeDownloader(), poll_s=60)
+    c.start()
+    try:
+        assert wait_for(lambda: R.get(conn, VID).status == "ready" and R.get(conn, VID2).status == "ready")
+    finally:
+        c.stop()
+
+
+def test_recovery_runs_once_per_thread_not_on_every_loop(conn, mk):
+    c = mk(FakeDownloader(), poll_s=60)
+    c.start()
+    try:
+        R.submit(conn, VID)
+        c.wake()
+        assert wait_for(lambda: R.get(conn, VID).status == "ready")
+        R.submit(conn, VID2)
+        R.claim_next(conn)                                         # a job in flight (as if run by another process)
+        c.wake()
+        time.sleep(0.3)
+        assert R.get(conn, VID2).status == "downloading"
+    finally:
+        c.stop()
+
+
+def test_the_ytdlp_downloader_reads_false_flags(monkeypatch):
+    from corpus import fetch as F
+    monkeypatch.setattr(F, "get_meta", lambda video_id, timeout=None: {
+        "title": None, "duration": None, "live_status": "was_live", "width": None, "height": None,
+        "transcript_langs_available": [], "has_live_chat": False})
+    m = RC.YtdlpDownloader().probe(VID)
+    assert (m.has_pt_captions, m.has_chat, m.title) == (False, False, "")

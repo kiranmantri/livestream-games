@@ -250,6 +250,34 @@ FAL_SPOKEN_ERRORS = {
 AF_TYPED = "digitada"
 AF_VIDEO_FIELD = "Link do vídeo gravado (replay), se o canal não estiver ao vivo"
 
+# ---- admin: replay catalogue (on /admin/falacias)
+AF_NO_SOURCE = "O canal não está ao vivo na horizontal. Escolha um replay pronto na lista abaixo."
+AF_REPLAYS = "Replays disponíveis"
+AF_REPLAY_HELP = ("Cole o link de uma transmissão já encerrada (horizontal, até 12 horas). O servidor baixa a transcrição e o chat; "
+                  "o replay só pode ser usado quando ficar pronto.")
+AF_REPLAY_ADD_LABEL = "Link do vídeo (YouTube)"
+AF_REPLAY_ADD = "Coletar"
+AF_REPLAY_EMPTY = "Nenhum replay ainda."
+AF_REPLAY_COLS = ("Vídeo", "Duração", "Linhas (fala / chat)", "Estado", "")
+AF_REPLAY_STATUS = {"queued": "Na fila", "downloading": "Baixando", "importing": "Importando", "ready": "Pronto", "failed": "Falhou"}
+AF_REPLAY_START = "Iniciar com este replay"
+AF_REPLAY_RETRY = "Tentar de novo"
+AF_REPLAY_DELETE = "Excluir"
+AF_REPLAY_DELETE_CONFIRM = "Excluir este replay e todas as suas linhas?"
+AF_REPLAY_ERRORS = {
+    "invalid_video": ERRORS["invalid_video"],
+    "already_ready": "Este vídeo já está na lista e pronto para uso.",
+    "already_running": "Este vídeo já está na fila ou sendo coletado.",
+    "queue_full": "A fila está cheia (máximo 5 vídeos aguardando). Espere algum terminar.",
+    "busy": "Este vídeo está na fila ou sendo coletado agora. Espere terminar.",
+    "in_use": "Uma partida em andamento usa este replay. Encerre a partida primeiro.",
+    "not_found": "Replay não encontrado (já foi excluído?).",
+    "not_ready": "Este replay ainda não está pronto.",
+    "session_active": "Já há uma partida de Falácias em andamento.",
+    "bad_state": "O estado do replay mudou. Atualize a página.",
+    "generic": ERRORS["generic"],
+}
+
 # ---- admin: fallacy list
 ADMIN_TAB_FALLACIES = "Falácias"
 FA_TITLE = "Lista de falácias"
