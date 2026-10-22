@@ -47,7 +47,8 @@
         "COOKIE_SECURE": "1",
         "CLIENT_IP_HEADER": "fly-client-ip",
         "MAX_USERS_PER_IP": "3",
-        "TIMEZONE": "America/Sao_Paulo"
+        "TIMEZONE": "America/Sao_Paulo",
+        "XDG_CACHE_HOME": "/tmp/.cache"
       },
       "depends_on": [
         {

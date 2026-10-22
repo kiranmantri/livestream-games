@@ -308,6 +308,13 @@ Also state what the agent itself already ran and its real output; never claim su
     #   no scroll jump (without JS it falls back to POST + redirect to /admin?open=<user>).
     # Corpus seed: `deploy/seed/phrases_seed.sql` (loaded only into an EMPTY phrases table); `suggest --write` inserts inactive rows.
 
+### Validation for Task 7 (Falácias on Fly: entrypoint seeds, XDG_CACHE_HOME)
+    # docker/entrypoint.sh now runs, after migrate + phrases: `corpus.cli fallacies-load` (only if the fallacies table is EMPTY: admin edits are never
+    #   overwritten, and `fallacies-top` is NOT run at boot) and `corpus.cli replay-load` (16,260 rows, skipped if present). deploy/fly.machine.json: XDG_CACHE_HOME=/tmp/.cache.
+    # Smoke (separate compose project, as in Task 9): logs show "applied: 0001..0009", "fallacies: {'inserted': 97}", "replay: {'inserted': 16260}", "Uvicorn running";
+    #   a Falácias start detected the horizontal live (Ko_lIgMJudY, source_mode live) and the chat worker stored chat rows from inside the container (yt-dlp works there).
+    # The Fly rootfs is writable, so tempfile.mkdtemp in /tmp works; an app without a home dir only needs XDG_CACHE_HOME for yt-dlp's cache.
+
 ### Deploying to Fly.io - checklist (every release)
     # 0. Local: tests green and everything committed + pushed.
     uv run ruff check . && uv run pytest -q                    # expect: All checks passed! / N passed
