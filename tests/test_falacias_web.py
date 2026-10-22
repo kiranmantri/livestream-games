@@ -272,3 +272,15 @@ def test_menu_fragment_does_not_reload_itself_in_a_loop(web):
     assert 'hx-trigger="load, every 30s"' in named(web()).get("/").text           # the page asks once on load
     frag = web().get("/menu?cur=bingo").text
     assert 'hx-trigger="every 30s"' in frag and "load" not in frag.split('hx-trigger="')[1].split('"')[0]
+
+
+def test_falacias_recovery_link_restores_the_player(web, conn):
+    a = web()
+    start(a)
+    link = re.search(r'href="(/r/falacias/[^"]+)"', a.get("/falacias").text)
+    assert link, "the game page must show the recovery link"
+    other = web()
+    r = other.get(link.group(1))
+    assert r.status_code == 303 and r.headers["location"] == "/falacias"
+    assert S.cookie_name("falacias") in r.headers["set-cookie"] and "lg_token=" not in r.headers["set-cookie"]
+    assert "Ana" in other.get("/falacias").text and 'id="pane-chat"' in other.get("/falacias").text

@@ -2,8 +2,26 @@
 from __future__ import annotations
 
 import os
+from urllib.parse import quote, unquote
 
-from fasthtml.common import H1, H2, A, B, Button, Div, Form, Input, Label, Main, Nav, P, Span, Title
+from fasthtml.common import (
+    H1,
+    H2,
+    A,
+    B,
+    Button,
+    Details,
+    Div,
+    Form,
+    Input,
+    Label,
+    Main,
+    Nav,
+    P,
+    Span,
+    Summary,
+    Title,
+)
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 
@@ -39,6 +57,7 @@ def error_box(code: str | None):
 def name_of(request: Request) -> str | None:
     """The remembered nickname, or None when missing/invalid (then the name gate is shown)."""
     raw = request.cookies.get(NAME_COOKIE)
+    raw = unquote(raw) if raw else raw          # stored percent-encoded: header values must be latin-1 (emoji/Cyrillic gave a 500)
     try:
         return S.normalize_name(raw) if raw else None
     except S.InvalidName:
@@ -76,7 +95,28 @@ def name_error_gate(code: str, next_path: str, value: str):
 NAME_ERRORS = ("invalid_name", "name_taken")
 
 
-def register(rt) -> None:
+def recovery_view(request: Request, game_type: str):
+    """A private link that puts this player's cookie in another browser/device (or back after the cookie was lost).
+    Whoever holds the link IS the player: it is shown only on the player's own page."""
+    token = token_of(request, game_type)
+    if not token:
+        return None
+    return Details(Summary(T.RECOVER_SUMMARY), P(T.RECOVER_HELP, cls="muted"),
+                   A(T.RECOVER_LINK, href=f"/r/{game_type}/{quote(token, safe='')}", cls="recover"), cls="recover")
+
+
+def register(rt, pool) -> None:
+    @rt("/r/{game_type}/{token}", methods=["GET"])
+    def recover(request: Request, game_type: str, token: str):
+        if game_type not in ("bingo", "falacias") or len(token) > 200:
+            return Response(status_code=404)
+        with pool.connection() as conn:
+            found = S.get_player_by_token(conn, token, game_type)
+        if found is None:
+            return RedirectResponse(TAB_PATHS[1] if game_type == "falacias" else "/", status_code=303)
+        resp = RedirectResponse("/falacias" if game_type == "falacias" else "/", status_code=303)
+        return remember_name(set_token_cookie(resp, game_type, token), found.name)
+
     @rt("/name", methods=["GET"])
     def name_form(request: Request, next: str = "/"):
         return name_gate(next, value=name_of(request) or "")
@@ -88,13 +128,13 @@ def register(rt) -> None:
         except S.InvalidName:
             return name_gate(next, error="invalid_name", value=name)
         resp = RedirectResponse(safe_next(next), status_code=303)
-        resp.set_cookie(NAME_COOKIE, clean, max_age=COOKIE_MAX_AGE * 15, httponly=True, samesite="lax",
+        resp.set_cookie(NAME_COOKIE, quote(clean, safe=""), max_age=COOKIE_MAX_AGE * 15, httponly=True, samesite="lax",
                         secure=os.environ.get("COOKIE_SECURE", "0") == "1", path="/")
         return resp
 
 
 def remember_name(resp: Response, name: str) -> Response:
-    resp.set_cookie(NAME_COOKIE, name, max_age=COOKIE_MAX_AGE * 15, httponly=True, samesite="lax",
+    resp.set_cookie(NAME_COOKIE, quote(name, safe=""), max_age=COOKIE_MAX_AGE * 15, httponly=True, samesite="lax",
                     secure=os.environ.get("COOKIE_SECURE", "0") == "1", path="/")
     return resp
 

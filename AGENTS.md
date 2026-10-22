@@ -371,6 +371,17 @@ Also state what the agent itself already ran and its real output; never claim su
     #   Joining a game the admin started (live OR replay, even while a live exists) works as before. FALACIAS_VIDEO_ID (env, tests/demos) is still a fallback.
     # Mutation check (repo COPY): 6/6 killed (mutate_r4.py). NOT checked: the entry page in a real browser.
 
+### Validation for the adversarial-test fixes (emoji names, rapid taps, recovery link: app/ui.py, app/main.py)
+    uv run pytest tests/test_major_bugs.py tests/test_falacias_web.py -q   # expect: all passed (red run before the code: 7 failed)
+    uv run pytest -q                                    # expect: 1089 passed, 1 skipped
+    # 1. Names: the `lg_name` cookie is stored percent-encoded (quote/unquote in app/ui.py); emoji, Cyrillic and CJK names no longer give HTTP 500.
+    # 2. Taps: every cell button has hx-sync="closest .cardbox:queue all" (the .cardbox is never swapped), so taps run in order and the screen
+    #    ends equal to the server. Real browser (throwaway DB): cell0 x3, cell1 x2, cell2 x6 -> screen "1/16", same after reload.
+    # 3. Lost cookie / other device: the player's own page has "Salvar link para voltar nesta partida" -> /r/<bingo|falacias>/<token>.
+    #    Opening it sets the cookie again (same card, marks kept). SECURITY: whoever holds the link IS the player; unknown tokens do nothing.
+    #    Open the link in a private window to try it. The token travels in the URL (browser history, proxy logs): acceptable for a low-stakes game.
+    # NOT checked: touch devices, Safari/Firefox. All other findings are in docs/backlog.md.
+
 ### Deploying to Fly.io - checklist (every release)
     # 0. Local: tests green and everything committed + pushed.
     uv run ruff check . && uv run pytest -q                    # expect: All checks passed! / N passed

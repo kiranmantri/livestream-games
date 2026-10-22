@@ -56,6 +56,7 @@ from app.ui import (
     name_of,
     page,
     play_form,
+    recovery_view,
     remember_name,
     set_token_cookie,
     token_of,
@@ -224,7 +225,7 @@ def entry_view(active: S.GameSession | None, n_players: int = 0, error: str | No
 
 
 def game_view(me: S.Player, events: list[feed.Event], last_id: int, st: str, fallacies, side, sent: int = 0, source=None,
-              live: bool = False):
+              live: bool = False, recover=None):
     by_kind = {k: [e for e in events if e.kind == k] for k, _ in PANES}
     intro = [P(T.FAL_LIVE_HOW_TO, cls="muted")] if live else [P(T.FAL_HOW_TO, cls="muted"), P(T.FAL_PICK_HELP, cls="muted"),
                                                               P(T.FAL_REPLAY, cls="muted")]
@@ -239,6 +240,7 @@ def game_view(me: S.Player, events: list[feed.Event], last_id: int, st: str, fal
         spoken_view(fallacies) if live else None,
         side,
         message_box_view(sent),
+        recover,
         Script(src="/falacias.js", defer=True),
         cls="fal")
 
@@ -302,7 +304,7 @@ def register(rt, pool, live: livestream.LiveStream | None = None) -> None:
                 src = feed.session_source(conn, me.session_id)
                 return game_view(me, events, feed.last_event_id(conn, me.session_id), feed.status(conn, me.session_id),
                                  F.list_fallacies(conn), side_view(conn, me), H.sent_count(conn, me.id), source_view(live, src),
-                                 live=src[1] == "live")
+                                 live=src[1] == "live", recover=recovery_view(request, GAME))
             active = S.get_active_session(conn, GAME)
             found = S.find_player(conn, token_of(request, GAME))
             if active is None and found and found[1].status == "ended" and found[1].game_type == GAME:
