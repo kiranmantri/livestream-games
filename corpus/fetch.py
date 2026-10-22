@@ -26,8 +26,8 @@ def list_recent_ids(limit: int) -> list[tuple[str, str]]:
     return [tuple(line.split("\t", 1)) for line in r.stdout.splitlines() if "\t" in line]
 
 
-def get_meta(video_id: str) -> dict:
-    r = run(BASE + ["--skip-download", "-J", WATCH.format(video_id)])
+def get_meta(video_id: str, timeout: float | None = None) -> dict:
+    r = run(BASE + ["--skip-download", "-J", WATCH.format(video_id)], timeout=timeout)
     if r.returncode != 0 or not r.stdout.strip():
         raise RuntimeError(f"metadata failed for {video_id}: {r.stderr[-300:]}")
     d = json.loads(r.stdout)
@@ -48,7 +48,7 @@ def get_meta(video_id: str) -> dict:
     }
 
 
-def download(video_id: str, out: Path, meta: dict) -> dict:
+def download(video_id: str, out: Path, meta: dict, timeout: float | None = None) -> dict:
     """Download transcript (vtt) and live chat (json) via yt-dlp; idempotent."""
     vdir = out / video_id
     vdir.mkdir(parents=True, exist_ok=True)
@@ -62,7 +62,7 @@ def download(video_id: str, out: Path, meta: dict) -> dict:
         lang = next((l for l in TRANSCRIPT_LANGS if l in meta["transcript_langs_available"]), None)
         if lang:
             r = run(BASE + ["--skip-download", "--write-auto-subs", "--sub-langs", lang,
-                            "--sub-format", "vtt", "-o", str(vdir / "%(id)s"), WATCH.format(video_id)])
+                            "--sub-format", "vtt", "-o", str(vdir / "%(id)s"), WATCH.format(video_id)], timeout=timeout)
             if r.returncode != 0:
                 result["errors"].append(f"transcript: {r.stderr[-300:]}")
         else:
@@ -70,7 +70,7 @@ def download(video_id: str, out: Path, meta: dict) -> dict:
     if not find(".live_chat.json"):
         if meta["has_live_chat"]:
             r = run(BASE + ["--skip-download", "--write-subs", "--sub-langs", "live_chat",
-                            "-o", str(vdir / "%(id)s"), WATCH.format(video_id)])
+                            "-o", str(vdir / "%(id)s"), WATCH.format(video_id)], timeout=timeout)
             if r.returncode != 0:
                 result["errors"].append(f"chat: {r.stderr[-300:]}")
         else:

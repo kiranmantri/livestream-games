@@ -39,6 +39,7 @@ from app import (
     fallacies_web,
     livestream,
     phrases_web,
+    replaycollector,
     timefmt,
     ui,
 )
@@ -232,9 +233,11 @@ def create_app(db_url: str | None = None, live: livestream.LiveStream | None = N
         pool.open()
         pool.wait()
         live.current()          # start the first live-stream lookup in the background right away
+        replaycollector.ensure_started(url)     # downloads queued replays (off with REPLAY_COLLECTOR=off)
         try:
             yield
         finally:
+            replaycollector.stop()
             pool.close()
 
     app, rt = fast_app(

@@ -96,3 +96,12 @@ def no_real_chat_process(monkeypatch, request):
         monkeypatch.setattr(chatworker, "connect_fn", _no_db)
     yield
     chatworker.stop_all()
+
+
+@pytest.fixture(autouse=True)
+def no_replay_collector(monkeypatch):
+    """The replay collector thread (yt-dlp) never starts in tests unless a test turns it on explicitly."""
+    monkeypatch.setenv("REPLAY_COLLECTOR", "off")
+    yield
+    from app import replaycollector
+    replaycollector.stop()
