@@ -168,9 +168,9 @@ def admin_page(session: S.GameSession, rows: list[A_.PlayerRow], standings: list
 
 
 def admin_tabs(active: str):
-    """Tabs shared by every admin page: Bingo | Encontre as Falácias | Frases do Bingo."""
+    """Tabs shared by every admin page: Bingo | Encontre as Falácias | Frases do Bingo | Falácias."""
     tabs = (("bingo", T.ADMIN_TAB_BINGO, "/admin"), ("falacias", T.ADMIN_TAB_FALACIAS, "/admin/falacias"),
-            ("phrases", T.ADMIN_TAB_PHRASES, "/admin/phrases"))
+            ("phrases", T.ADMIN_TAB_PHRASES, "/admin/phrases"), ("fallacies", T.ADMIN_TAB_FALLACIES, "/admin/fallacies"))
     return Nav(*[A(label, href=href, cls="active" if key == active else None,
                    aria_current="page" if key == active else None) for key, label, href in tabs],
                cls="menu admintabs", aria_label="admin")

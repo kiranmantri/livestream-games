@@ -249,3 +249,28 @@ FAL_SPOKEN_ERRORS = {
 }
 AF_TYPED = "digitada"
 AF_VIDEO_FIELD = "Link do vídeo gravado (replay), se o canal não estiver ao vivo"
+
+# ---- admin: fallacy list
+ADMIN_TAB_FALLACIES = "Falácias"
+FA_TITLE = "Lista de falácias"
+FA_ADD_LABEL = "Nova falácia"
+FA_ADD_HELP = "Formato: Nome em português (English name - Nome em latim). Use nomes curtos; o latim só quando existir."
+FA_NAME, FA_CATEGORY, FA_DESCRIPTION = "Nome", "Categoria", "Descrição"
+FA_ADD_BUTTON = "Adicionar"
+FA_TOTAL = "{n} falácias"
+FA_EMPTY = "Nenhuma falácia encontrada."
+FA_COLS = ("Nome", "Categoria", "Origem", "Usos", "Ativa", "")
+FA_SOURCES = {"": "todas as origens", "manual": "manual", "wikipedia": "wikipedia"}
+FA_ENABLED_FILTER = {"": "todas", "1": "ativas", "0": "inativas"}
+FA_DELETE_CONFIRM = "Excluir esta falácia? Só é possível se nenhum jogador a usou."
+FA_ADDED = "Falácia adicionada."
+FA_ERRORS = {
+    "invalid_name": "Nome inválido: use de 1 a 120 caracteres.",
+    "invalid_category": "Categoria inválida: use de 1 a 60 caracteres.",
+    "invalid_description": "Descrição muito longa (máximo 1000 caracteres).",
+    "name_taken": "Já existe uma falácia com esse nome.",
+    "in_use": "Esta falácia já foi usada em partidas: desative-a em vez de excluir.",
+    "too_few_enabled": "Pelo menos 5 falácias precisam ficar ativas.",
+    "not_found": "Falácia não encontrada.",
+}
+FA_ATTRIBUTION = "Descrições das falácias da Wikipédia: colaboradores da Wikipédia, CC BY-SA 4.0."

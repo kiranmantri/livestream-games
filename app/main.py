@@ -32,7 +32,16 @@ from psycopg_pool import ConnectionPool
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, RedirectResponse, Response
 
-from app import admin_web, falacias_admin_web, falacias_web, livestream, phrases_web, timefmt, ui
+from app import (
+    admin_web,
+    falacias_admin_web,
+    falacias_web,
+    fallacies_web,
+    livestream,
+    phrases_web,
+    timefmt,
+    ui,
+)
 from app import cards as C
 from app import marks as M
 from app import scoring as G
@@ -341,6 +350,7 @@ def create_app(db_url: str | None = None, live: livestream.LiveStream | None = N
 
     admin_web.register(rt, pool)
     phrases_web.register(rt, pool)
+    fallacies_web.register(rt, pool)
     falacias_web.register(rt, pool, live)
     falacias_admin_web.register(rt, pool, live)
     ui.register(rt)

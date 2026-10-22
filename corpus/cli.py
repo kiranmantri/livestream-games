@@ -48,7 +48,8 @@ def main(argv: list[str] | None = None) -> int:
     rl.add_argument("video_id", nargs="?", default=None, help="default: FALACIAS_VIDEO_ID")
 
     sub.add_parser("fallacies-load", help="apply deploy/seed/fallacies_seed.sql, only if the fallacies table is EMPTY")
-    sub.add_parser("fallacies-top", help="enable only the curated top 20 Wikipedia fallacies, disable the other Wikipedia rows")
+    sub.add_parser("fallacies-manual", help="add the requested manual fallacies (Deus das lacunas, Ônus da prova invertido) if missing by name")
+    sub.add_parser("fallacies-top", help="rename/enable the curated Wikipedia fallacies and disable the other Wikipedia rows (OVERWRITES online edits of those rows; manual, never at boot)")
 
     args = p.parse_args(argv)
     if args.cmd == "fallacies-top":
@@ -57,6 +58,15 @@ def main(argv: list[str] | None = None) -> int:
         conn = connect()
         try:
             print("fallacies:", sync_top_fallacies(conn))
+        finally:
+            conn.close()
+        return 0
+    if args.cmd == "fallacies-manual":
+        from app.db import connect
+        from app.fallacies_admin import ensure_manual
+        conn = connect()
+        try:
+            print("fallacies:", {"added": ensure_manual(conn)})
         finally:
             conn.close()
         return 0

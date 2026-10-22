@@ -112,3 +112,12 @@ def players(conn: psycopg.Connection, session_id: uuid.UUID) -> list[PlayerRow]:
         revoked.setdefault(uid, set()).add(idx)
     return [PlayerRow(r[0], r[1], r[2], r[3], r[4], r[5] or [], frozenset(r[6]), dict(zip(r[6], r[7], strict=True)),
                       frozenset(revoked.get(r[0], ()))) for r in rows]
+
+
+def fallacies_token(password: str) -> str:
+    """One token for every state-changing fallacy-list action (add / edit / delete)."""
+    return hmac.new(password.encode(), b"fallacies", hashlib.sha256).hexdigest()
+
+
+def fallacies_ok(password: str, token: str | None) -> bool:
+    return bool(token) and hmac.compare_digest(fallacies_token(password), token or "")
