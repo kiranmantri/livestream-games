@@ -12,6 +12,8 @@ RUN uv sync --frozen --no-dev --no-install-project
 # --- runtime: venv + source only, non-root. The code runs from /app (config.ROOT = parent of app/).
 FROM python:3.14-slim
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+# ffmpeg: the live-audio capture of the speech-to-text worker (apt build: uses the system CA certificates for HTTPS HLS)
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin app
 WORKDIR /app
 COPY --from=build /app/.venv /app/.venv

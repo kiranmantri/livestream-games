@@ -578,6 +578,18 @@ Also state what the agent itself already ran and its real output; never claim su
     #   Replay games are unchanged (transcript | chat, no video). Phones (<= 760 px): one column, video first.
     # NOT checked in a real browser (widths, iframe size in a 1/3 column, the hide/show script, phones).
 
+### Validation for S3 (STT on Fly: ffmpeg in the app image, private whisper app `livebingo-stt`)
+    uv run pytest tests/test_deploy_stt.py -q           # expect: 3 passed (written together with the config: no red run)
+    # Files: Dockerfile (apt ffmpeg), deploy/fly.machine.json (app env STT_PROVIDER=whispercpp, STT_URL=http://livebingo-stt.internal:8080, STT_LANGUAGE=pt),
+    #   deploy/stt/Dockerfile + deploy/stt/fly.toml (whisper.cpp v1.7.6 built from source, ggml-small baked in, shared-cpu-4x / 2 GB, NO public IP).
+    # Create/deploy the whisper app (done once):  fly apps create livebingo-stt --org personal ; cd deploy/stt && fly deploy --ha=false --no-public-ips
+    # Checked locally (Docker, arm64): the whisper image builds (1.09 GB), the server answers /inference; a Portuguese sentence made with `say` came back exactly
+    #   (2.8 s). The app image has ffmpeg 7.1 and reaches HTTPS without a certificate error.
+    # NOT measured: the real-time factor of `small` on Fly's shared CPU, yt-dlp live audio from Fly's IP. Check after the app deploy:
+    fly logs --app livebingo --no-tail | grep "stt "     # reasons for failures; none = working
+    # Cost control: the whisper Machine runs all the time. Stop it between lives: fly machine stop <id> --app livebingo-stt ; start it before a game.
+    # Rollback: remove STT_* from deploy/fly.machine.json and redeploy (the page falls back to the typed box).
+
 ### Deploying to Fly.io - checklist (every release)
     # 0. Local: tests green and everything committed + pushed.
     uv run ruff check . && uv run pytest -q                    # expect: All checks passed! / N passed

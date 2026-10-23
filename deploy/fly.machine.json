@@ -48,7 +48,10 @@
         "CLIENT_IP_HEADER": "fly-client-ip",
         "MAX_USERS_PER_IP": "3",
         "TIMEZONE": "America/Sao_Paulo",
-        "XDG_CACHE_HOME": "/tmp/.cache"
+        "XDG_CACHE_HOME": "/tmp/.cache",
+        "STT_PROVIDER": "whispercpp",
+        "STT_URL": "http://livebingo-stt.internal:8080",
+        "STT_LANGUAGE": "pt"
       },
       "depends_on": [
         {
