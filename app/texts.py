@@ -267,15 +267,15 @@ FAL_REPLAY_MISSING = "O vídeo {id} ainda não foi importado. No servidor, rode:
 SRC_SESSION_LIVE = "Transmissão ao vivo da partida"
 FAL_NO_TRANSCRIPT = (
     "Estamos ainda sem transcrição ao vivo.\n"
-    "Digite abaixo a frase que você ouviu e escolha a falácia. Se acertar vc acumulará pontos.\n\n"
+    "Clique aqui, escreva no painel de envio a frase que você ouviu e escolha a falácia. Se acertar, você acumula pontos.\n\n"
     "A transcrição automática será implementada em breve. Fique ligado."
 )
 FAL_CHAT_DOWN = "Chat ao vivo fora do ar. Tentando reconectar..."
 FAL_STT_LABEL = "Transcrição automática, pode conter erros"
 FAL_STT_DOWN = "A transcrição automática está fora do ar. Tentando reconectar... Enquanto isso, clique no chat ou na transcrição e escreva a frase no painel de envio."
-FAL_LIVE_HOW_TO_STT = ("Acompanhe a transcrição automática (esquerda) e o chat (direita). Selecione o trecho com a falácia. "
+FAL_LIVE_HOW_TO_STT = ("Acompanhe a transmissão, o chat e a transcrição automática (da esquerda para a direita). Selecione o trecho com a falácia. "
                        "Se a transcrição errar ou perder algo, escreva a frase no painel de envio.")
-FAL_LIVE_HOW_TO = "Acompanhe o chat (direita) na transmissão ao vivo. Frases faladas: clique no chat e escreva a frase no painel de envio."
+FAL_LIVE_HOW_TO = "Acompanhe a transmissão e o chat ao vivo. Frases faladas: clique no chat e escreva a frase no painel de envio."
 AF_TYPED = "digitada"
 AF_VIDEO_FIELD = "Link do vídeo gravado (replay), se o canal não estiver ao vivo"
 
