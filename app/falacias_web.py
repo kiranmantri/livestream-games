@@ -20,6 +20,7 @@ from fasthtml.common import (
     Button,
     Div,
     Form,
+    Iframe,
     Input,
     Label,
     Li,
@@ -72,8 +73,8 @@ PANES = (("transcript", T.FAL_TRANSCRIPT), ("chat", T.FAL_CHAT))
 
 
 # ------------------------------------------------------------------ views
-def fal_page(*content, cls: str | None = None):
-    return page(*content, title=T.FAL_TITLE, cls=cls, current=GAME)
+def fal_page(*content, cls: str | None = None, who: str | None = None):
+    return page(*content, title=T.FAL_TITLE, cls=cls, current=GAME, who=who)
 
 
 def line_view(e: feed.Event):
@@ -90,6 +91,16 @@ def pane_view(kind: str, title: str, events: list[feed.Event], note: str | None 
         Div(P(note, cls="pnote") if note else None, *[line_view(e) for e in events], id=f"pane-{kind}", cls="scroll",
             data_kind=kind, lang="pt-BR", tabindex="0"),
         cls=f"pane panel {kind}")
+
+
+def video_pane(video_id: str, note: str | None = None):
+    """Live sessions have no transcript: the left pane shows the stream instead (so nobody switches windows to watch it)."""
+    return Div(Div(Span(T.STREAM_TITLE, cls="who"), cls="bar"),
+               Div(Iframe(src=f"https://www.youtube-nocookie.com/embed/{video_id}?autoplay=1&mute=1&playsinline=1&rel=0",
+                          title=T.STREAM_TITLE, allow="autoplay; encrypted-media; picture-in-picture; fullscreen",
+                          allowfullscreen=True, referrerpolicy="strict-origin-when-cross-origin"), cls="ratio"),
+               P(note, cls="pnote") if note else None,
+               cls="pane video panel")
 
 
 def banner_view(st: str, oob: bool = False, live: bool = False):
@@ -226,11 +237,11 @@ def entry_view(active: S.GameSession | None, n_players: int = 0, error: str | No
                     play_form("/falacias/join", T.JOIN_BUTTON, name, "/falacias"), cls="panel")
     err = Div(T.FAL_REPLAY_MISSING.format(id=detail), cls="error", role="alert") if error == "feed_unavailable" and detail \
         else error_box(error)
-    return fal_page(H1(T.FAL_TITLE), P(T.FAL_TAGLINE, cls="tag"), source, err, panel)
+    return fal_page(H1(T.FAL_TITLE), P(T.FAL_TAGLINE, cls="tag"), source, err, panel, who=name or None)
 
 
 def game_view(me: S.Player, events: list[feed.Event], last_id: int, st: str, fallacies, side, sent: int = 0, source=None,
-              live: bool = False, recover=None):
+              live: bool = False, recover=None, video_id: str | None = None):
     by_kind = {k: [e for e in events if e.kind == k] for k, _ in PANES}
     intro = [P(T.FAL_LIVE_HOW_TO, cls="muted")] if live else [P(T.FAL_HOW_TO, cls="muted"), P(T.FAL_PICK_HELP, cls="muted"),
                                                               P(T.FAL_REPLAY, cls="muted")]
@@ -238,8 +249,10 @@ def game_view(me: S.Player, events: list[feed.Event], last_id: int, st: str, fal
         H1(T.FAL_TITLE), P(f"{me.name} ({T.YOU})", cls="tag"), *intro,
         source,
         banner_view(st, live=live),
-        Div(*[pane_view(k, title, by_kind[k], note=T.FAL_NO_TRANSCRIPT if live and k == "transcript" else None) for k, title in PANES],
-            cls="panes"),
+        Div(*[video_pane(video_id, T.FAL_NO_TRANSCRIPT) if live and video_id and k == "transcript"
+              else pane_view(k, title, by_kind[k], note=T.FAL_NO_TRANSCRIPT if live and k == "transcript" else None)
+              for k, title in PANES],
+            cls="panes" + (" withvideo" if live and video_id else "")),
         poller_view(last_id, st),
         picker_view(fallacies),
         spoken_view(fallacies) if live else None,
@@ -247,7 +260,7 @@ def game_view(me: S.Player, events: list[feed.Event], last_id: int, st: str, fal
         message_box_view(sent),
         recover,
         Script(src="/falacias.js", defer=True),
-        cls="fal")
+        cls="fal", who=me.name)
 
 
 def ended_view(conn, session: S.GameSession, me: S.Player, rows: list[F.LeaderRow]):
@@ -267,7 +280,8 @@ def ended_view(conn, session: S.GameSession, me: S.Player, rows: list[F.LeaderRo
     return fal_page(H1(T.FAL_GAME_OVER), head,
                     Div(H2(T.LEADERBOARD), table, P(T.FAL_UNREVIEWED_NOTE, cls="muted") if mine and mine.pending else None,
                         cls="panel"),
-                    Div(H2(T.FAL_MINE), Ol(*pairs, cls="pairs") if pairs else P(T.FAL_NO_PAIRS, cls="muted"), cls="panel"))
+                    Div(H2(T.FAL_MINE), Ol(*pairs, cls="pairs") if pairs else P(T.FAL_NO_PAIRS, cls="muted"), cls="panel"),
+                    who=me.name)
 
 
 # ------------------------------------------------------------------ routes
@@ -311,7 +325,7 @@ def register(rt, pool, live: livestream.LiveStream | None = None) -> None:
                 src = feed.session_source(conn, me.session_id)
                 return game_view(me, events, feed.last_event_id(conn, me.session_id), feed.status(conn, me.session_id),
                                  F.list_fallacies(conn), side_view(conn, me), H.sent_count(conn, me.id), source_view(live, src),
-                                 live=src[1] == "live", recover=recovery_view(request, GAME))
+                                 live=src[1] == "live", recover=recovery_view(request, GAME), video_id=src[0])
             active = S.get_active_session(conn, GAME)
             found = S.find_player(conn, token_of(request, GAME))
             if active is None and found and found[1].status == "ended" and found[1].game_type == GAME:

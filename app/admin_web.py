@@ -13,6 +13,7 @@ from fasthtml.common import (
     Details,
     Div,
     Form,
+    Header,
     Input,
     Label,
     Main,
@@ -174,8 +175,8 @@ def admin_page(session: S.GameSession, rows: list[A_.PlayerRow], standings: list
         onsubmit=f"return confirm({T.ADMIN_FINISH_CONFIRM!r})") if active else None
     bar = status_bar(session, len(rows), finish, "/admin", winner.name if winner else None)
     cards = [card_panel(r, session.id, token, active, str(r.user_id) == open_uid) for r in rows]
-    return (Title(f"{T.TITLE} - admin"),
-            Main(admin_tabs("bingo"), H1(f"{T.TITLE} - admin"), bar,
+    return (Title(f"{T.TITLE} - admin"), admin_tabs("bingo"),
+            Main(H1(f"{T.TITLE} - admin"), bar,
                  start_form(start_token) if not active else "",
                  users_panel(rows, rank, sort, direction, poll=active),
                  H2(T.ADMIN_CARDS), *cards, settings, Script(src="/admin.js", defer=True), cls="wide"))
@@ -183,15 +184,19 @@ def admin_page(session: S.GameSession, rows: list[A_.PlayerRow], standings: list
 
 def admin_tabs(active: str):
     """Two groups: the games being played, and the content behind them (phrases, fallacies)."""
-    games = (("bingo", T.ADMIN_TAB_BINGO, "/admin"), ("falacias", T.ADMIN_TAB_FALACIAS, "/admin/falacias"))
-    content = (("phrases", T.ADMIN_TAB_PHRASES, "/admin/phrases"), ("fallacies", T.ADMIN_TAB_FALLACIES, "/admin/fallacies"))
+    games = (("bingo", T.ADMIN_TAB_BINGO, "/admin", "🎯"), ("falacias", T.ADMIN_TAB_FALACIAS, "/admin/falacias", "🔎"))
+    content = (("phrases", T.ADMIN_TAB_PHRASES, "/admin/phrases", "📝"), ("fallacies", T.ADMIN_TAB_FALLACIES, "/admin/fallacies", "📚"))
 
     def links(items):
-        return [A(label, href=href, cls="active" if key == active else None,
-                  aria_current="page" if key == active else None) for key, label, href in items]
-    return Nav(Span(T.ADMIN_GROUP_GAMES, cls="admingroup"), *links(games),
-               Span(T.ADMIN_GROUP_CONTENT, cls="admingroup"), *links(content),
-               cls="menu admintabs", aria_label="admin")
+        return [A(Span(icon, cls="ico", aria_hidden="true"), Span(Span(label, cls="lbl"), cls="txt"),
+                  href=href, cls="active" if key == active else None,
+                  aria_current="page" if key == active else None) for key, label, href, icon in items]
+    return Header(A(Span("🛠", cls="mark", aria_hidden="true"), Span(T.ADMIN_BRAND, cls="name"), href="/admin", cls="brand"),
+                  Nav(Span(T.ADMIN_GROUP_GAMES, cls="admingroup"), *links(games),
+                      Span(T.ADMIN_GROUP_CONTENT, cls="admingroup"), *links(content),
+                      cls="menu admintabs", aria_label="admin"),
+                  A(T.ADMIN_VIEW_SITE, " ↗", href="/", cls="viewsite", target="_blank", rel="noopener"),
+                  cls="appbar admin")
 
 
 def status_bar(session: S.GameSession, n_players: int, finish=None, refresh_href: str | None = None, winner: str | None = None):
@@ -200,7 +205,7 @@ def status_bar(session: S.GameSession, n_players: int, finish=None, refresh_href
     since = int(session.created_at.timestamp() * 1000)
     seconds = (datetime.now(session.created_at.tzinfo) - session.created_at).total_seconds()
     return Div(
-        Span(T.ADMIN_ACTIVE if active else T.ADMIN_ENDED, cls="pill on" if active else "pill"),
+        Span(Span(cls="livedot") if active else None, T.ADMIN_ACTIVE if active else T.ADMIN_ENDED, cls="pill on" if active else "pill"),
         Span(f"{T.ADMIN_STARTED}: {_ts(session.created_at)}", cls="muted started"),
         Span(f"{T.ADMIN_ENDED_AT}: {_ts(session.ended_at)}", cls="muted") if session.ended_at else None,
         player_count(n_players),

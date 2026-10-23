@@ -85,7 +85,7 @@ def entry_page(active: S.GameSession | None, n_players: int = 0, error: str | No
     else:
         panel = Div(H2(T.JOIN_HEADING), P(T.players_in_game(n_players), cls="muted"),
                     play_form("/join", T.JOIN_BUTTON, name, "/"), cls="panel")
-    return page(H1(T.TITLE), P(T.TAGLINE, cls="tag"), error_box(error), panel)
+    return page(H1(T.TITLE), P(T.TAGLINE, cls="tag"), error_box(error), panel, who=name or None)
 
 
 def cell_size_cls(text: str) -> str:
@@ -115,7 +115,10 @@ def cell_button(i: int, cell: dict, marked: dict[int, datetime], revoked: frozen
 
 
 def count_view(marked: dict[int, datetime], card: C.Card, oob: bool = False):
-    return Span(f"{T.MARKED}: {len(marked)}/{card.max_marks}", cls="count", id="count", hx_swap_oob="true" if oob else None)
+    pct = round(100 * len(marked) / card.max_marks) if card.max_marks else 0
+    bar = Span(Span(style=f"width:{pct}%"), cls="progress", role="progressbar", aria_label=T.MARKED, aria_valuemin="0",
+               aria_valuenow=str(len(marked)), aria_valuemax=str(card.max_marks))
+    return Span(f"{T.MARKED}: {len(marked)}/{card.max_marks}", bar, cls="count", id="count", hx_swap_oob="true" if oob else None)
 
 
 def lines_view(card: C.Card, marked: dict[int, datetime], oob: bool = False):
@@ -236,7 +239,7 @@ def game_page(card: C.Card, marked: dict[int, datetime], me: S.Player, others: l
         Div(others_view(others, boards_version(others)), cls="cardgrid small"),
         recover,
         Script(src="/game.js", defer=True),
-        cls="game")
+        cls="game", who=me.name)
 
 
 def results_page(session: S.GameSession, me: S.Player, standings: list[G.Standing]):
@@ -250,7 +253,7 @@ def results_page(session: S.GameSession, me: S.Player, standings: list[G.Standin
         Div(H2(T.LEADERBOARD),
             Ol(*[Li(Span(f"{s.rank}.", cls="pos"), Span(s.name, cls="nm"),
                     Span(str(s.marked), cls="pts"), cls="me" if s.user_id == me.id else None)
-                 for s in standings], cls="lb"), cls="panel"))
+                 for s in standings], cls="lb"), cls="panel"), who=me.name)
 
 
 # ------------------------------------------------------------------ app

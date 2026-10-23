@@ -224,12 +224,12 @@ def source_line(conn, session: S.GameSession):
 
 def page_view(conn, session: S.GameSession | None, pw: str, error: str | None = None, detail: str | None = None,
               replay_error: str | None = None):
-    parts = [admin_tabs("falacias"), H1(T.AF_TITLE)]
+    parts = [H1(T.AF_TITLE)]
     if error:
         parts.append(Div(error_text(error, detail), cls="error", role="alert"))
     if session is None:
         parts += [P(T.AF_NO_SESSION, cls="muted"), start_form(pw), replays_panel(conn, pw, replay_error)]
-        return (Title(T.AF_TITLE), Main(*parts, cls="wide"))
+        return (Title(T.AF_TITLE), admin_tabs("falacias"), Main(*parts, cls="wide"))
     token = A_.csrf_token(pw, session.id)
     active = session.status == "active"
     winner = None if active else next((r for r in F.leaderboard(conn, session.id) if r.user_id == session.winner_user_id), None)
@@ -253,7 +253,7 @@ def page_view(conn, session: S.GameSession | None, pw: str, error: str | None = 
         parts.append(start_form(pw))
     parts.append(side_view(conn, session, token))
     parts.append(replays_panel(conn, pw, replay_error, fold=active))
-    return (Title(T.AF_TITLE), Main(*parts, cls="wide"))
+    return (Title(T.AF_TITLE), admin_tabs("falacias"), Main(*parts, cls="wide"))
 
 
 # ------------------------------------------------------------------ routes

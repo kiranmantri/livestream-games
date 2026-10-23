@@ -13,11 +13,13 @@ from fasthtml.common import (
     Details,
     Div,
     Form,
+    Header,
     Input,
     Label,
     Main,
     Nav,
     P,
+    Small,
     Span,
     Summary,
     Title,
@@ -31,20 +33,38 @@ from app import texts as T
 COOKIE_MAX_AGE = 60 * 60 * 48
 NAME_COOKIE = "lg_name"          # the nickname, asked once for both games (NOT an identity: only pre-fills joins)
 TAB_PATHS = ("/", "/falacias")
-MENU = (("bingo", T.MENU_BINGO, "/"), ("falacias", T.MENU_FALACIAS, "/falacias"))
+MENU = (("bingo", T.MENU_BINGO, "/", "🎯", T.MENU_BINGO_SUB), ("falacias", T.MENU_FALACIAS, "/falacias", "🔎", T.MENU_FALACIAS_SUB))
+BRAND_ICON = "🎲"
 
 
 def menu(current: str, running: frozenset[str] = frozenset(), first_load: bool = True):
     """Links between the games. Rendered without state first; the fragment from /menu adds a dot to games in progress."""
-    links = [A(label, Span(cls="dot", title=T.MENU_RUNNING, role="img", aria_label=T.MENU_RUNNING) if key in running else None,
+    links = [A(Span(icon, cls="ico", aria_hidden="true"),
+               Span(Span(label, cls="lbl"), Small(sub, cls="sub"), cls="txt"),
+               Span(cls="dot", title=T.MENU_RUNNING, role="img", aria_label=T.MENU_RUNNING) if key in running else None,
                href=href, cls="active" if key == current else None, aria_current="page" if key == current else None)
-             for key, label, href in MENU]
+             for key, label, href, icon, sub in MENU]
     return Nav(*links, id="menu", cls="menu", hx_get=f"/menu?cur={current}", hx_trigger="load, every 30s" if first_load else "every 30s",
                hx_swap="outerHTML", aria_label=T.MENU_LABEL)
 
 
-def page(*content, title: str = T.TITLE, cls: str | None = None, current: str = "bingo", tabs: bool = True):
-    return Title(title), Main(menu(current) if tabs else None, *content, cls=cls)
+def usermenu(who: str, current: str):
+    """The player's name as a small avatar button; opens a popover with the way to change it (no JS: <details>)."""
+    path = TAB_PATHS[1] if current == "falacias" else TAB_PATHS[0]
+    return Details(Summary(Span(who[:1].upper(), cls="av", aria_hidden="true"), Span(who, cls="nm"), title=who),
+                   Div(A(T.USER_CHANGE, href=f"/name?next={path}"), cls="pop"), cls="usermenu")
+
+
+def appbar(current: str, who: str | None):
+    """One bar for everything that navigates: brand (home), the two game tabs, and who I am. On phones the tabs move to the
+    bottom of the screen (CSS), where thumbs reach them."""
+    return Header(A(Span(BRAND_ICON, cls="mark", aria_hidden="true"), Span(T.SITE_TITLE, cls="name"), href="/", cls="brand"),
+                  menu(current), usermenu(who, current) if who else None, cls="appbar")
+
+
+def page(*content, title: str = T.TITLE, cls: str | None = None, current: str = "bingo", tabs: bool = True,
+         who: str | None = None):
+    return Title(title), appbar(current, who) if tabs else None, Main(*content, cls=cls)
 
 
 _pool = None
@@ -79,14 +99,14 @@ def safe_next(value: str | None) -> str:
 
 def name_gate(next_path: str = "/", error: str | None = None, value: str = ""):
     """The FIRST thing a visitor sees: ask for a nickname. No tabs yet."""
-    return page(
-        H1(T.SITE_TITLE), H2(T.NAME_HEADING), P(T.NAME_HELP, cls="tag"), error_box(error),
+    return page(Div(
+        Div(BRAND_ICON, cls="mark", aria_hidden="true"), H1(T.SITE_TITLE), H2(T.NAME_HEADING), P(T.NAME_HELP, cls="tag"), error_box(error),
         Div(Form(Label(T.NAME_LABEL, fr="name"),
                  Input(type="text", id="name", name="name", value=value, maxlength=S.MAX_NAME_LEN,
                        required=True, autocomplete="nickname", autofocus=True, onfocus="this.select()"),
                  Input(type="hidden", name="next", value=safe_next(next_path)),
                  Button(T.NAME_BUTTON, type="submit", cls="primary"),
-                 method="post", action="/name", cls="entry"), cls="panel"),
+                 method="post", action="/name", cls="entry"), cls="panel"), cls="hero"),
         title=T.SITE_TITLE, tabs=False)
 
 

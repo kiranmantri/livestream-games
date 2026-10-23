@@ -106,8 +106,8 @@ def fallacies_page(rows: list[FA.FallacyRow], token: str, q: str = "", source: s
         Button(T.PH_FILTER, type="submit"), method="get", action="/admin/fallacies", cls="filters")
     table = (Table(Thead(Tr(*[Th(h) for h in T.FA_COLS])), Tbody(*[display_row(r) for r in rows]), cls="users phrases")
              if rows else P(T.FA_EMPTY, cls="muted"))
-    return (Title(f"{T.TITLE} - {T.FA_TITLE}"),
-            Main(admin_tabs("fallacies"), H1(T.FA_TITLE),
+    return (Title(f"{T.TITLE} - {T.FA_TITLE}"), admin_tabs("fallacies"),
+            Main(H1(T.FA_TITLE),
                  Div(error, cls="error", role="alert") if error else None,
                  Div(notice, cls="notice", role="status") if notice else None,
                  add, flt, P(T.FA_TOTAL.format(n=len(rows)), cls="muted"), Div(table, cls="tablewrap"),

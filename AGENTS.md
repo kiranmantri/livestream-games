@@ -440,6 +440,31 @@ Also state what the agent itself already ran and its real output; never claim su
     # NOT checked: the cloud (needs the deploy checklist: migration 0011 => backup first; then run replay-emoji once in the app container:
     #   fly ssh console --app livebingo --container app -C "sh -c 'cd /app && python -m corpus.cli replay-emoji'"), phones, Safari/Firefox.
 
+### Validation for Visual refresh v1 (DESIGN.md is the target; app/ui.py, app/static/app.css, admin.js)
+    uv run pytest tests/test_refresh.py -q               # expect: 16 passed (red run before the code: failures on every new feature)
+    uv run pytest -q                                     # expect: 1163 passed, 1 skipped
+    # Every player page: sticky app bar = brand (home) | game tabs with icon + one-line subtitle (green pulsing dot = game running) | avatar + name
+    #   (click: "Trocar nome"). Phones (<= 760 px): the tabs move to a fixed BOTTOM bar. NOTE: a backdrop-filter on .appbar on phones would
+    #   anchor that fixed bar to the top (found in the browser) - keep it `none` there.
+    # Bingo: progress bar under "Marcadas n/16", cells pop when marked. Name gate: centred welcome. Falacias LIVE game: the left pane shows the
+    #   stream (youtube-nocookie embed, muted autoplay) instead of the empty transcript pane. Picker is a right-hand drawer on desktop.
+    # Admin: verdict buttons coloured (Correto green, Errado amber, Spam grey) with C/E/S key badges (hidden on phones); the browser tab title shows
+    #   "(n) ..." while n pairs wait (admin.js, ~20 lines). All motion is off with prefers-reduced-motion.
+    # Real Chrome (throwaway DB): 390 px and 1280 px, Bingo + Falacias live + user menu checked. NOT checked: admin queue colours, picker drawer,
+    #   tab-title counter (the QA had no pending pairs), Safari/Firefox/touch.
+
+### Validation for Visual refresh v1, part 2 (admin shell: app/admin_web.py admin_tabs, app/static/app.css)
+    uv run pytest tests/test_refresh.py -q               # expect: 19 passed (3 new admin tests were red first)
+    uv run pytest -q                                     # expect: 1166 passed, 1 skipped (tests/test_phone_ui.py::test_a_falacia_phrase_is_drawn_with_a_small_tag is
+                                                         #   probabilistic - it deals up to 40 random cards - and failed once in ~4 full runs; rerun it if it does)
+    # Every /admin page: sticky app bar "Admin" | Partidas: Bingo, Encontre as Falácias | Conteúdo: Frases do Bingo, Lista de falácias | "Ver o site" (new tab).
+    #   The bar is now OUTSIDE <main> (admin_tabs() returns the <header>; pages return (Title, admin_tabs(..), Main(..))). Phones: the 4 tabs sit in a fixed bottom bar,
+    #   group labels and "Ver o site" are hidden. The sticky status bar is a rounded card pinned at top: 57px (just under the app bar), with a pulsing dot while active;
+    #   users table: uppercase headers, zebra rows, hover; "Encerrar partida" is outlined red and fills on hover.
+    # Real Chrome (throwaway DB): /admin and /admin/falacias at 1280 px and /admin at 390 px (no sideways scroll, bottom tabs, nothing hidden).
+    #   NOT checked: /admin/phrases and /admin/fallacies visually, the coloured verdict buttons with real pending pairs (the seeder got HTTP 401 on typed pairs and the
+    #   channel was live, so no replay chat to mark), Safari/Firefox/touch.
+
 ### Deploying to Fly.io - checklist (every release)
     # 0. Local: tests green and everything committed + pushed.
     uv run ruff check . && uv run pytest -q                    # expect: All checks passed! / N passed
