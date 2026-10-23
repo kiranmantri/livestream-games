@@ -147,11 +147,11 @@ def phrases_page(rows: list[P_.PhraseRow], total: int, token: str, q: str, sourc
     table = (Table(Thead(Tr(*[Th(h) for h in T.PH_COLS])), Tbody(*[display_row(r) for r in rows]),
                    cls="users phrases") if rows else P(T.PH_EMPTY, cls="muted"))
     return (Title(f"{T.TITLE} - {T.PH_TITLE}"), admin_tabs("phrases"),
-            Main(H1(T.PH_TITLE), A(f"‹ {T.PH_BACK}", href="/admin", cls="btn small"),
+            Main(H1(T.PH_TITLE),
                  Div(error, cls="error", role="alert") if error else None,
                  Div(notice, cls="notice", role="status") if notice else None,
-                 add, flt, P(T.PH_TOTAL.format(n=total), cls="muted"), bulk,
-                 Div(table, cls="tablewrap"), nav, Script(BULK_JS.replace("__SEL__", T.PH_SELECTED)),
+                 add, Div(flt, P(T.PH_TOTAL.format(n=total), cls="muted"), bulk, cls="panel toolbar"),
+                 Div(table, cls="panel tablewrap"), nav, Script(BULK_JS.replace("__SEL__", T.PH_SELECTED)),
                  cls="wide", hx_headers=json.dumps({"X-CSRF": token})))
 
 

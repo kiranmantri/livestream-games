@@ -60,8 +60,7 @@ def test_bingo_status_bar_has_state_count_elapsed_and_finish_at_the_end(bweb, ru
     b = bar.group(0)
     assert T.ADMIN_ACTIVE in b and 'id="playercount"' in b and re.search(r'<time[^>]*data-since="\d+"', b)
     assert 'action="/admin/finish"' in b and b.index('id="playercount"') < b.index('action="/admin/finish"')
-    assert T.ADMIN_REFRESH in b                                    # "Atualizar" no longer hides below the fold
-    assert 'id="updated"' in html and 'src="/admin.js"' in html
+    assert 'src="/admin.js"' in html
 
 
 def test_users_table_polls_every_5s_keeping_the_sort_and_stops_when_ended(bweb, running, conn):
@@ -114,7 +113,7 @@ def test_polled_queue_items_carry_their_age_too(web, game, conn, fal):
 def test_admin_js_has_filter_shortcuts_age_and_elapsed_and_guards_in_flight_requests():
     js = (STATIC / "admin.js").read_text()
     for needle in ("onlypending", "only-pending", "c: 'correct'", "e: 'wrong'", "s: 'spam'", "shiftKey", "htmx-request", "data-us", "data-since",
-                   "INPUT", "TEXTAREA", "updated"):
+                   "INPUT", "TEXTAREA"):
         assert needle in js, needle
 
 

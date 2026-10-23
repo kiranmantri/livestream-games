@@ -461,6 +461,9 @@ Also state what the agent itself already ran and its real output; never claim su
     #   The bar is now OUTSIDE <main> (admin_tabs() returns the <header>; pages return (Title, admin_tabs(..), Main(..))). Phones: the 4 tabs sit in a fixed bottom bar,
     #   group labels and "Ver o site" are hidden. The sticky status bar is a rounded card pinned at top: 57px (just under the app bar), with a pulsing dot while active;
     #   users table: uppercase headers, zebra rows, hover; "Encerrar partida" is outlined red and fills on hover.
+    # Later tweaks: no "Atualizar"/"atualizado" in the Bingo status bar (the 5 s poll replaces it); both end buttons say "Encerrar partida"; the bar wraps instead of overflowing;
+    #   All destructive buttons (row/bulk "Excluir", replay "Excluir", "Encerrar partida") share ONE soft red pill (`/* destructive buttons */` in app.css): fully rounded, tinted, solid on hover.
+    #   /admin/phrases has no "Painel" button (the tabs navigate): add card, toolbar card (filters + count + bulk buttons), table card (scrolls sideways INSIDE its card on phones).
     # Real Chrome (throwaway DB): /admin and /admin/falacias at 1280 px and /admin at 390 px (no sideways scroll, bottom tabs, nothing hidden).
     #   NOT checked: /admin/phrases and /admin/fallacies visually, the coloured verdict buttons with real pending pairs (the seeder got HTTP 401 on typed pairs and the
     #   channel was live, so no replay chat to mark), Safari/Firefox/touch.

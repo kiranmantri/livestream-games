@@ -391,7 +391,7 @@ button.link { min-height: 32px; padding: 4px 8px; }
   .replaypanel input, .replaypanel button, table.replays button.act { min-height: 44px; }
   table.replays td a { display: inline-block; padding: 13px 0; }
   main.wide form button:not(.mcbtn), main.wide form input[type=search], main.wide form select { min-height: 44px; }
-  #statusbar .started, #statusbar #updated { display: none; }        /* keep the sticky bar short: state, players, time, buttons */
+  #statusbar .started { display: none; }        /* keep the sticky bar short: state, players, time, buttons */
   #statusbar a.btn, #statusbar button { min-height: 44px; display: inline-flex; align-items: center; }
   .vbtn { flex: 1 1 28%; min-width: 0; }
   .vform { display: contents; }
@@ -575,8 +575,52 @@ details.panel > summary:hover { background: rgba(255,255,255,.04); }
 .appbar .admintabs a { padding: 6px 10px; gap: 8px; }
 .appbar .admintabs a .lbl { white-space: nowrap; }
 .appbar .admingroup { font-size: .62rem; padding: 0 4px 0 10px; }
-#statusbar { gap: 6px 14px; flex-wrap: nowrap; }
+#statusbar { gap: 6px 14px; flex-wrap: wrap; max-width: 100%; box-sizing: border-box; }
+#statusbar > * { min-width: 0; }
 #statusbar a.btn, #statusbar button { min-height: 34px; padding: 4px 12px; border-radius: 8px; font-size: .85rem; line-height: 1.2; }
-#statusbar .muted { white-space: nowrap; }
+#statusbar .muted { overflow-wrap: anywhere; }
 @media (max-width: 760px) { #statusbar { flex-wrap: wrap; } #statusbar a.btn, #statusbar button { min-height: 44px; } }
-#statusbar .pill, #statusbar button, #statusbar a.btn { white-space: nowrap; flex: none; }
+#statusbar .pill { white-space: nowrap; }
+#statusbar form { margin-left: auto; }                                   /* the end button stays at the right of its line, wherever the line breaks */
+#statusbar .grow { flex: 1 1 0; }
+
+/* admin app bar on tablet widths: drop the group labels and "Ver o site" before the tabs can push the page sideways */
+.appbar .admintabs { min-width: 0; }
+@media (max-width: 1100px) {
+  .appbar.admin .admingroup { display: none; }
+  .appbar .viewsite { display: none; }
+  .appbar .admintabs a { padding: 6px 8px; }
+}
+
+/* phrases admin: toolbar card (filter + count + bulk actions), table in its own card, buttons instead of bare links */
+.toolbar { padding: 12px; display: grid; gap: 8px; }
+.toolbar .filters { margin: 0; }
+.toolbar > p.muted { margin: 0; }
+.panel.tablewrap { padding: 0; overflow-x: auto; }
+.panel.tablewrap table.users { border-radius: 0; margin: 0; }
+.bulkbar { margin: 0; gap: 8px; }
+.bulkbar button.link { padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-raised); color: var(--text);
+                       text-decoration: none; font-size: .85rem; font-weight: 600; transition: border-color .15s, background .15s; }
+.bulkbar button.link:hover { border-color: var(--accent); }
+.bulkbar button.link.danger { color: var(--bad, #f87171); border-color: var(--bad, #f87171); background: transparent; margin-left: auto; }
+.bulkbar button.link.danger:hover { background: var(--bad, #f87171); color: #2a0a0a; }
+table.phrases button.link { padding: 4px 10px; border: 1px solid transparent; border-radius: 8px; text-decoration: none; font-weight: 600; }
+table.phrases button.link:hover { border-color: var(--accent); }
+table.phrases button.link.danger { color: var(--bad, #f87171); }
+table.phrases button.link.danger:hover { border-color: var(--bad, #f87171); background: rgba(248,113,113,.1); }
+table.phrases td a { text-decoration: none; font-weight: 600; }
+table.phrases td a:hover { text-decoration: underline; }
+
+/* destructive buttons */
+button.danger, button.link.danger, #statusbar button.danger, table.phrases button.link.danger, .bulkbar button.link.danger,
+table.replays button.act.danger {
+  border-radius: 999px; padding: 6px 16px; border: 1px solid rgba(248,113,113,.38); background: rgba(248,113,113,.12); color: #fca5a5;
+  font-weight: 600; text-decoration: none; box-shadow: none; cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s, transform .08s;
+}
+button.danger:hover, button.link.danger:hover, #statusbar button.danger:hover, table.phrases button.link.danger:hover,
+.bulkbar button.link.danger:hover, table.replays button.act.danger:hover {
+  background: #f87171; border-color: #f87171; color: #2a0a0a; filter: none;
+}
+button.danger:active, button.link.danger:active, table.replays button.act.danger:active { transform: translateY(1px); }
+table.replays button.act.danger { width: 100%; }

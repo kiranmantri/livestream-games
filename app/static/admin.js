@@ -1,4 +1,4 @@
-// Admin pages: ticking clocks, "updated N s ago", the pending-only filter and the C/E/S keyboard shortcuts of the Falácias queue.
+// Admin pages: ticking clocks, the pending-only filter and the C/E/S keyboard shortcuts of the Falácias queue.
 (function () {
   var PREFS = 'lg_admin_prefs', prefs = {};
   try { prefs = JSON.parse(localStorage.getItem(PREFS) || '{}') || {}; } catch (e) { prefs = {}; }
@@ -16,7 +16,7 @@
   }
 
   // ---- clocks. The server only sends a start time; the browser's clock is used for both ends, so skew does not matter much
-  var loaded = Date.now(), lastUpdate = Date.now();
+  var loaded = Date.now();
   function tick() {
     document.querySelectorAll('time.elapsed[data-since]').forEach(function (t) {
       t.textContent = elapsed((Date.now() - Number(t.getAttribute('data-since'))) / 1000);
@@ -24,13 +24,7 @@
     document.querySelectorAll('time.age[data-us]').forEach(function (t) {
       t.textContent = ago((Date.now() - Number(t.getAttribute('data-us')) / 1000) / 1000);
     });
-    var u = document.getElementById('updated');
-    if (u) { var s = Math.floor((Date.now() - lastUpdate) / 1000); u.textContent = s < 3 ? 'atualizado agora' : 'atualizado há ' + s + ' s'; }
   }
-  document.body.addEventListener('htmx:afterSwap', function (e) {
-    var p = e.detail && e.detail.pathInfo && e.detail.pathInfo.requestPath;
-    if (p && p.indexOf('/admin/live') === 0) lastUpdate = Date.now();
-  });
   setInterval(tick, 1000);
   tick();
 

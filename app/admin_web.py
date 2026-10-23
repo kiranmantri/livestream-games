@@ -173,7 +173,7 @@ def admin_page(session: S.GameSession, rows: list[A_.PlayerRow], standings: list
         Button(T.ADMIN_FINISH, type="submit", cls="primary danger"),
         method="post", action="/admin/finish",
         onsubmit=f"return confirm({T.ADMIN_FINISH_CONFIRM!r})") if active else None
-    bar = status_bar(session, len(rows), finish, "/admin", winner.name if winner else None)
+    bar = status_bar(session, len(rows), finish, winner.name if winner else None)
     cards = [card_panel(r, session.id, token, active, str(r.user_id) == open_uid) for r in rows]
     return (Title(f"{T.TITLE} - admin"), admin_tabs("bingo"),
             Main(H1(f"{T.TITLE} - admin"), bar,
@@ -199,7 +199,7 @@ def admin_tabs(active: str):
                   cls="appbar admin")
 
 
-def status_bar(session: S.GameSession, n_players: int, finish=None, refresh_href: str | None = None, winner: str | None = None):
+def status_bar(session: S.GameSession, n_players: int, finish=None, winner: str | None = None):
     """Sticky bar of an admin game page: state, start time, players, elapsed time (admin.js keeps it ticking), the end button at the right."""
     active = session.status == "active"
     since = int(session.created_at.timestamp() * 1000)
@@ -211,8 +211,6 @@ def status_bar(session: S.GameSession, n_players: int, finish=None, refresh_href
         player_count(n_players),
         Span(f"{T.ADMIN_ELAPSED}: ", Time(timefmt.elapsed(seconds), cls="elapsed", data_since=str(since)), cls="muted") if active else None,
         Span(f"{T.ADMIN_WINNER}: {winner}", cls="muted") if winner else None,
-        A(T.ADMIN_REFRESH, href=refresh_href, cls="btn small") if refresh_href else None,
-        Span(T.ADMIN_UPDATED, id="updated", cls="muted") if active and refresh_href else None,
         Span(cls="grow"), finish,
         id="statusbar", cls="adminbar")
 
@@ -250,11 +248,12 @@ def register(rt, pool):
             pw = A_.admin_password() or ""
             settings = ip_limit_form(S.max_users_per_ip(conn), A_.settings_token(pw), err == "ip_limit")
             if session is None:
-                return Main(admin_tabs("bingo"), H1(f"{T.TITLE} - admin"), P(T.ADMIN_NO_SESSION, cls="muted"),
+                return (Title(f"{T.TITLE} - admin"), admin_tabs("bingo"),
+                        Main(H1(f"{T.TITLE} - admin"), P(T.ADMIN_NO_SESSION, cls="muted"),
                             start_form(A_.start_token(pw)),
                             settings,
                             Div(A(T.ADMIN_PHRASES_LINK, href="/admin/phrases", cls="btn"),
-                                A(T.ADMIN_REFRESH, href="/admin", cls="btn"), cls="adminbar"), cls="wide")
+                                A(T.ADMIN_REFRESH, href="/admin", cls="btn"), cls="adminbar"), cls="wide"))
             return admin_page(session, A_.players(conn, session.id), G.leaderboard(conn, session.id),
                               A_.csrf_token(pw, session.id), A_.start_token(pw), sort, dir, open, settings)
 

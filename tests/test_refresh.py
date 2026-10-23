@@ -183,3 +183,80 @@ def test_admin_css_phone_tabs_sticky_offset_and_table_polish():
     assert re.search(r"@media \(max-width: 760px\)[^@]*\.appbar\.admin \.admingroup\s*\{[^}]*display:\s*none", CSS, re.DOTALL)
     assert re.search(r"#statusbar\s*\{[^}]*top:\s*5\d+px", CSS), "status bar must sit below the sticky app bar, not under it"
     assert "table.users tbody tr:hover" in CSS and ".livedot" in CSS
+
+
+# ------------------------------------------------------------------ status bar: same words, never overflows
+def test_both_admin_games_use_the_same_end_button_label():
+    assert T.AF_FINISH == T.ADMIN_FINISH == "Encerrar partida"
+    assert T.AF_FINISH_CONFIRM.startswith("Encerrar a partida agora?") and T.ADMIN_FINISH_CONFIRM.startswith("Encerrar a partida agora?")
+
+
+def test_status_bar_wraps_instead_of_overflowing_its_card():
+    """Found in a real browser: nowrap + non-shrinking items pushed 'Encerrar partida' out of the card when the line got long."""
+    rules = re.findall(r"#statusbar\s*\{([^}]*)\}", CSS)
+    assert rules and not any("flex-wrap: nowrap" in r for r in rules)
+    assert any("flex-wrap: wrap" in r for r in rules)
+    assert re.search(r"#statusbar\s*>\s*\*\s*\{[^}]*min-width:\s*0", CSS) or re.search(r"#statusbar \.muted\s*\{[^}]*overflow-wrap", CSS)
+    assert not re.search(r"#statusbar \.pill,[^{]*\{[^}]*flex:\s*none", CSS), "nothing in the bar may refuse to shrink or wrap"
+
+
+def test_admin_app_bar_collapses_before_it_can_overflow_on_tablet_widths():
+    """Found in a real browser at 820 px: tabs + group labels + 'Ver o site' needed ~985 px and pushed the page sideways."""
+    m = re.search(r"@media \(max-width: 1100px\)\s*\{(.*?)\n\}", CSS, re.DOTALL)
+    assert m and ".appbar.admin .admingroup" in m.group(1) and ".appbar .viewsite" in m.group(1) and "display: none" in m.group(1)
+    assert re.search(r"\.appbar \.admintabs\s*\{[^}]*min-width:\s*0", CSS)
+
+
+# ------------------------------------------------------------------ both status bars are the same: no manual refresh
+def _bar(html):
+    return re.search(r'<div[^>]*id="statusbar".*?</div>', html, re.DOTALL).group(0)
+
+
+def test_status_bars_have_no_refresh_button_or_updated_label_in_either_game(bweb, running, conn):
+    """The Bingo users table re-reads itself every 5 s and the Falácias queue polls, so a manual "Atualizar" is noise."""
+    html = bweb.get("/admin", headers=basic()).text
+    bar = _bar(html)
+    assert "<a " not in bar and T.ADMIN_REFRESH not in bar and 'id="updated"' not in html
+    assert 'hx-trigger="every 5s"' in html, "the auto-refresh is what replaces the button"
+
+
+def test_admin_js_no_longer_keeps_an_updated_label():
+    assert "getElementById('updated')" not in ADMIN_JS and "lastUpdate" not in ADMIN_JS
+
+
+def test_bingo_admin_without_a_game_also_has_the_app_bar_outside_main(bweb, conn):
+    html = bweb.get("/admin", headers=basic()).text
+    assert T.ADMIN_NO_SESSION in html
+    assert html.index('<header class="appbar admin"') < html.index("<main")
+
+
+def test_phrases_page_has_no_back_to_panel_button_the_tabs_already_navigate(bweb, conn):
+    html = bweb.get("/admin/phrases", headers=basic()).text
+    main = html[html.index("<main"):]
+    assert "Painel" not in main and not hasattr(T, "PH_BACK")
+    assert main.count('href="/admin"') == 0, "no link back to /admin inside the page body"
+
+
+def test_phrases_page_groups_filters_count_and_bulk_actions_in_one_card_and_frames_the_table(bweb, conn):
+    html = bweb.get("/admin/phrases", headers=basic()).text
+    tb = re.search(r'<div class="panel toolbar">(.*?)</div>\s*<div class="panel tablewrap">', html, re.DOTALL)
+    assert tb, "toolbar card followed by the table card"
+    inner = tb.group(1)
+    assert 'class="filters"' in inner and 'id="bulkform"' in inner and "frase(s)" in inner
+    assert inner.index('class="filters"') < inner.index("frase(s)") < inner.index('id="bulkform"')
+
+
+def test_phrases_css_buttons_instead_of_bare_links():
+    assert re.search(r"\.bulkbar button\.link\s*\{[^}]*border:\s*1px solid", CSS)
+    assert re.search(r"table\.phrases button\.link[^{]*\{[^}]*text-decoration:\s*none", CSS)
+
+
+def test_every_destructive_button_shares_one_rounded_pill_style():
+    """Squared red outlines looked harsh: one shared soft pill for row deletes, bulk delete, replay delete and 'Encerrar partida'."""
+    m = re.search(r"/\* destructive buttons \*/\s*([^{]+)\{([^}]*)\}", CSS)
+    assert m, "shared destructive-button rule"
+    sels, body = m.group(1), m.group(2)
+    for sel in ("button.danger", "button.link.danger", "table.replays button.act.danger"):
+        assert sel in sels, sel
+    assert "border-radius: 999px" in body and "rgba(248,113,113" in body
+    assert not re.search(r"button\.link\.danger[^{]*\{[^}]*border-radius:\s*[0-6]px", CSS), "no later rule may square them again"
