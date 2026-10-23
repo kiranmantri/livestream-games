@@ -221,7 +221,7 @@ def leaderboard_view(standings: list[G.Standing], me: S.Player | None, top: int 
 
 
 def game_page(card: C.Card, marked: dict[int, datetime], me: S.Player, others: list[M.PlayerBoard],
-              video_id: str | None, live_known: bool, host: str = "", revoked: frozenset[int] = frozenset(), recover=None):
+              video_id: str | None, live_known: bool, host: str = "", revoked: frozenset[int] = frozenset()):
     """Top row (50/50): LEFT = live stream with the chat below it, RIGHT = MY card (RED border); both columns have
     the same top and bottom. Below: everybody else, smaller. No scoreboard: their cards show who is ahead."""
     return page(
@@ -237,7 +237,6 @@ def game_page(card: C.Card, marked: dict[int, datetime], me: S.Player, others: l
                    title=T.VIEW_LIST, aria_label=T.VIEW_LIST),
             cls="gamebar others"),
         Div(others_view(others, boards_version(others)), cls="cardgrid small"),
-        recover,
         Script(src="/game.js", defer=True),
         cls="game", who=me.name)
 
@@ -316,8 +315,7 @@ def create_app(db_url: str | None = None, live: livestream.LiveStream | None = N
                     return entry_page(S.get_active_session(conn), error="no_phrases", name=me.name)
                 others = [b for b in M.session_boards(conn, me.session_id) if b.user_id != me.id]
                 return game_page(card, M.marked_times(conn, card.id), me, others, live.current(), live.known,
-                                 request.url.hostname or "", M.revoked_cells(conn, card.id),
-                                 ui.recovery_view(request, "bingo"))
+                                 request.url.hostname or "", M.revoked_cells(conn, card.id))
             active = S.get_active_session(conn)
             found = S.find_player(conn, token_of(request))
             if active is None and found and found[1].status == "ended":
@@ -406,6 +404,7 @@ def create_app(db_url: str | None = None, live: livestream.LiveStream | None = N
     falacias_web.register(rt, pool, live)
     falacias_admin_web.register(rt, pool, live)
     ui.register(rt, pool)
+    app.add_middleware(ui.CookieContext)
     return app
 
 

@@ -124,7 +124,7 @@ def test_tabs_are_on_every_admin_page_with_the_current_one_marked(web, conn):
 # ================================================================ start / finish
 def test_page_without_a_session_offers_start(web):
     html = web(IP_ADMIN).get("/admin/falacias", headers=basic()).text
-    assert T.AF_NO_SESSION in html and 'action="/admin/falacias/start"' in html
+    assert T.AF_NO_SESSION in html and 'data-open="startdlg"' in html and 'action="/admin/falacias/start-url"' in html
 
 
 def test_start_needs_csrf_then_creates_an_admin_started_session(web, conn):
@@ -165,7 +165,7 @@ def test_bingo_csrf_token_works_for_the_same_session_only(web, conn, game):
 def test_ended_session_page_has_no_queue_and_offers_a_new_start(web, conn, game):
     S.end_session(conn, sid_of(conn), None)
     html = game["admin"].get("/admin/falacias", headers=basic()).text
-    assert T.ADMIN_ENDED in html and 'id="queue"' not in html and 'action="/admin/falacias/start"' in html
+    assert T.ADMIN_ENDED in html and 'id="queue"' not in html and 'data-open="startdlg"' in html
     assert 'id="adminside"' in html
 
 
@@ -303,29 +303,7 @@ def test_a_pair_of_another_session_cannot_be_reviewed(web, conn, fal, game):
 
 # ================================================================ host messages
 def say(c, text="Pergunte sobre a evolução"):
-    return c.post("/falacias/message", data={"text": text})
-
-
-def test_player_box_is_on_the_page_with_the_counter(web, conn, fal, game):
-    html = game["ana"].get("/falacias").text
-    assert 'id="hostbox"' in html and 'hx-post="/falacias/message"' in html and 'maxlength="280"' in html
-    assert T.HM_COUNT.format(n=0, max=5) in html
-
-
-def test_player_sends_a_message_and_sees_the_count(web, conn, fal, game):
-    r = say(game["ana"])
-    assert r.status_code == 200 and "fal:msg-sent" in r.headers.get("hx-trigger", "") and T.HM_SENT in r.text
-    assert T.HM_COUNT.format(n=1, max=5) in r.text
-    assert conn.execute("SELECT text FROM host_messages").fetchone()[0] == "Pergunte sobre a evolução"
-    assert T.HM_COUNT.format(n=1, max=5) in game["ana"].get("/falacias").text
-
-
-@pytest.mark.parametrize("text,code", [("", "empty_message"), ("   ", "empty_message"), ("x" * 281, "message_too_long"),
-                                       ("a\x07b", "bad_message")])
-def test_message_errors_are_shown_inline(web, conn, fal, game, text, code):
-    r = say(game["ana"], text)
-    assert r.status_code == 200 and T.HM_ERRORS[code] in r.text and "fal:msg-sent" not in r.headers.get("hx-trigger", "")
-    assert conn.execute("SELECT count(*) FROM host_messages").fetchone()[0] == 0
+    return c.post("/falacias/mark", data={"note": text})
 
 
 def test_message_rate_limit_and_cap_messages(web, conn, fal, game, monkeypatch):
@@ -336,13 +314,6 @@ def test_message_rate_limit_and_cap_messages(web, conn, fal, game, monkeypatch):
     for i in range(4):
         say(game["ana"], f"m{i}")
     assert T.HM_ERRORS["message_limit_reached"].format(max=5) in say(game["ana"], "demais").text
-
-
-def test_message_needs_a_falacias_identity(web, conn, fal, game):
-    assert web(IP_B).post("/falacias/message", data={"text": "oi"}).status_code == 401
-    bingo = named(web("203.0.113.50"), "Ze")
-    bingo.post("/start")
-    assert bingo.post("/falacias/message", data={"text": "oi"}).status_code == 401
 
 
 def test_message_after_the_session_ended_refreshes(web, conn, fal, game, monkeypatch):

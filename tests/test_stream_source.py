@@ -153,7 +153,7 @@ def test_entry_page_shows_the_replay_video_url_and_escaped_title(conn, test_db_u
         html = named(b, "Ana").get("/falacias").text
     # players cannot start a replay, so the entry page names none (the admin's pick shows on the game page)
     assert replay_url() not in html and T.SRC_VIDEO not in html
-    assert 'id="source"' in html and T.SRC_ONLY_HORIZONTAL in html
+    assert 'id="source"' in html and "Só transmissões na horizontal" not in html
 
 
 def test_game_page_escapes_the_title(conn, test_db_url):
@@ -198,11 +198,12 @@ def test_horizontal_live_is_shown_as_available(conn, test_db_url):
     assert T.SRC_LIVE_VERTICAL not in html
 
 
-def test_offline_channel_shows_no_live_line(conn, test_db_url):
+def test_offline_channel_shows_no_live_line_and_no_message(conn, test_db_url):
     tc, b = page_for(test_db_url, make_live(None))
     with tc:
         html = named(b, "Ana").get("/falacias").text
-    assert T.SRC_LIVE_NOW not in html and T.SRC_LIVE_VERTICAL not in html and T.SRC_LIVE_OFFLINE in html
+    assert T.SRC_LIVE_NOW not in html and T.SRC_LIVE_VERTICAL not in html
+    assert "O canal não está ao vivo agora" not in html and not hasattr(T, "SRC_LIVE_OFFLINE")
 
 
 def test_source_fragment_polls_without_a_load_trigger(conn, test_db_url):

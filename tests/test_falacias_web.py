@@ -274,16 +274,30 @@ def test_menu_fragment_does_not_reload_itself_in_a_loop(web):
     assert 'hx-trigger="every 30s"' in frag and "load" not in frag.split('hx-trigger="')[1].split('"')[0]
 
 
-def test_falacias_recovery_link_restores_the_player(web, conn):
+def test_one_personal_link_restores_both_games(web, conn):
+    a = web()
+    start(a)                                                          # Falácias as Ana
+    a.post("/start", data={"name": "Ana"})                            # Bingo as Ana (same name, other session)
+    tags = [re.search(r'<a[^>]*class="mylink"[^>]*>', a.get(path).text) for path in ("/", "/falacias")]
+    assert all(tags) and "Salvar link" not in a.get("/falacias").text
+    hrefs = {re.search(r'href="([^"]+)"', t.group(0)).group(1) for t in tags}
+    assert len(hrefs) == 1, "the same link on every game page"
+    other = web()
+    r = other.get(hrefs.pop().replace("&amp;", "&"))
+    assert r.status_code == 303
+    assert S.cookie_name("falacias") in r.headers["set-cookie"] and S.cookie_name() in r.headers["set-cookie"]
+    assert "Ana" in other.get("/falacias").text and 'id="pane-chat"' in other.get("/falacias").text
+    assert 'class="cardbox mine"' in other.get("/").text
+
+
+def test_the_link_with_only_one_game_restores_only_that_game(web, conn):
     a = web()
     start(a)
-    link = re.search(r'href="(/r/falacias/[^"]+)"', a.get("/falacias").text)
-    assert link, "the game page must show the recovery link"
+    tag = re.search(r'<a[^>]*class="mylink"[^>]*>', a.get("/falacias").text).group(0)
+    href = re.search(r'href="([^"]+)"', tag).group(1).replace("&amp;", "&")
     other = web()
-    r = other.get(link.group(1))
-    assert r.status_code == 303 and r.headers["location"] == "/falacias"
+    r = other.get(href)
     assert S.cookie_name("falacias") in r.headers["set-cookie"] and "lg_token=" not in r.headers["set-cookie"]
-    assert "Ana" in other.get("/falacias").text and 'id="pane-chat"' in other.get("/falacias").text
 
 
 def test_falacias_entry_page_does_not_show_a_replay_players_cannot_start(web, conn):

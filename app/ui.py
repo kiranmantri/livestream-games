@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import os
-from urllib.parse import quote, unquote
+from contextvars import ContextVar
+from http.cookies import SimpleCookie
+from urllib.parse import quote, unquote, urlencode
 
 from fasthtml.common import (
     H1,
@@ -19,6 +21,7 @@ from fasthtml.common import (
     Main,
     Nav,
     P,
+    Script,
     Small,
     Span,
     Summary,
@@ -48,9 +51,42 @@ def menu(current: str, running: frozenset[str] = frozenset(), first_load: bool =
                hx_swap="outerHTML", aria_label=T.MENU_LABEL)
 
 
+_cookies: ContextVar[dict[str, str] | None] = ContextVar("lg_cookies", default=None)
+
+
+class CookieContext:
+    """Pure ASGI middleware: remembers the request's cookies for the page builders (the header shows the personal link on every
+    page without each handler passing the request down)."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            raw = dict(scope.get("headers") or []).get(b"cookie", b"").decode("latin-1")
+            _cookies.set({k: m.value for k, m in SimpleCookie(raw).items()})
+        await self.app(scope, receive, send)
+
+
+def personal_link(cookies: dict[str, str] | None = None) -> str | None:
+    """ONE private link for every game the player is in: it carries each game's token, so opening it elsewhere restores them all.
+    Whoever holds the link IS the player. None when the visitor has no game cookie."""
+    cookies = (_cookies.get() or {}) if cookies is None else cookies
+    parts = {key: cookies[S.cookie_name(game)] for key, game in (("b", "bingo"), ("f", "falacias")) if cookies.get(S.cookie_name(game))}
+    return "/r?" + urlencode(parts) if parts else None
+
+
 def usermenu(who: str, current: str):
-    """The player's name as a small avatar button; opens a popover with the way to change it (no JS: <details>)."""
+    """The player's name as a small avatar button; opens a popover with the way to change it (no JS: <details>). To its left, the
+    icon with the personal link (only when the player has joined a game)."""
     path = TAB_PATHS[1] if current == "falacias" else TAB_PATHS[0]
+    link = personal_link()
+    return Div(A("🔗", href=link, cls="mylink", title=T.MYLINK_TITLE, aria_label=T.MYLINK_TITLE,
+                    data_copied=T.MYLINK_COPIED, data_failed=T.MYLINK_FAILED) if link else None,
+               Script(src="/copylink.js", defer=True) if link else None, _usermenu(who, path), cls="userbox")
+
+
+def _usermenu(who: str, path: str):
     return Details(Summary(Span(who[:1].upper(), cls="av", aria_hidden="true"), Span(who, cls="nm"), title=who),
                    Div(A(T.USER_CHANGE, href=f"/name?next={path}"), cls="pop"), cls="usermenu")
 
@@ -130,16 +166,6 @@ def url_error(request: Request) -> str | None:
     return code if code in URL_ERRORS else None
 
 
-def recovery_view(request: Request, game_type: str):
-    """A private link that puts this player's cookie in another browser/device (or back after the cookie was lost).
-    Whoever holds the link IS the player: it is shown only on the player's own page."""
-    token = token_of(request, game_type)
-    if not token:
-        return None
-    return Details(Summary(T.RECOVER_SUMMARY), P(T.RECOVER_HELP, cls="muted"),
-                   A(T.RECOVER_LINK, href=f"/r/{game_type}/{quote(token, safe='')}", cls="recover"), cls="recover")
-
-
 def register(rt, pool) -> None:
     global _pool
     _pool = pool
@@ -154,6 +180,22 @@ def register(rt, pool) -> None:
             return RedirectResponse(TAB_PATHS[1] if game_type == "falacias" else "/", status_code=303)
         resp = RedirectResponse("/falacias" if game_type == "falacias" else "/", status_code=303)
         return remember_name(set_token_cookie(resp, game_type, token), found.name)
+
+    @rt("/r", methods=["GET"])
+    def recover_all(b: str = "", f: str = ""):
+        """The personal link: restores the cookie of every game whose token is still valid."""
+        found = []
+        with pool.connection() as conn:
+            for game, tok in (("bingo", b), ("falacias", f)):
+                player = S.get_player_by_token(conn, tok, game) if tok and len(tok) <= 200 else None
+                if player:
+                    found.append((game, tok, player))
+        if not found:
+            return RedirectResponse("/", status_code=303)
+        resp = RedirectResponse("/falacias" if found[0][0] == "falacias" else "/", status_code=303)
+        for game, tok, _ in found:
+            set_token_cookie(resp, game, tok)
+        return remember_name(resp, found[0][2].name)
 
     @rt("/name", methods=["GET"])
     def name_form(request: Request, next: str = "/"):

@@ -272,7 +272,6 @@ ol.queue:not(:empty) ~ .empty { display: none; }
 .mcard.handled { border-color: var(--line); opacity: .7; }
 .mcard .mtext { font-size: 1.25rem; margin: 0 0 8px; overflow-wrap: anywhere; }
 .mfoot { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-#hostbox textarea { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--line); background: #0b1220; color: var(--text); font: inherit; }
 
 /* ---- Falácias: end screen */
 p.winner { font-size: 1.3rem; font-weight: 800; color: var(--ok); margin: 8px 0; }
@@ -283,8 +282,6 @@ table.final tr.me td { background: #1e3a5f; font-weight: 700; }
 .source .small { font-size: .8rem; } .source a { color: var(--accent); overflow-wrap: anywhere; }
 
 .pnote { padding: 8px 10px; color: var(--muted, #94a3b8); font-size: .9rem; }
-#spokenbox textarea { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--line); background: #0b1220; color: var(--text); font: inherit; }
-#spokenbox select { width: 100%; padding: 8px; margin-top: 6px; border-radius: 8px; border: 1px solid var(--line); background: #0b1220; color: var(--text); font: inherit; }
 .videofield { display: block; margin: 8px 0; } .videofield input { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: #0b1220; color: var(--text); font: inherit; }
 
 /* ---- /falacias: compact layout (header, source banner, the two panes) */
@@ -624,3 +621,63 @@ button.danger:hover, button.link.danger:hover, #statusbar button.danger:hover, t
 }
 button.danger:active, button.link.danger:active, table.replays button.act.danger:active { transform: translateY(1px); }
 table.replays button.act.danger { width: 100%; }
+
+/* Falácias live game with automatic transcript: collapsible stream above the panes, label on the transcript pane */
+.vidbox { margin: 8px 0; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel); box-shadow: var(--shadow-sm); max-width: 760px; }
+.vidbox summary { display: flex; align-items: center; min-height: 44px; padding: 0 12px; cursor: pointer; font-weight: 700; }
+.vidbox[open] summary { border-bottom: 1px solid var(--line); }
+.vidbox .pane.video { border: 0; box-shadow: none; margin: 0; padding: 8px; background: transparent; }
+.sttlabel { margin-left: auto; padding: 2px 8px; border-radius: 99px; background: rgba(245,158,11,.14); color: var(--amber); font-size: .72rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+#sttbanner:empty { display: none; }
+@media (max-width: 760px) { .sttlabel { font-size: .66rem; } .vidbox { max-width: none; } }
+
+/* admin: page title on the left, the "Iniciar nova partida" action on the right of the same line */
+.titlerow { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
+.titlerow h1 { margin-right: auto; }
+.titlerow form { margin: 6px 4px 0; }
+.titlerow form button { margin: 0; }
+.urlstart label { display: block; font-weight: 600; }
+.urlstart input[type=url] { display: block; width: 100%; margin: 6px 0; box-sizing: border-box; }
+.urlstart button { margin-top: 6px; }
+
+/* admin: "Iniciar nova partida" dialog (replay select + any link) */
+dialog.startdlg { width: min(560px, calc(100% - 24px)); padding: 0; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+dialog.startdlg::backdrop { background: rgba(2, 6, 23, .68); }
+dialog.startdlg[open]:not(:modal) { position: static; margin: 12px auto; }
+dialog.startdlg form { margin: 0; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+dialog.startdlg h2 { margin: 0; font-size: 1.15rem; }
+dialog.startdlg label { display: block; font-weight: 600; }
+dialog.startdlg select, dialog.startdlg input[type=url] { display: block; width: 100%; box-sizing: border-box; margin-top: 6px; min-height: 44px; }
+dialog.startdlg .or { text-align: center; color: var(--muted); font-size: .85rem; }
+dialog.startdlg .dlgactions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+dialog.startdlg .dlgactions button { min-height: 44px; }
+
+/* admin status panel: the source link (live / replay URL) gets its own full-width row inside the panel */
+#statusbar .srcrow { order: 99; flex-basis: 100%; min-width: 0; font-size: .85rem; overflow-wrap: anywhere; border-top: 1px solid var(--line); padding-top: 6px; }
+
+/* slide panel: free-form message box and the hint shown while no passage is selected */
+.picker .notefield { display: block; font-weight: 600; margin: 8px 0; }
+.picker textarea { display: block; width: 100%; box-sizing: border-box; margin-top: 6px; padding: 10px; border-radius: 8px; border: 1px solid var(--line); background: #0b1220; color: var(--text); font: inherit; resize: vertical; }
+.picker .quote:empty::before { content: attr(data-empty); color: var(--muted); font-style: italic; font-weight: 400; }
+.qitem .note { margin: 6px 0; padding: 6px 10px; border-left: 3px solid var(--accent); background: rgba(56, 189, 248, .08); border-radius: 6px; overflow-wrap: anywhere; }
+
+/* personal link icon, left of the profile button in the header */
+.userbox { display: inline-flex; align-items: center; gap: 4px; }
+.appbar .mylink { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; border-radius: 50%; text-decoration: none; font-size: 1.1rem; }
+.appbar .mylink:hover { background: rgba(255,255,255,.08); }
+@media (max-width: 760px) { .appbar .userbox { margin-left: auto; } .appbar .usermenu { margin-left: 0; } }
+.userbox { position: relative; }
+.mylink-note { position: absolute; right: 0; top: calc(100% + 6px); z-index: 50; max-width: 18rem; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line);
+  background: #0b1220; color: var(--text); font-size: .85rem; box-shadow: 0 6px 20px rgba(0,0,0,.4); opacity: 0; pointer-events: none; transition: opacity .15s; }
+.mylink-note.show { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .mylink-note { transition: none; } }
+
+/* Falácias live page: video | chat | transcript side by side; hiding the video leaves two panels at 50/50 */
+.pane[hidden] { display: none; }
+.panes.three { grid-template-columns: 1.25fr 1fr 1fr; align-items: start; }
+.panes.three.novideo { grid-template-columns: 1fr 1fr; }
+.panes.three .pane.video .bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pane .pill[data-hidevideo], .showvideo { border: 0; border-radius: 999px; padding: 4px 12px; background: var(--accent); color: #082f49; font-weight: 600; font-size: .8rem; cursor: pointer; }
+.showvideo { margin: 4px 0; }
+.showvideo[hidden] { display: none; }
+@media (max-width: 760px) { .panes.three, .panes.three.novideo { grid-template-columns: 1fr; } .pane .pill[data-hidevideo], .showvideo { min-height: 44px; padding: 0 16px; } }

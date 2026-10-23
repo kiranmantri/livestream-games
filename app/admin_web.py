@@ -124,6 +124,11 @@ def sort_header(col: str, sort: str, direction: str):
     return Th(A(label, href=f"/admin?sort={col}&dir={SORTS[col][2]}", cls="sortlink"))
 
 
+def title_row(title: str, action=None):
+    """Page title on the left, the page's main action (start a new game) on the right, on the same line."""
+    return Div(H1(title), action, cls="titlerow")
+
+
 def start_form(start_token: str):
     return Form(Input(type="hidden", name="csrf", value=start_token),
                 Button(T.ADMIN_START, type="submit", cls="primary"),
@@ -176,8 +181,7 @@ def admin_page(session: S.GameSession, rows: list[A_.PlayerRow], standings: list
     bar = status_bar(session, len(rows), finish, winner.name if winner else None)
     cards = [card_panel(r, session.id, token, active, str(r.user_id) == open_uid) for r in rows]
     return (Title(f"{T.TITLE} - admin"), admin_tabs("bingo"),
-            Main(H1(f"{T.TITLE} - admin"), bar,
-                 start_form(start_token) if not active else "",
+            Main(title_row(f"{T.TITLE} - admin", start_form(start_token) if not active else None), bar,
                  users_panel(rows, rank, sort, direction, poll=active),
                  H2(T.ADMIN_CARDS), *cards, settings, Script(src="/admin.js", defer=True), cls="wide"))
 
@@ -199,7 +203,7 @@ def admin_tabs(active: str):
                   cls="appbar admin")
 
 
-def status_bar(session: S.GameSession, n_players: int, finish=None, winner: str | None = None):
+def status_bar(session: S.GameSession, n_players: int, finish=None, winner: str | None = None, source=None):
     """Sticky bar of an admin game page: state, start time, players, elapsed time (admin.js keeps it ticking), the end button at the right."""
     active = session.status == "active"
     since = int(session.created_at.timestamp() * 1000)
@@ -212,6 +216,7 @@ def status_bar(session: S.GameSession, n_players: int, finish=None, winner: str 
         Span(f"{T.ADMIN_ELAPSED}: ", Time(timefmt.elapsed(seconds), cls="elapsed", data_since=str(since)), cls="muted") if active else None,
         Span(f"{T.ADMIN_WINNER}: {winner}", cls="muted") if winner else None,
         Span(cls="grow"), finish,
+        Div(source, cls="srcrow") if source is not None else None,
         id="statusbar", cls="adminbar")
 
 
@@ -249,8 +254,7 @@ def register(rt, pool):
             settings = ip_limit_form(S.max_users_per_ip(conn), A_.settings_token(pw), err == "ip_limit")
             if session is None:
                 return (Title(f"{T.TITLE} - admin"), admin_tabs("bingo"),
-                        Main(H1(f"{T.TITLE} - admin"), P(T.ADMIN_NO_SESSION, cls="muted"),
-                            start_form(A_.start_token(pw)),
+                        Main(title_row(f"{T.TITLE} - admin", start_form(A_.start_token(pw))), P(T.ADMIN_NO_SESSION, cls="muted"),
                             settings,
                             Div(A(T.ADMIN_PHRASES_LINK, href="/admin/phrases", cls="btn"),
                                 A(T.ADMIN_REFRESH, href="/admin", cls="btn"), cls="adminbar"), cls="wide"))

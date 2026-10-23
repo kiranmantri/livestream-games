@@ -121,7 +121,7 @@ def test_bad_selections_are_refused_with_a_message_and_store_nothing(web, conn, 
 def test_missing_fields_do_not_crash(web, conn, fal):
     a = playing(web, conn)
     r = a.post("/falacias/mark", data={})
-    assert r.status_code == 200 and T.FAL_ERRORS["bad_selection"] in r.text and marks(conn) == []
+    assert r.status_code == 200 and T.FAL_ERRORS["empty"] in r.text and marks(conn) == []
 
 
 def test_too_long_selection_message(web, conn, fal, monkeypatch):
@@ -136,7 +136,7 @@ def test_too_long_selection_message(web, conn, fal, monkeypatch):
 
 def test_unknown_and_disabled_fallacies_are_refused(web, conn, fal):
     a = playing(web, conn)
-    for bad in (fal["Falácia desativada"], 99999, "abc", ""):
+    for bad in (fal["Falácia desativada"], 99999, "abc"):
         r = a.post("/falacias/mark", data=body(conn, fal) | {"fallacy_id": bad})
         assert T.FAL_ERRORS["unknown_fallacy"] in r.text or T.FAL_ERRORS["bad_selection"] in r.text
     assert marks(conn) == []
@@ -269,18 +269,12 @@ def test_the_side_panel_polls_every_five_seconds_and_my_points_are_in_my_pairs(w
     assert ">5,0<" in mine and T.FAL_PENDING in mine
 
 
-def test_every_fallacy_radio_is_required_so_the_form_cannot_be_sent_without_a_choice(web, conn, fal):
-    html = playing(web, conn).get("/falacias").text
-    radios = re.findall(r'<input[^>]*type="radio"[^>]*>', html)
-    assert len(radios) == 2 and all("required" in r for r in radios)
-
-
 @pytest.mark.parametrize("field", ["start_id", "start_off", "end_off", "fallacy_id"])
 def test_huge_numbers_are_a_bad_selection_not_a_crash(web, conn, fal, field):
     a = playing(web, conn)
     r = a.post("/falacias/mark", data=body(conn, fal) | {field: "9" * 40})
     assert r.status_code == 200 and "fal:sent" not in r.headers.get("hx-trigger", "") and marks(conn) == []
-    assert T.FAL_ERRORS["bad_selection"] in r.text
+    assert T.FAL_ERRORS["unknown_fallacy" if field == "fallacy_id" else "bad_selection"] in r.text
 
 
 def test_a_session_that_ends_between_the_checks_refreshes_the_page(web, conn, fal, monkeypatch):

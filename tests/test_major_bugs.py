@@ -54,30 +54,63 @@ def test_board_taps_are_serialised_by_the_page_script(web):
     assert "chain = chain.then" in js                   # one request at a time, in tap order (htmx's queue drops them)
 
 
-def test_recovery_link_restores_the_player_on_a_new_device(web):
+MYLINK = r'<a[^>]*class="mylink"[^>]*>'
+
+
+def _mylink(html):
+    tag = re.search(MYLINK, html)
+    assert tag, "the header must carry the personal-link icon"
+    return re.search(r'href="([^"]+)"', tag.group(0)).group(1).replace("&amp;", "&")
+
+
+def test_personal_link_in_the_header_restores_the_player_on_a_new_device(web):
     a = web()
     a.post("/name", data={"name": "Ana", "next": "/"})
     a.post("/start", data={"name": "Ana"})
     a.post("/mark/3")
-    link = re.search(r'href="(/r/bingo/[^"]+)"', a.get("/").text)
-    assert link, "the game page must show the recovery link"
+    html = a.get("/").text
+    header = re.search(r"<header.*?</header>", html, re.DOTALL).group(0)
+    assert re.search(MYLINK, header) and header.index("mylink") < header.index('class="usermenu"'), "icon sits LEFT of the profile"
+    assert "Salvar link para voltar nesta partida" not in html and 'class="recover"' not in html, "no section at the page bottom"
     other = web()                                       # no cookies at all
-    r = other.get(link.group(1))
+    r = other.get(_mylink(html))
     assert r.status_code == 303 and r.headers["location"] == "/" and S.cookie_name() in r.headers["set-cookie"]
     html = other.get("/").text
     assert "Ana" in html and 'aria-pressed="true"' in html     # same card, mark kept
 
 
-@pytest.mark.parametrize("path", ["/r/bingo/nope", "/r/falacias/nope", "/r/chess/x", "/r/bingo/" + "a" * 500])
+@pytest.mark.parametrize("path", ["/r/bingo/nope", "/r/falacias/nope", "/r/chess/x", "/r/bingo/" + "a" * 500,
+                                  "/r", "/r?b=nope", "/r?f=nope&b=nope", "/r?b=" + "a" * 500])
 def test_bad_recovery_links_set_no_cookie(web, path):
     r = web().get(path)
     assert r.status_code in (303, 404) and "set-cookie" not in r.headers
 
 
-def test_recovery_link_is_not_shown_on_the_entry_page(web):
+def test_the_old_per_game_link_still_works(web):
+    a = web()
+    a.post("/name", data={"name": "Ana", "next": "/"})
+    a.post("/start", data={"name": "Ana"})
+    tok = a.cookies.get(S.cookie_name())
+    r = web().get(f"/r/bingo/{tok}")
+    assert r.status_code == 303 and S.cookie_name() in r.headers["set-cookie"]
+
+
+def test_clicking_the_icon_copies_instead_of_navigating(web):
+    from app import texts as T
+    a = web()
+    a.post("/name", data={"name": "Ana", "next": "/"})
+    a.post("/start", data={"name": "Ana"})
+    html = a.get("/").text
+    tag = re.search(MYLINK, html).group(0)
+    assert T.MYLINK_COPIED in tag and 'src="/copylink.js"' in html
+    js = a.get("/copylink.js").text
+    assert "preventDefault" in js and "clipboard" in js and "dataset.copied" in js
+
+
+def test_personal_link_is_not_shown_before_joining(web):
     b = web()
     b.post("/name", data={"name": "Ana", "next": "/"})
-    assert "/r/bingo/" not in b.get("/").text
+    assert "mylink" not in b.get("/").text
 
 
 # ---------------------------------------------------------------- group 1 (backlog bugs)

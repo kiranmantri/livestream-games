@@ -117,6 +117,30 @@ def resolve_channel(url: str = DEFAULT_URL) -> str | None:
     return live.id if live else None
 
 
+@dataclass(frozen=True)
+class VideoProbe:
+    """What a single video is right now. kind: 'live' | 'upcoming' | 'processing' (just ended, YouTube still preparing it) | 'vod'."""
+    kind: str
+    info: StreamInfo
+
+
+_PROBE_KINDS = {"is_live": "live", "is_upcoming": "upcoming", "post_live": "processing", "was_live": "vod", "not_live": "vod"}
+
+
+def probe_video(video_id: str) -> VideoProbe | None:
+    """State of ANY YouTube video (any channel), for the admin's "start from a link". None = bad id or nothing came back;
+    LookupFailed = network/extractor trouble (state unknown)."""
+    if not VIDEO_ID_RE.match(video_id or ""):
+        return None
+    info = _extract(f"https://www.youtube.com/watch?v={video_id}")
+    if not info or not VIDEO_ID_RE.match(str(info.get("id", ""))):
+        return None
+    status = info.get("live_status") or ("is_live" if info.get("is_live") else "not_live")
+    return VideoProbe(_PROBE_KINDS.get(status, "vod"),
+                      StreamInfo(info["id"], str(info.get("title") or ""), _int_or_none(info.get("width")),
+                                 _int_or_none(info.get("height"))))
+
+
 def resolve_video_title(video_id: str) -> str | None:
     """Title of any video (e.g. the replay used by Falácias). None when unknown; raises LookupFailed on network trouble."""
     if not VIDEO_ID_RE.match(video_id or ""):
@@ -128,10 +152,12 @@ def resolve_video_title(video_id: str) -> str | None:
 class LiveStream:
     def __init__(self, resolver: Callable[[], str | StreamInfo | None] | None = None, ttl: float | None = None,
                  forced_id: str | None = None, background: bool = True,
-                 video_resolver: Callable[[str], str | None] | None = None):
+                 video_resolver: Callable[[str], str | None] | None = None,
+                 prober: Callable[[str], VideoProbe | None] | None = None):
         url = os.environ.get("LIVE_CHANNEL_URL") or DEFAULT_URL
         self._resolver = resolver or (lambda: resolve_channel_info(url))
         self._video_resolver = video_resolver or (lambda v: resolve_video_title(v))
+        self._prober = prober or (lambda v: probe_video(v))
         self._titles: dict[str, tuple[str | None, float]] = {}      # video id -> (title, looked up at)
         self._title_busy: set[str] = set()
         self.ttl = float(os.environ.get("LIVE_TTL", "60")) if ttl is None else ttl
@@ -200,6 +226,10 @@ class LiveStream:
         self.current()                       # triggers the background refresh when stale
         with self._lock:
             return self._info
+
+    def probe(self, video_id: str) -> VideoProbe | None:
+        """Blocking lookup of one video (the admin waits for it, ~5-15 s). Raises LookupFailed when unknown."""
+        return self._prober(video_id)
 
     def title_of(self, video_id: str) -> str | None:
         """Cached title of ANY video (the replay Falácias uses). None while unknown. Lookups run in ONE background thread

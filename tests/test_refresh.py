@@ -105,8 +105,8 @@ def test_live_game_shows_the_video_where_the_empty_transcript_pane_was(conn, tes
         start(named(b, "Ana"), "Ana")
         html = b.get("/falacias").text
     assert re.search(rf'<div class="pane video[^"]*".*?youtube-nocookie\.com/embed/{LIVE_ID}', html, re.DOTALL)
-    assert 'id="pane-transcript"' not in html and 'id="pane-chat"' in html
-    assert T.FAL_NO_TRANSCRIPT in html                                       # the explanation stays, as a caption
+    assert 'id="pane-transcript"' in html and 'id="pane-chat"' in html
+    assert T.FAL_NO_TRANSCRIPT in html                                       # the explanation stays, inside the transcript pane
 
 
 def test_replay_game_keeps_both_text_panes_and_has_no_embed(conn, test_db_url):

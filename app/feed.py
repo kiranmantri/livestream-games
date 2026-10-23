@@ -26,7 +26,7 @@ from uuid import UUID
 
 import psycopg
 
-from app import chatworker, replays
+from app import chatworker, replays, sttworker
 from app import sessions as S
 from app.config import ROOT
 from app.db import ensure_autocommit
@@ -69,6 +69,15 @@ class InvalidVideo(FeedError):
 class NoSource(FeedError):
     """No horizontal live stream and no replay video given: the player must be asked for a video URL."""
     code = "no_source"
+
+
+class UrlRefused(FeedError):
+    """The admin's link cannot start a game; `reason` is a key of texts.AF_URL_ERRORS."""
+    code = "url_refused"
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
 
 
 class FeedDown(FeedError):
@@ -168,6 +177,37 @@ def resolve_source(conn: psycopg.Connection, live: StreamInfo | None, requested:
     return Source("replay", video_id)
 
 
+def source_from_url(conn: psycopg.Connection, raw: str | None, probe) -> Source:
+    """The admin's link, from ANY channel: a horizontal live follows the live; a finished video follows its imported replay.
+    `probe(video_id)` -> livestream.VideoProbe | None, may raise livestream.LookupFailed. Raises UrlRefused(reason)."""
+    from app.livestream import LookupFailed
+    try:
+        video_id = parse_video_id(raw)
+    except InvalidVideo as e:
+        raise UrlRefused("invalid") from e
+    try:
+        p = probe(video_id)
+    except LookupFailed as e:
+        raise UrlRefused("lookup") from e
+    if p is None:
+        raise UrlRefused("lookup")
+    if p.kind == "upcoming":
+        raise UrlRefused("upcoming")
+    if p.kind == "processing":
+        raise UrlRefused("processing")
+    if p.kind == "live":
+        if not p.info.horizontal:
+            raise UrlRefused("vertical")
+        return Source("live", video_id)
+    if not p.info.horizontal:
+        raise UrlRefused("vertical")
+    try:
+        check_video_ready(conn, video_id)
+    except FeedUnavailable as e:
+        raise UrlRefused("not_imported") from e
+    return Source("replay", video_id)
+
+
 def choose_source(conn: psycopg.Connection, live: StreamInfo | None, requested: str | None = None) -> Source:
     """resolve_source plus the test/demo default: without a horizontal live and without a video from the player, an EXPLICIT
     FALACIAS_VIDEO_ID (env) is the replay. No env either => NoSource."""
@@ -217,6 +257,7 @@ def tick(conn: psycopg.Connection, session_id: UUID, cfg: FeedConfig | None = No
             return 0
         if row[2] == "live":          # no replay clock: its chat arrives from the chat worker (started here, once)
             chatworker.ensure(session_id, row[1])
+            sttworker.ensure(session_id, row[1])          # None unless STT_PROVIDER is configured
             return 0
         if row[1]:
             cfg = replace(cfg, video_id=row[1])

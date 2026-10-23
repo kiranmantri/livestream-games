@@ -173,7 +173,7 @@ def test_end_screen_without_points_has_no_winner_line(web, conn, fal):
     ana, _bia = play_and_finish(web, conn, fal)
     admin_finish(web, conn)
     html = ana.get("/falacias").text
-    assert T.FAL_NO_POINTS in html and 'class="winner"' not in html
+    assert "Ninguém pontuou" not in html and 'class="winner"' not in html
 
 
 def test_admin_page_shows_the_winner_after_the_end(web, conn, fal):

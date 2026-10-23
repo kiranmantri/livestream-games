@@ -157,7 +157,7 @@ def test_live_game_page_explains_there_is_no_transcript_and_has_the_typed_quote_
     with tc:
         start(named(b, "Ana"), "Ana")
         html = b.get("/falacias").text
-    assert T.FAL_NO_TRANSCRIPT in html and 'hx-post="/falacias/spoken"' in html and 'maxlength="300"' in html
+    assert T.FAL_NO_TRANSCRIPT in html and 'name="note"' in html and 'maxlength="280"' in html and 'id="spokenbox"' not in html
     assert T.FAL_REPLAY not in html                                       # it is not a replay
 
 
@@ -166,7 +166,7 @@ def test_replay_game_page_has_no_typed_quote_box(conn, test_db_url):
     with tc:
         start(named(b, "Ana"), "Ana")
         html = b.get("/falacias").text
-    assert '/falacias/spoken' not in html and T.FAL_NO_TRANSCRIPT not in html and T.FAL_REPLAY in html
+    assert T.FAL_NO_TRANSCRIPT not in html and T.FAL_REPLAY in html
 
 
 def test_live_chat_lines_reach_the_pane_through_the_poll(conn, test_db_url):
@@ -201,7 +201,7 @@ def test_chat_down_shows_its_own_banner_and_refuses_selected_pairs(conn, test_db
 
 # ---------------------------------------------------------------- typed quotes
 def spoken(b, text="Deus existe porque a Bíblia diz", fid=None, **over):
-    return b.post("/falacias/spoken", data={"text": text, "fallacy_id": fid} | over)
+    return b.post("/falacias/mark", data={"note": text, "fallacy_id": fid} | over)
 
 
 @pytest.fixture
@@ -241,8 +241,8 @@ def test_typed_quote_is_cleaned_like_the_service_does(lg):
     assert marks(conn)[0][1] == "muitos espaços"
 
 
-@pytest.mark.parametrize("text,msg", [("", T.FAL_SPOKEN_ERRORS["bad_selection"]), ("   \n ", T.FAL_SPOKEN_ERRORS["bad_selection"]),
-                                      ("x" * 301, T.FAL_SPOKEN_ERRORS["spoken_too_long"])])
+@pytest.mark.parametrize("text,msg", [("", T.FAL_ERRORS["need_text"]), ("   \n ", T.FAL_ERRORS["need_text"]),
+                                      ("x" * 281, T.FAL_ERRORS["note_too_long"])])
 def test_bad_typed_quotes_show_an_inline_error_and_save_nothing(lg, text, msg):
     b, fal, conn = lg
     r = spoken(b, text, fal["Espantalho"])
@@ -252,15 +252,15 @@ def test_bad_typed_quotes_show_an_inline_error_and_save_nothing(lg, text, msg):
 def test_unknown_or_missing_or_disabled_fallacy_is_refused(lg):
     b, _fal, conn = lg
     off = conn.execute("INSERT INTO fallacies (name, category, source, enabled) VALUES ('Off','C','manual',false) RETURNING id").fetchone()[0]
-    for fid in ("", "abc", "999999", str(off), "1" * 40):
+    for fid in ("abc", "999999", str(off), "1" * 40):
         r = spoken(b, fid=fid)
         assert T.FAL_ERRORS["unknown_fallacy"] in r.text, fid
     assert marks(conn) == []
 
 
-def test_exactly_300_characters_are_accepted(lg):
+def test_exactly_280_characters_are_accepted(lg):
     b, fal, _conn = lg
-    assert T.FAL_SENT in spoken(b, "y" * 300, fal["Espantalho"]).text
+    assert T.FAL_SENT in spoken(b, "y" * 280, fal["Espantalho"]).text
 
 
 def test_duplicate_typed_quote_is_refused_even_with_other_case(lg):
@@ -290,7 +290,7 @@ def test_typed_quote_needs_a_falacias_identity(conn, test_db_url, fal):
     with tc:
         start(named(b, "Ana"), "Ana")
         stranger = other(tc, "203.0.113.77")
-        r = stranger.post("/falacias/spoken", data={"text": "oi", "fallacy_id": fal["Espantalho"]})
+        r = stranger.post("/falacias/mark", data={"note": "oi", "fallacy_id": fal["Espantalho"]})
     assert r.status_code == 401 and marks(conn) == []
 
 
@@ -350,8 +350,8 @@ def test_admin_start_page_never_has_a_video_field_in_the_start_form(conn, test_d
         tc, adm = admin_app(test_db_url, make_live(info))
         with tc:
             html = adm.get("/admin/falacias", headers=basic()).text
-        assert 'name="video"' in html                                           # the catalogue's own link form
-        assert 'name="video"' not in html.split('action="/admin/falacias/start"')[1].split("</form>")[0]
+        assert 'name="video"' in html and 'action="/admin/falacias/start-url"' in html      # the start dialog takes ANY link
+        assert 'action="/admin/falacias/start"' not in html                                  # no automatic channel button any more
 
 
 def test_admin_shows_the_session_source(conn, test_db_url, pw, no_env_video):
@@ -419,7 +419,7 @@ def test_admin_start_waits_for_a_slow_first_lookup_too(conn, test_db_url, pw, no
 
 def test_sent_typed_quote_tells_the_page_to_clear_the_box(lg):
     b, fal, _conn = lg
-    assert spoken(b, "para limpar", fal["Espantalho"]).headers.get("hx-trigger") == "fal:spoken-sent"
+    assert spoken(b, "para limpar", fal["Espantalho"]).headers.get("hx-trigger") == "fal:sent"
     assert "hx-trigger" not in spoken(b, "", fal["Espantalho"]).headers
 
 

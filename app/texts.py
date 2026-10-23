@@ -56,9 +56,10 @@ ADMIN_FINISH = "Encerrar partida"
 ADMIN_FINISH_CONFIRM = "Encerrar a partida agora? O vencedor é quem tem mais casas marcadas."
 ADMIN_USERS = "Usuários"
 ADMIN_CARDS = "Cartelas"
-RECOVER_SUMMARY = "Salvar link para voltar nesta partida"
-RECOVER_HELP = "Se limpar o navegador ou trocar de aparelho, abra este link para continuar como você. Não compartilhe: quem abrir vira você."
-RECOVER_LINK = "Meu link pessoal"
+MYLINK_COPIED = "Link copiado para a área de transferência!"
+MYLINK_FAILED = "Não foi possível copiar. Segure o ícone e copie o endereço do link."
+MYLINK_TITLE = ("Meu link pessoal: salve ou abra em outro aparelho para voltar às suas partidas. "
+                "Não compartilhe: quem abrir vira você.")
 ADMIN_NO_USERS = "Ninguém entrou ainda."
 ADMIN_NO_SESSION = "Nenhuma partida foi iniciada ainda."
 ADMIN_REFRESH = "Atualizar"
@@ -119,6 +120,8 @@ PH_SELECTED = "{n} selecionada(s)"
 PH_BULK_NONE = "Nenhuma frase selecionada."
 PH_DELETED_N = "{n} frase(s) excluída(s)."
 STREAM_TITLE = "Transmissão ao vivo"
+VIDEO_HIDE = "Ocultar vídeo"
+VIDEO_SHOW = "Mostrar vídeo"
 STREAM_SEARCHING = "Procurando a transmissão ao vivo..."
 STREAM_OFFLINE = "O canal não está ao vivo agora. Assim que começar, o vídeo aparece aqui."
 STREAM_OPEN = "Abrir no YouTube"
@@ -155,7 +158,6 @@ FAL_VIDEO_END = "Fim da transmissão. A partida continua até o administrador en
 FAL_START_HEADING = "Nenhuma partida de Falácias em andamento"
 FAL_JOIN_HEADING = "Tem uma partida de Falácias rolando!"
 FAL_GAME_OVER = "Fim da partida de Falácias!"
-FAL_NO_POINTS = "Ninguém pontuou desta vez."
 
 FAL_PICK_HELP = "Selecione um trecho da transcrição ou do chat, depois escolha a falácia."
 FAL_SELECTED = "Trecho selecionado"
@@ -176,8 +178,18 @@ FAL_ERRORS = {
     "rate_limited": "Calma! Aguarde {n} s entre envios.",
     "duplicate_mark": "Você já enviou esse trecho com essa falácia.",
     "feed_down": FEED_UNAVAILABLE,
+    "need_fallacy": "Escolha uma falácia para o trecho selecionado (ou limpe a seleção para enviar só a mensagem).",
+    "need_text": "Selecione um trecho no chat ou na transcrição, ou escreva a frase na caixa de mensagem.",
+    "empty": "Escreva uma mensagem, ou selecione um trecho e escolha uma falácia.",
+    "note_too_long": "Mensagem longa demais (máximo 280 caracteres).",
     "generic": "Algo deu errado. Tente de novo.",
 }
+FAL_NOTE_LABEL = "Mensagem ou frase falada"
+FAL_NOTE_PLACEHOLDER = ("Escreva a frase que foi dita (se o chat ou a transcrição falhou), um comentário sobre o trecho "
+                        "ou uma mensagem para o apresentador.")
+FAL_NO_SELECTION = "Nenhum trecho selecionado. Clique ou selecione texto no chat ou na transcrição, ou escreva abaixo."
+FAL_SENT_MESSAGE = "Mensagem enviada ao apresentador!"
+AF_NOTE = "Mensagem do jogador"
 
 # ---- admin: Falácias tab
 ADMIN_TAB_BINGO = "Bingo"
@@ -185,7 +197,25 @@ ADMIN_TAB_FALACIAS = "Encontre as Falácias"
 ADMIN_TAB_PHRASES = "Frases do Bingo"
 AF_TITLE = "Encontre as Falácias - admin"
 AF_NO_SESSION = "Nenhuma partida de Falácias em andamento."
-AF_START = "Iniciar partida de Falácias"
+AF_START = ADMIN_START
+AF_URL_LABEL = "Ou cole o link de um vídeo ou live do YouTube (qualquer canal)"
+AF_URL_PLACEHOLDER = "https://www.youtube.com/watch?v=..."
+AF_URL_START = "Iniciar"
+AF_URL_CANCEL = "Cancelar"
+AF_PICK_LABEL = "Escolher um replay já coletado"
+AF_PICK_NONE = "— nenhum —"
+AF_URL_QUEUED = "Esse vídeo já terminou. Coloquei o replay na fila de coleta (fica guardado para as próximas vezes). Quando ele ficar pronto, clique em Iniciar nova partida de novo e escolha-o na lista."
+AF_URL_COLLECTING = "O replay desse vídeo já está na fila ou sendo coletado. Quando ficar pronto, ele aparece na lista de replays."
+AF_URL_HELP = "Live horizontal: acompanha a live. Vídeo já encerrado: o replay é coletado e guardado; quando ficar pronto, escolha-o na lista. Se você escolher e colar, vale o link."
+AF_URL_ERRORS = {
+    "empty": "Escolha um replay na lista ou cole um link do YouTube.",
+    "invalid": "Link inválido. Cole o link de um vídeo ou live do YouTube (youtube.com/watch?v=..., youtu.be/... ou /live/...).",
+    "lookup": "Não consegui consultar esse vídeo no YouTube (privado, removido ou YouTube fora do ar). Tente de novo.",
+    "vertical": "Esse vídeo é vertical (celular). Só vídeos horizontais são usados.",
+    "upcoming": "Essa live ainda não começou. Inicie a partida quando ela estiver no ar.",
+    "processing": "O YouTube ainda está processando esse vídeo. Aguarde e tente de novo.",
+    "not_imported": "Esse vídeo já terminou e o replay ainda não foi coletado. Assim que ele ficar pronto, aparece na lista de replays desta janela.",
+}
 AF_FINISH = ADMIN_FINISH
 AF_FINISH_CONFIRM = "Encerrar a partida agora? Depois disso não dá mais para avaliar os envios."
 AF_QUEUE = "Fila de envios"
@@ -209,12 +239,6 @@ AF_COL_PAIRS = "Envios"
 AF_COL_PENDING = "Pend."
 
 # ---- player: message box for the host
-HM_HEADING = "Mensagem para o apresentador"
-HM_HELP = "Escreva uma pergunta ou comentário curto (até 280 letras). O administrador repassa ao vivo."
-HM_PLACEHOLDER = "Sua mensagem..."
-HM_SEND = "Enviar mensagem"
-HM_SENT = "Mensagem enviada!"
-HM_COUNT = "Enviadas: {n}/{max}"
 HM_ERRORS = {
     "empty_message": "Escreva alguma coisa antes de enviar.",
     "bad_message": "A mensagem tem caracteres inválidos.",
@@ -237,8 +261,6 @@ SRC_VIDEO = "Vídeo da partida (replay)"
 SRC_TITLE_UNKNOWN = "título indisponível"
 SRC_LIVE_NOW = "Ao vivo agora"
 SRC_LIVE_VERTICAL = "Transmissão ao vivo na vertical, não usada"
-SRC_LIVE_OFFLINE = "O canal não está ao vivo agora."
-SRC_ONLY_HORIZONTAL = "Só transmissões na horizontal são usadas."
 
 # ---- Falácias: live source (L4)
 FAL_REPLAY_MISSING = "O vídeo {id} ainda não foi importado. No servidor, rode: uv run corpus replay-import {id}"
@@ -249,20 +271,11 @@ FAL_NO_TRANSCRIPT = (
     "A transcrição automática será implementada em breve. Fique ligado."
 )
 FAL_CHAT_DOWN = "Chat ao vivo fora do ar. Tentando reconectar..."
-FAL_LIVE_HOW_TO = "Acompanhe o chat (direita) na transmissão ao vivo. Frases faladas: digite-as na caixa abaixo."
-FAL_SPOKEN_HEADING = "Frase falada"
-FAL_SPOKEN_HELP = "Ouviu uma falácia na transmissão? Digite a frase (até 300 caracteres) e escolha a falácia."
-FAL_SPOKEN_PLACEHOLDER = "O que foi dito..."
-FAL_SPOKEN_SEND = "Enviar frase"
-FAL_SPOKEN_FALLACY = "Falácia"
-FAL_SPOKEN_ERRORS = {
-    "bad_selection": "Digite a frase falada.",
-    "spoken_too_long": "Frase grande demais (máximo 300 caracteres).",
-    "unknown_fallacy": FAL_ERRORS["unknown_fallacy"],
-    "rate_limited": FAL_ERRORS["rate_limited"],
-    "duplicate_mark": FAL_ERRORS["duplicate_mark"],
-    "generic": FAL_ERRORS["generic"],
-}
+FAL_STT_LABEL = "Transcrição automática, pode conter erros"
+FAL_STT_DOWN = "A transcrição automática está fora do ar. Tentando reconectar... Enquanto isso, clique no chat ou na transcrição e escreva a frase no painel de envio."
+FAL_LIVE_HOW_TO_STT = ("Acompanhe a transcrição automática (esquerda) e o chat (direita). Selecione o trecho com a falácia. "
+                       "Se a transcrição errar ou perder algo, escreva a frase no painel de envio.")
+FAL_LIVE_HOW_TO = "Acompanhe o chat (direita) na transmissão ao vivo. Frases faladas: clique no chat e escreva a frase no painel de envio."
 AF_TYPED = "digitada"
 AF_VIDEO_FIELD = "Link do vídeo gravado (replay), se o canal não estiver ao vivo"
 
@@ -326,3 +339,5 @@ FA_ERRORS = {
     "not_found": "Falácia não encontrada.",
 }
 FA_ATTRIBUTION = "Descrições das falácias da Wikipédia: colaboradores da Wikipédia, CC BY-SA 4.0."
+
+OR = "ou"

@@ -468,6 +468,116 @@ Also state what the agent itself already ran and its real output; never claim su
     #   NOT checked: /admin/phrases and /admin/fallacies visually, the coloured verdict buttons with real pending pairs (the seeder got HTTP 401 on typed pairs and the
     #   channel was live, so no replay chat to mark), Safari/Firefox/touch.
 
+### Validation for S1 (live speech-to-text worker: app/sttworker.py) - NOT wired into the game yet
+    uv run pytest tests/test_sttworker.py -q            # expect: 64 passed (red run first: collection error, module did not exist)
+    uv run pytest -q                                    # expect: all passed (the replay-collector recovery test is timing-flaky: rerun it alone if it is the only failure)
+    # Decided (user, 2026-10-23): self-hosted whisper.cpp `small` on a SECOND Fly Machine (not the 1 GB app Machine); typed "Frase falada" box stays as fallback;
+    #   the pane will carry a "transcricao automatica, pode conter erros" label (S2). Scope of S1: the worker only; nothing calls ensure() yet and no migration.
+    # What exists: pipeline yt-dlp | ffmpeg 16 kHz mono segments -> SegmentSource (+1 s overlap) -> silence gate -> WhisperCppTranscriber (HTTP POST <STT_URL>/inference)
+    #   -> clean_text (noise tags, music, known hallucinations, loops) -> trim_overlap -> stream_events kind 'transcript' (key "<chunk start ms>:<segment idx>", author NULL).
+    #   Same shape as chatworker: one daemon thread per live session, health ok/down, capped backoff 2..60 s, stall detection (60 s without a chunk), thread ends with the session.
+    #   A transcriber outage keeps the capture running and DROPS the chunks of the outage (live audio is stale later); a capture/DB failure restarts the capture.
+    # Env (all optional): STT_PROVIDER=off|whispercpp (default off; ensure() does nothing), STT_URL, STT_CHUNK_S (12), STT_OVERLAP_S (1), STT_PROMPT.
+    # Real checks done: (1) mutation check on a repo COPY: 41/42 killed; the survivor (ingest without `game_type='falacias'`) is equivalent: the CHECK
+    #   session_source_falacias_only already forbids a source_mode on a bingo session. (2) the REAL ffmpeg segment command, fed a generated tone instead of yt-dlp,
+    #   gave 2 s segments with the 1 s overlap prepended and the work dir removed (SegmentSource + capture_commands).
+    # NOT verified (spike S0 must do it; see .hermes/plans/2026-10-22_speech-to-text-falacias.md): yt-dlp live audio from a Fly IP, a real whisper.cpp server (the
+    #   multipart fields /inference, verbose_json, prompt, and the reply shape are written from documentation as remembered), real-time factor of `small` on a shared
+    #   CPU, ffmpeg in the Docker image (not added yet), pt-BR accuracy, the silence threshold (SILENCE_RMS=100) and the hallucination list on real audio.
+    # Next: S2 wires feed.tick + the page (label, banner, typed box), S3 Fly (ffmpeg in the image, second Machine, STT_URL over Fly private network), S4 live tuning.
+
+### Validation for S2 (STT wired into the live Falacias game: app/feed.py, app/falacias_web.py) - still OFF unless STT_PROVIDER is set
+    uv run pytest tests/test_stt_pages.py -q            # expect: 15 passed (red run first: 6 failed / 8 guards passed)
+    uv run pytest -q                                    # expect: all passed
+    # feed.tick() of a LIVE session also calls sttworker.ensure (a no-op with STT_PROVIDER unset/off; never for replays).
+    # Page with STT ON (live game only): the stream moves into a collapsible box ABOVE the two panes (<details class="vidbox" open>), the left pane is the
+    #   transcript again with the label "Transcricao automatica, pode conter erros", lines show [HH:MM:SS] and no author. Own red banner #sttbanner when the worker
+    #   is down ("... digite a frase na caixa abaixo"): SEPARATE from the chat banner; it never blocks pairs (selected or typed). The poll URL carries tr=ok|down;
+    #   an old page without tr never shows the banner. With STT OFF the page is exactly as before (video replaces the transcript pane, no banner).
+    # Real browser (Chrome, throwaway DB, fake live + fake audio source, whisper URL pointing nowhere): label, open video box, red banner after the first poll,
+    #   no sideways scroll at 390 px. I did not LOOK at the screenshots in detail; check the look yourself. NOT checked: real audio, real whisper, Fly (S3).
+    # Mutation check: not run for S2.
+
+### Validation for "start Falacias from ANY link" (app/livestream.py probe_video, app/feed.py source_from_url, /admin/falacias/start-url)
+    uv run pytest tests/test_start_by_url.py -q         # expect: 28 passed (red run first: collection error, VideoProbe missing)
+    uv run pytest -q                                    # expect: 1283 passed, 1 skipped
+    # /admin/falacias with no game: field "Link do video ou da live (qualquer canal)" + "Iniciar com este link" (the old automatic channel button stays below it).
+    #   The server asks YouTube about THAT video (yt-dlp, ~5-15 s, the admin waits): horizontal LIVE -> live game (chat worker, and STT if enabled);
+    #   finished video with a READY replay -> replay game; finished video NOT collected -> the replay is queued in the catalogue (cache) and the page says so;
+    #   paste the link again once the row is "Pronto" (or use "Iniciar com este replay"). Same link while queued/running -> "ja esta na fila".
+    #   Refused with a message: bad/foreign link, vertical, not started yet, still processing at YouTube, lookup failed, queue full (5).
+    # Players: unchanged. They join the game the admin started; a player's own start still follows the channel in LIVE_CHANNEL_URL (default O_Poligrafo).
+    # Real read-only check (me): probe_video on 3 finished videos of two different channels -> kind vod, 1920x1080 / 3840x2160, horizontal.
+    #   NOT checked: a real LIVE link of another channel, the page in a real browser, a full queue -> collect -> start cycle on a real video.
+    # Mutation check: not run.
+
+### Validation for the start dialog (replaces the "Replays disponiveis" panel and the link panel on /admin/falacias)
+    uv run pytest tests/test_start_by_url.py -q         # expect: all passed (red run first: 13 failed)
+    uv run pytest -q                                    # expect: 1294 passed, 1 skipped (the replay-collector recovery test is the known timing flake)
+    # /admin/falacias with no game or after one ended: the title line has "Iniciar nova partida" (right). It opens a MODAL (startdlg.js, <dialog>) with
+    #   (1) a select of the collected replays (ready = pickable, queued/failed/... shown disabled with their status), (2) a text box for ANY YouTube link
+    #   (a typed link wins over the select), "Cancelar" / "Iniciar". Esc or a click on the backdrop closes it. Messages (refused link, "queued for
+    #   collection") come back inside the dialog, which reopens by itself. Without JS: the button is a link to ?start=1 which shows the dialog inline.
+    #   Link: horizontal live -> live game; finished + collected -> replay game; finished + not collected -> queued in the catalogue (cache), try again when ready.
+    #   Picked replay: starts at once, no YouTube lookup. Both empty: "Escolha um replay na lista ou cole um link".
+    # REMOVED from the page: the catalogue table, its "retry"/"delete" buttons and the automatic "channel" start button. The routes
+    #   (/admin/falacias/replays/{add,retry,delete,start} and /admin/falacias/start) still exist and are tested but nothing links to them.
+    #   A failed collection is retried by pasting the link again; there is NO UI to delete a collected replay now.
+    # Real Chrome (throwaway DB): modal opens centred (560 px; 352 px at 390 px width), no sideways scroll, option list as above, Esc closes,
+    #   picking a replay without rows came back with the message INSIDE the reopened dialog. NOT checked: the full start of a real game from the dialog.
+
+### Validation for "STT down on a real live" (diagnosis + fixes: logs with the reason, STT_LANGUAGE, prompt-echo filter) and the status panel / entry page tidy-up
+    uv run pytest -q                                    # expect: 1314 passed, 1 skipped
+    # Run it locally (YOU): whisper.cpp from Homebrew + a ggml model, then the app with STT on. Put Homebrew's ffmpeg FIRST in PATH:
+    #   a static ffmpeg without CA certificates (the Hermes tools one) fails on a live's HLS manifest with "certificate verify failed".
+    whisper-server -m ~/whisper-models/ggml-medium.bin -l pt --host 127.0.0.1 --port 8080 -t 4
+    PATH=/opt/homebrew/bin:$PATH STT_PROVIDER=whispercpp STT_URL=http://127.0.0.1:8080 STT_LANGUAGE=pt uv run uvicorn app.main:app --port 8000 --reload
+    #   STT_LANGUAGE = pt (default) | en | any 2-3 letter code | auto. With a non-pt language the Portuguese default prompt is NOT sent (STT_PROMPT still is).
+    #   Language pt on an English stream makes whisper TRANSLATE into Portuguese: set the language of the stream you start.
+    # The banner "A transcricao automatica esta fora do ar" now has a reason in the server log: grep "stt " (first failure, then #2, #4, #8...; "stt recovered" once).
+    #   Causes seen/expected: whisper-server not running (connection refused), ffmpeg missing or without certificates, yt-dlp blocked/403.
+    # Real check (me, this Mac, live pxEG3l8yNtg, medium model): yt-dlp | ffmpeg -> 12 s WAV segments -> whisper-server /inference worked end to end (6 chunks,
+    #   0.4-0.8 s per 13 s of audio); the request fields (/inference, language, prompt, verbose_json) are CONFIRMED against a real whisper-server.
+    #   Whisper answered one quiet chunk with its own prompt; such segments are now dropped (tests were written together with that code: no red run for it).
+    # NOT checked: the whole thing through the web app with a game (only the worker's pieces), Fly, other models.
+    # Status panel on /admin/falacias: the source link ("Transmissao ao vivo da partida: ..." / "Video da partida (replay): ...") is a row INSIDE the status panel
+    #   (also when ended). "Ninguem pontuou desta vez." was removed (admin and player end screens). The entry page of Falacias no longer says
+    #   "O canal nao esta ao vivo agora." / "So transmissoes na horizontal sao usadas.".
+
+### Validation for the unified slide panel (replaces "Frase falada" and "Mensagem para o apresentador"; migration 0012)
+    uv run pytest tests/test_unified_panel.py -q        # expect: 26 passed (written first; red run: 20+ failed)
+    uv run pytest -q                                    # expect: 1331 passed, 1 skipped (+ the known replay-collector timing flake)
+    uv run migrate                                      # YOU, dev DB: expect "applied: 0012_mark_note.sql" (adds fallacy_marks.note, <= 280 chars)
+    # /falacias: the two boxes below the panes are gone. The slide panel (#picker) opens on ANY click in the chat or transcript pane, with or
+    #   without selected text, and ends with a "Mensagem ou frase falada" textarea (280 chars) right before "Enviar". One POST /falacias/mark:
+    #   passage + fallacy (+ message)  -> pair; the message is stored as `note` and shown to the admin in the queue ("Mensagem do jogador")
+    #   fallacy + message, no passage  -> typed fallacy (kind 'spoken', the old Frase falada)
+    #   message only                   -> host message (host_messages; same 30 s / max 5 limits)
+    #   passage without fallacy, fallacy without text, or nothing -> inline error. Fallacy radios are no longer `required`.
+    # REMOVED: routes /falacias/spoken and /falacias/message, texts FAL_SPOKEN_*, HM_HEADING/HELP/SEND/COUNT, JS events fal:spoken-sent / fal:msg-sent.
+    #   The typed quote limit is now 280 (was 300); the host-message counter "Enviadas n/5" is gone (the error appears when the cap is hit).
+    # NOT checked: the panel in a real browser (opening on pane click, textarea layout, phones), no mutation check.
+    # Fly: migration 0012 -> follow the deploy checklist (backup first).
+
+### Validation for the personal link in the header (app/ui.py: CookieContext, personal_link, GET /r)
+    uv run pytest tests/test_major_bugs.py tests/test_falacias_web.py -q    # expect: all passed (red run first: 3 failed)
+    uv run pytest -q                                    # expect: 1338 passed, 1 skipped
+    # The "Salvar link para voltar nesta partida" section is gone from the bottom of both game pages. Instead the header has a link icon
+    #   (class mylink) LEFT of the profile button, on every page, once the visitor has a game cookie. ONE link for all games: /r?b=<bingo token>&f=<falacias token>
+    #   (only the games the player is in). Opening it elsewhere sets every valid cookie and the name. Old /r/<game>/<token> links still work.
+    #   SECURITY: whoever holds the link IS the player. The tokens are in the URL (history, logs): accepted for a low-stakes game.
+    # Try: play in one browser, right-click the icon > copy link, open it in a private window: same cards and marks.
+    # NOT checked in a real browser (icon size/alignment on desktop and phones).
+
+### Validation for the three-panel Falácias live page (app/falacias_web.py game_view/video_pane, falacias.js, app.css .panes.three)
+    uv run pytest tests/test_three_panels.py -q         # expect: 6 passed (red run first)
+    uv run pytest -q                                    # expect: 1345 passed, 1 skipped
+    # LIVE game: video | chat | transcript side by side (1.25fr 1fr 1fr). The video panel's title "Transmissão ao vivo" has "Ocultar vídeo" on its right;
+    #   clicking it unloads the iframe (sound stops), hides the panel and the other two share the width 50/50; a "Mostrar vídeo" button appears above them.
+    #   The transcript panel is always there in a live game (with STT off it only holds the "no transcript" note). The old collapsible box above the panes is gone.
+    #   Replay games are unchanged (transcript | chat, no video). Phones (<= 760 px): one column, video first.
+    # NOT checked in a real browser (widths, iframe size in a 1/3 column, the hide/show script, phones).
+
 ### Deploying to Fly.io - checklist (every release)
     # 0. Local: tests green and everything committed + pushed.
     uv run ruff check . && uv run pytest -q                    # expect: All checks passed! / N passed

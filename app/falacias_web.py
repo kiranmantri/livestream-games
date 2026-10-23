@@ -25,10 +25,8 @@ from fasthtml.common import (
     Label,
     Li,
     Ol,
-    Option,
     P,
     Script,
-    Select,
     Small,
     Span,
     Table,
@@ -45,7 +43,7 @@ from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 
 from app import falacias as F
-from app import feed, livestream, timefmt
+from app import feed, livestream, sttworker, timefmt
 from app import host_messages as H
 from app import sessions as S
 from app import texts as T
@@ -59,7 +57,6 @@ from app.ui import (
     name_of,
     page,
     play_form,
-    recovery_view,
     remember_name,
     set_token_cookie,
     token_of,
@@ -85,21 +82,23 @@ def line_view(e: feed.Event):
     return Div(who, Span(e.text, cls="tx"), cls="pline", data_id=e.id)
 
 
-def pane_view(kind: str, title: str, events: list[feed.Event], note: str | None = None):
+def pane_view(kind: str, title: str, events: list[feed.Event], note: str | None = None, label: str | None = None):
     return Div(
-        Div(Span(title, cls="who"), Button("", type="button", cls="pill", hidden=True, data_pill=kind), cls="bar"),
+        Div(Span(title, cls="who"), Span(label, cls="sttlabel") if label else None,
+            Button("", type="button", cls="pill", hidden=True, data_pill=kind), cls="bar"),
         Div(P(note, cls="pnote") if note else None, *[line_view(e) for e in events], id=f"pane-{kind}", cls="scroll",
             data_kind=kind, lang="pt-BR", tabindex="0"),
         cls=f"pane panel {kind}")
 
 
-def video_pane(video_id: str, note: str | None = None):
-    """Live sessions have no transcript: the left pane shows the stream instead (so nobody switches windows to watch it)."""
-    return Div(Div(Span(T.STREAM_TITLE, cls="who"), cls="bar"),
+def video_pane(video_id: str):
+    """First of the three panels of a live game: the stream, with a button on the right of the title that hides it (falacias.js
+    unloads the iframe so the sound stops; the two text panels then share the width)."""
+    return Div(Div(Span(T.STREAM_TITLE, cls="who"),
+                   Button(T.VIDEO_HIDE, type="button", cls="pill", data_hidevideo="1"), cls="bar"),
                Div(Iframe(src=f"https://www.youtube-nocookie.com/embed/{video_id}?autoplay=1&mute=1&playsinline=1&rel=0",
                           title=T.STREAM_TITLE, allow="autoplay; encrypted-media; picture-in-picture; fullscreen",
                           allowfullscreen=True, referrerpolicy="strict-origin-when-cross-origin"), cls="ratio"),
-               P(note, cls="pnote") if note else None,
                cls="pane video panel")
 
 
@@ -112,34 +111,49 @@ def banner_view(st: str, oob: bool = False, live: bool = False):
     return Div(id="feedbanner", **extra)
 
 
-def poller_view(after: int, st: str):
-    return Div(id="feedpoll", hx_get=f"/falacias/feed?after={after}&st={st}", hx_trigger="every 2s", hx_swap="outerHTML")
+def stt_banner_view(tr: str, oob: bool = False):
+    """Transcript health, SEPARATE from the chat/feed banner: a failing STT only informs, it never blocks pairs (the chat decides that)."""
+    extra = {"hx_swap_oob": "true"} if oob else {}
+    if tr == "down":
+        return Div(T.FAL_STT_DOWN, id="sttbanner", cls="error", role="alert", **extra)
+    return Div(id="sttbanner", **extra)
+
+
+def poller_view(after: int, st: str, tr: str | None = None):
+    """`tr` (transcript health) is only part of the URL while STT is on for this game."""
+    q = f"after={after}&st={st}" + (f"&tr={tr}" if tr else "")
+    return Div(id="feedpoll", hx_get=f"/falacias/feed?{q}", hx_trigger="every 2s", hx_swap="outerHTML")
 
 
 def picker_view(fallacies: list[F.Fallacy]):
-    """Hidden until falacias.js captures a selection. Radios (not <select>): iOS ignores hidden <option>s, so the filter
-    would not work there. The selection fields are filled by the script; the server never trusts them beyond the ids."""
+    """The slide panel for EVERYTHING a player sends: opened by falacias.js when a chat/transcript pane is clicked (with or without
+    selected text). Selection + fallacy = a pair; fallacy + message = a typed fallacy; message alone = a note to the host. Radios (not
+    <select>): iOS ignores hidden <option>s, so the filter would not work there. The selection fields are filled by the script; the
+    server never trusts them beyond the ids."""
     by_cat: dict[str, list[F.Fallacy]] = defaultdict(list)
     for f in fallacies:
         by_cat[f.category].append(f)
     groups = [Div(Span(cat, cls="cat"),
-                  *[Label(Input(type="radio", name="fallacy_id", value=f.id, required=True), Span(f.name), title=f.description,
+                  *[Label(Input(type="radio", name="fallacy_id", value=f.id), Span(f.name), title=f.description,
                           data_name=f.name.casefold()) for f in items], cls="grp") for cat, items in by_cat.items()]
     return Form(
         Div(Span(T.FAL_SELECTED, cls="who"), Button(T.FAL_CLEAR, type="button", id="pk-clear", cls="link"), cls="bar"),
-        P(id="pk-quote", cls="quote"),
+        P(id="pk-quote", cls="quote", data_empty=T.FAL_NO_SELECTION),
         *[Input(type="hidden", name=n, id=f"pk-{n}") for n in ("kind", "start_id", "start_off", "end_id", "end_off")],
         Input(type="text", id="pk-filter", placeholder=T.FAL_FILTER, autocomplete="off", aria_label=T.FAL_FILTER),
         Div(*groups, cls="opts"),
+        Label(T.FAL_NOTE_LABEL, Textarea(id="pk-note", name="note", maxlength=F.MAX_NOTE, rows=3, placeholder=T.FAL_NOTE_PLACEHOLDER,
+                                         autocomplete="off"), cls="notefield"),
         Div(Button(T.FAL_SEND, type="submit", cls="primary"), Div(id="feedback", role="status"), cls="sendrow"),
         Small(A(T.FAL_SOURCE, href=T.FAL_SOURCE_URL, target="_blank", rel="noopener noreferrer"), cls="muted"),
         id="picker", cls="panel picker", hidden=True, hx_post="/falacias/mark", hx_swap="none")
 
 
-def feedback_view(code: str | None = None, ok: bool = False):
+def feedback_view(code: str | None = None, ok: bool = False, text: str | None = None):
     if code is None:
-        return Div(T.FAL_SENT if ok else "", id="feedback", cls="ok" if ok else None, role="status", hx_swap_oob="true")
-    return Div(T.FAL_ERRORS.get(code, T.FAL_ERRORS["generic"]).format(n=F.RATE_LIMIT_S), id="feedback", cls="error",
+        return Div(text or T.FAL_SENT if ok else "", id="feedback", cls="ok" if ok else None, role="status", hx_swap_oob="true")
+    msg = T.FAL_ERRORS.get(code) or T.HM_ERRORS.get(code) or T.FAL_ERRORS["generic"]
+    return Div(msg.format(n=F.RATE_LIMIT_S if code == "rate_limited" else H.RATE_LIMIT_S, max=H.MAX_PER_PLAYER), id="feedback", cls="error",
                role="alert", hx_swap_oob="true")
 
 
@@ -162,26 +176,6 @@ def side_view(conn, me: S.Player, oob: bool = False):
                **({"hx_swap_oob": "true"} if oob else {}))
 
 
-def hm_count_view(n: int, oob: bool = False):
-    return Span(T.HM_COUNT.format(n=n, max=H.MAX_PER_PLAYER), id="hm-count", cls="muted", hx_swap_oob="true" if oob else None)
-
-
-def hm_feedback_view(code: str | None = None):
-    if code is None:
-        return Div(T.HM_SENT, id="hm-feedback", cls="ok", role="status", hx_swap_oob="true")
-    return Div(T.HM_ERRORS.get(code, T.HM_ERRORS["generic"]).format(n=H.RATE_LIMIT_S, max=H.MAX_PER_PLAYER),
-               id="hm-feedback", cls="error", role="alert", hx_swap_oob="true")
-
-
-def message_box_view(sent: int):
-    return Form(H2(T.HM_HEADING), P(T.HM_HELP, cls="muted"),
-                Textarea(id="hm-text", name="text", maxlength=H.MAX_LEN, rows=3, required=True, placeholder=T.HM_PLACEHOLDER,
-                         aria_label=T.HM_HEADING),
-                Div(Button(T.HM_SEND, type="submit", cls="primary"), hm_count_view(sent), Div(id="hm-feedback", role="status"),
-                    cls="sendrow"),
-                id="hostbox", cls="panel", hx_post="/falacias/message", hx_swap="none")
-
-
 def source_view(live: livestream.LiveStream, sess: tuple[str | None, str | None] | None = None):
     """Title + URL of the video the game uses and of the channel's live stream, if any. `sess` = (video_id, mode) of the running
     session: a live session shows the live stream, a replay session its video; without a session (entry page) the replay line only
@@ -198,7 +192,7 @@ def source_view(live: livestream.LiveStream, sess: tuple[str | None, str | None]
     poll = "every 5s" if title is None or not live.known else "every 60s"
     url = f"https://www.youtube.com/watch?v={vid}"
     if info is None:
-        liveline = P(T.SRC_LIVE_OFFLINE, cls="muted") if live.known else None
+        liveline = None                    # offline channel: say nothing (the admin chooses the source, not the channel)
     elif sess_mode == "live" and info.id == vid:
         liveline = None                    # the session's own line already shows this stream
     else:
@@ -207,24 +201,8 @@ def source_view(live: livestream.LiveStream, sess: tuple[str | None, str | None]
                      cls="muted" if info.horizontal else "muted vertical")
     video = P(Span(label + ": ", cls="who"), title or T.SRC_TITLE_UNKNOWN, " · ", A(url, href=url, target="_blank", rel="noopener")) \
         if show_video else None
-    return Div(video, liveline, P(T.SRC_ONLY_HORIZONTAL, cls="muted small"),
+    return Div(video, liveline,
                id="source", cls="source", hx_get="/falacias/source", hx_trigger=poll, hx_swap="outerHTML")
-
-
-def spoken_view(fallacies: list[F.Fallacy]):
-    return Form(H2(T.FAL_SPOKEN_HEADING), P(T.FAL_SPOKEN_HELP, cls="muted"),
-                Textarea(id="sp-text", name="text", maxlength=F.MAX_SPOKEN, rows=3, required=True, placeholder=T.FAL_SPOKEN_PLACEHOLDER,
-                         aria_label=T.FAL_SPOKEN_HEADING),
-                Select(*[Option(f.name, value=str(f.id)) for f in fallacies], name="fallacy_id", required=True, aria_label=T.FAL_SPOKEN_FALLACY),
-                Div(Button(T.FAL_SPOKEN_SEND, type="submit", cls="primary"), Div(id="sp-feedback", role="status"), cls="sendrow"),
-                id="spokenbox", cls="panel", hx_post="/falacias/spoken", hx_swap="none")
-
-
-def spoken_feedback_view(code: str | None = None):
-    if code is None:
-        return Div(T.FAL_SENT, id="sp-feedback", cls="ok", role="status", hx_swap_oob="true")
-    return Div(T.FAL_SPOKEN_ERRORS.get(code, T.FAL_SPOKEN_ERRORS["generic"]).format(n=F.RATE_LIMIT_S), id="sp-feedback", cls="error",
-               role="alert", hx_swap_oob="true")
 
 
 def entry_view(active: S.GameSession | None, n_players: int = 0, error: str | None = None, name: str = "", source=None,
@@ -240,25 +218,28 @@ def entry_view(active: S.GameSession | None, n_players: int = 0, error: str | No
     return fal_page(H1(T.FAL_TITLE), P(T.FAL_TAGLINE, cls="tag"), source, err, panel, who=name or None)
 
 
-def game_view(me: S.Player, events: list[feed.Event], last_id: int, st: str, fallacies, side, sent: int = 0, source=None,
-              live: bool = False, recover=None, video_id: str | None = None):
+def game_view(me: S.Player, events: list[feed.Event], last_id: int, st: str, fallacies, side, source=None,
+              live: bool = False, video_id: str | None = None, stt: bool = False, tr: str = "ok"):
+    stt = stt and live
     by_kind = {k: [e for e in events if e.kind == k] for k, _ in PANES}
-    intro = [P(T.FAL_LIVE_HOW_TO, cls="muted")] if live else [P(T.FAL_HOW_TO, cls="muted"), P(T.FAL_PICK_HELP, cls="muted"),
+    intro = [P(T.FAL_LIVE_HOW_TO_STT if stt else T.FAL_LIVE_HOW_TO, cls="muted")] if live else [P(T.FAL_HOW_TO, cls="muted"), P(T.FAL_PICK_HELP, cls="muted"),
                                                               P(T.FAL_REPLAY, cls="muted")]
+    show = bool(live and video_id)                  # live game: video | chat | transcript; replay: transcript | chat as before
+    kinds = (("chat", T.FAL_CHAT), ("transcript", T.FAL_TRANSCRIPT)) if show else PANES
     return fal_page(
         H1(T.FAL_TITLE), P(f"{me.name} ({T.YOU})", cls="tag"), *intro,
         source,
         banner_view(st, live=live),
-        Div(*[video_pane(video_id, T.FAL_NO_TRANSCRIPT) if live and video_id and k == "transcript"
-              else pane_view(k, title, by_kind[k], note=T.FAL_NO_TRANSCRIPT if live and k == "transcript" else None)
-              for k, title in PANES],
-            cls="panes" + (" withvideo" if live and video_id else "")),
-        poller_view(last_id, st),
+        stt_banner_view(tr) if stt else None,
+        Button(T.VIDEO_SHOW, type="button", cls="pill showvideo", data_showvideo="1", hidden=True) if show else None,
+        Div(*([video_pane(video_id)] if show else []),
+            *[pane_view(k, title, by_kind[k], note=T.FAL_NO_TRANSCRIPT if live and not stt and k == "transcript" else None,
+                        label=T.FAL_STT_LABEL if stt and k == "transcript" else None)
+              for k, title in kinds],
+            cls="panes" + (" three" if show else "")),
+        poller_view(last_id, st, tr if stt else None),
         picker_view(fallacies),
-        spoken_view(fallacies) if live else None,
         side,
-        message_box_view(sent),
-        recover,
         Script(src="/falacias.js", defer=True),
         cls="fal", who=me.name)
 
@@ -267,7 +248,7 @@ def ended_view(conn, session: S.GameSession, me: S.Player, rows: list[F.LeaderRo
     """Final ranking: the stored winner (not recomputed), per-player verdict counts, and my own pairs with their verdicts."""
     winner = next((r for r in rows if r.user_id == session.winner_user_id), None)
     head = P(T.FAL_WINNER.format(name=winner.name, pts=F.fmt_points(winner.points)), cls="winner") if winner \
-        else P(T.FAL_NO_POINTS, cls="muted")
+        else None
     table = Table(Thead(Tr(Th("#"), Th(T.AF_COL_PLAYER), Th(T.AF_COL_POINTS), Th(T.FAL_COL_CORRECT), Th(T.FAL_COL_WRONG),
                            Th(T.FAL_COL_SPAM), Th(T.FAL_COL_PENDING))),
                   Tbody(*[Tr(Td(str(r.rank)), Td(r.name), Td(F.fmt_points(r.points)), Td(str(r.correct)), Td(str(r.wrong)),
@@ -323,9 +304,11 @@ def register(rt, pool, live: livestream.LiveStream | None = None) -> None:
                 feed.tick_throttled(conn, me.session_id)
                 events = feed.recent_events(conn, me.session_id, FIRST_LINES)
                 src = feed.session_source(conn, me.session_id)
+                stt = src[1] == "live" and sttworker.enabled()
                 return game_view(me, events, feed.last_event_id(conn, me.session_id), feed.status(conn, me.session_id),
-                                 F.list_fallacies(conn), side_view(conn, me), H.sent_count(conn, me.id), source_view(live, src),
-                                 live=src[1] == "live", recover=recovery_view(request, GAME), video_id=src[0])
+                                 F.list_fallacies(conn), side_view(conn, me), source_view(live, src),
+                                 live=src[1] == "live", video_id=src[0],
+                                 stt=stt, tr=sttworker.health(me.session_id) if stt else "ok")
             active = S.get_active_session(conn, GAME)
             found = S.find_player(conn, token_of(request, GAME))
             if active is None and found and found[1].status == "ended" and found[1].game_type == GAME:
@@ -347,7 +330,7 @@ def register(rt, pool, live: livestream.LiveStream | None = None) -> None:
         return enter(request, "join", name)
 
     @rt("/falacias/feed")
-    def falacias_feed(request: Request, after: int = 0, st: str = "ok"):
+    def falacias_feed(request: Request, after: int = 0, st: str = "ok", tr: str = ""):
         with pool.connection() as conn:
             me = S.resume(conn, token_of(request, GAME), GAME)
             if me is None:       # the session ended (or the cookie is unknown): reload -> end screen / entry form
@@ -356,16 +339,21 @@ def register(rt, pool, live: livestream.LiveStream | None = None) -> None:
             events = feed.events_after(conn, me.session_id, max(after, 0))
             now_st = feed.status(conn, me.session_id)
             is_live = feed.session_source(conn, me.session_id)[1] == "live"
-        if not events and now_st == st:
+            stt = is_live and sttworker.enabled()
+            now_tr = sttworker.health(me.session_id) if stt else ""
+        tr_changed = stt and tr in ("ok", "down") and tr != now_tr         # an old page without `tr` just never shows the banner
+        if not events and now_st == st and not tr_changed:
             return Response(status_code=204)
         new_after = events[-1].id if events else after
-        parts = [poller_view(new_after, now_st)]
+        parts = [poller_view(new_after, now_st, now_tr or None)]
         for kind, _ in PANES:
             lines = [line_view(e) for e in events if e.kind == kind]
             if lines:       # htmx appends the CHILDREN of an out-of-band element with a swap style
                 parts.append(Div(*lines, hx_swap_oob=f"beforeend:#pane-{kind}"))
         if now_st != st:
             parts.append(banner_view(now_st, oob=True, live=is_live))
+        if tr_changed:
+            parts.append(stt_banner_view(now_tr, oob=True))
         return tuple(parts)
 
     def fragment(*parts, headers: dict | None = None) -> Response:
@@ -378,59 +366,48 @@ def register(rt, pool, live: livestream.LiveStream | None = None) -> None:
 
     @rt("/falacias/mark", methods=["POST"])
     def falacias_mark(request: Request, kind: str = "", start_id: str = "", start_off: str = "", end_id: str = "",
-                      end_off: str = "", fallacy_id: str = ""):
+                      end_off: str = "", fallacy_id: str = "", note: str = ""):
+        """The slide panel. selection + fallacy = pair (the message is its note); fallacy + message = typed fallacy;
+        message alone = a note to the host."""
         with pool.connection() as conn:
             me = S.resume(conn, token_of(request, GAME), GAME)
             if me is None:
                 return Response(status_code=401, headers={"HX-Refresh": "true"})
             try:
-                feed.ensure_up(conn, me.session_id)
-                F.submit_mark(conn, me.id, kind, to_int(start_id), to_int(start_off), to_int(end_id), to_int(end_off),
-                              to_int(fallacy_id))
+                text = F.normalize_note(note)
+                has_selection = bool(start_id.strip() or end_id.strip())
+                has_fallacy = bool(fallacy_id.strip())
+                if has_fallacy and not re.fullmatch(rf"\d{{1,{MAX_INT_DIGITS}}}", fallacy_id.strip()):
+                    raise F.UnknownFallacy("not a fallacy id")
+                message_only = False
+                if has_selection:
+                    if not has_fallacy:
+                        raise F.NeedFallacy("a fallacy is needed for a selected passage")
+                    feed.ensure_up(conn, me.session_id)
+                    F.submit_mark(conn, me.id, kind, to_int(start_id), to_int(start_off), to_int(end_id), to_int(end_off),
+                                  to_int(fallacy_id), note=text)
+                elif has_fallacy:
+                    if not text:
+                        raise F.NeedText("a fallacy needs a passage or a typed phrase")
+                    F.submit_spoken(conn, me.id, text, to_int(fallacy_id))
+                elif text:
+                    H.send(conn, me.id, text)
+                    message_only = True
+                else:
+                    raise F.NothingToSend("nothing to send")
             except F.SessionNotActive:
                 return Response(status_code=200, headers={"HX-Refresh": "true"})
-            except F.FalaciasError as e:
+            except (F.FalaciasError, H.HostMessageError) as e:
                 return fragment(feedback_view(e.code))
             except feed.FeedError:
                 return fragment(feedback_view("feed_down"))
-            return fragment(feedback_view(ok=True), side_view(conn, me, oob=True), headers={"HX-Trigger": "fal:sent"})
+            return fragment(feedback_view(ok=True, text=T.FAL_SENT_MESSAGE if message_only else None), side_view(conn, me, oob=True),
+                            headers={"HX-Trigger": "fal:sent"})
 
     @rt("/falacias/source")
     def falacias_source(request: Request):
         with pool.connection() as conn:
             return fragment(source_view(live, session_src(conn, request)))        # public information, like /menu
-
-    @rt("/falacias/spoken", methods=["POST"])
-    def falacias_spoken(request: Request, text: str = "", fallacy_id: str = ""):
-        with pool.connection() as conn:
-            me = S.resume(conn, token_of(request, GAME), GAME)
-            if me is None:
-                return Response(status_code=401, headers={"HX-Refresh": "true"})
-            try:
-                F.submit_spoken(conn, me.id, text, to_int(fallacy_id))
-            except F.SessionNotActive:
-                return Response(status_code=200, headers={"HX-Refresh": "true"})
-            except F.BadSelection:
-                code = "unknown_fallacy" if not re.fullmatch(rf"\d{{1,{MAX_INT_DIGITS}}}", fallacy_id or "") else "bad_selection"
-                return fragment(spoken_feedback_view(code))
-            except F.FalaciasError as e:
-                return fragment(spoken_feedback_view(e.code))
-            return fragment(spoken_feedback_view(), side_view(conn, me, oob=True), headers={"HX-Trigger": "fal:spoken-sent"})
-
-    @rt("/falacias/message", methods=["POST"])
-    def falacias_message(request: Request, text: str = ""):
-        with pool.connection() as conn:
-            me = S.resume(conn, token_of(request, GAME), GAME)
-            if me is None:
-                return Response(status_code=401, headers={"HX-Refresh": "true"})
-            try:
-                H.send(conn, me.id, text)
-            except F.SessionNotActive:
-                return Response(status_code=200, headers={"HX-Refresh": "true"})
-            except H.HostMessageError as e:
-                return fragment(hm_feedback_view(e.code))
-            return fragment(hm_feedback_view(), hm_count_view(H.sent_count(conn, me.id), oob=True),
-                            headers={"HX-Trigger": "fal:msg-sent"})
 
     @rt("/falacias/side")
     def falacias_side(request: Request):

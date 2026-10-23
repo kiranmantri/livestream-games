@@ -31,7 +31,9 @@
     toBottom();
   });
 
-  // ---------------------------------------------------------------- selection -> picker
+  // ---------------------------------------------------------------- the slide panel (selection, fallacy, message)
+  // A click on a chat/transcript pane opens it, with or without selected text: the transcript or the chat may fail, and then the
+  // player types the phrase or a message in the panel's message box.
   var picker = document.getElementById('picker');
   if (!picker) return;
   var timer = null;
@@ -81,30 +83,36 @@
     field('end_id').value = last.dataset.id;
     field('end_off').value = eo;
     field('quote').textContent = '“' + sel.toString().replace(/\s+/g, ' ').trim().slice(0, 200) + '”';
-    picker.hidden = false;
+    openPicker();
     markPicked();
   }
+
+  function openPicker() { picker.hidden = false; }
 
   function schedule() { clearTimeout(timer); timer = setTimeout(capture, 200); }
   document.addEventListener('selectionchange', schedule);          // mouse, keyboard and touch handles
   document.addEventListener('mouseup', schedule);
   document.addEventListener('touchend', schedule);
 
-  function clear() {
-    picker.hidden = true;
+  // Forget the selected passage only (the panel stays open, a typed message stays too).
+  function clearSelection() {
     ['kind', 'start_id', 'start_off', 'end_id', 'end_off'].forEach(function (n) { field(n).value = ''; });
     field('quote').textContent = '';
     markPicked();
     var sel = window.getSelection();
     if (sel) sel.removeAllRanges();
+  }
+  // Close the panel and forget everything in it (selection, fallacy, filter, message).
+  function closeAll() {
+    clearSelection();
+    picker.hidden = true;
     picker.querySelectorAll('input[type=radio]').forEach(function (r) { r.checked = false; });
     field('filter').value = '';
+    field('note').value = '';
     filter();
   }
-  document.getElementById('pk-clear').addEventListener('click', clear);
-  document.body.addEventListener('fal:msg-sent', function () { var t = document.getElementById('hm-text'); if (t) t.value = ''; });
-  document.body.addEventListener('fal:spoken-sent', function () { var t = document.getElementById('sp-text'); if (t) t.value = ''; });
-  document.body.addEventListener('fal:sent', clear);               // sent by the server (HX-Trigger) after a stored pair
+  document.getElementById('pk-clear').addEventListener('click', closeAll);
+  document.body.addEventListener('fal:sent', closeAll);            // sent by the server (HX-Trigger) after anything was stored
 
   // ---------------------------------------------------------------- click a line = select / deselect it
   // Faster than dragging. Lines of one pane stay contiguous: a click next to the current selection extends it, a click on its first or
@@ -114,7 +122,7 @@
   document.addEventListener('mousedown', function (e) { down = { x: e.clientX, y: e.clientY }; });
 
   function selectLines(pane, lines) {
-    if (!lines.length) { clear(); return; }
+    if (!lines.length) { clearSelection(); return; }
     var ftx = lines[0].querySelector('.tx'), ltx = lines[lines.length - 1].querySelector('.tx');
     var r = document.createRange();
     r.setStart(ftx, 0);
@@ -145,7 +153,10 @@
     else next = [line];
     selectLines(pane, next);
   }
-  document.querySelectorAll('.scroll[data-kind]').forEach(function (pane) { pane.addEventListener('click', onLineClick); });
+  document.querySelectorAll('.scroll[data-kind]').forEach(function (pane) {
+    pane.addEventListener('click', onLineClick);
+    pane.addEventListener('click', function (e) { if (!(e.target.closest && e.target.closest('a'))) openPicker(); });
+  });
 
   // ---------------------------------------------------------------- fallacy filter (accent/case-insensitive)
   function fold(s) { return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
@@ -162,4 +173,23 @@
     });
   }
   field('filter').addEventListener('input', filter);
+})();
+
+// ---------------------------------------------------------------- hide / show the video panel (live games)
+(function () {
+  var panes = document.querySelector('.panes.three');
+  var video = panes && panes.querySelector('.pane.video');
+  var hide = document.querySelector('[data-hidevideo]');
+  var show = document.querySelector('[data-showvideo]');
+  if (!video || !hide || !show) return;
+  var frame = video.querySelector('iframe');
+  var src = frame ? frame.getAttribute('src') : '';
+  function set(hidden) {
+    video.hidden = hidden;
+    show.hidden = !hidden;
+    panes.classList.toggle('novideo', hidden);       // the two text panels take the free space, 50/50
+    if (frame) frame.setAttribute('src', hidden ? 'about:blank' : src);   // unload: the sound must stop too
+  }
+  hide.addEventListener('click', function () { set(true); });
+  show.addEventListener('click', function () { set(false); });
 })();

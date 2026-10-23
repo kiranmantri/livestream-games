@@ -32,6 +32,7 @@ from app.sessions import SessionError
 KINDS = ("transcript", "chat")      # panes a player can SELECT from
 SPOKEN = "spoken"                    # typed by the player (what was said on the stream); never shown in the panes
 MAX_SPOKEN = 300
+MAX_NOTE = 280                       # the free-form message of the slide panel (same limit as a host message)
 VERDICTS = ("correct", "wrong", "spam")
 BASE = 500
 CORRECT = 500
@@ -63,6 +64,24 @@ class UnknownFallacy(FalaciasError):
 
 class SpokenTooLong(FalaciasError):
     code = "spoken_too_long"
+
+
+class NoteTooLong(FalaciasError):
+    code = "note_too_long"
+
+
+class NeedFallacy(FalaciasError):
+    """A passage is selected but no fallacy was chosen."""
+    code = "need_fallacy"
+
+
+class NeedText(FalaciasError):
+    """A fallacy is chosen but there is neither a selected passage nor a typed phrase."""
+    code = "need_text"
+
+
+class NothingToSend(FalaciasError):
+    code = "empty"
 
 
 class RateLimited(FalaciasError):
@@ -133,10 +152,11 @@ class Mark:
     status: str
     created_at: datetime
     reviewed_at: datetime | None
+    note: str = ""
 
 
 _MARK_COLS = ("id, session_id, user_id, kind, start_event_id, start_offset, end_event_id, end_offset, quote, "
-              "fallacy_id, latency_ms, counts, status, created_at, reviewed_at")
+              "fallacy_id, latency_ms, counts, status, created_at, reviewed_at, note")
 
 
 def points_of(m: Mark) -> int:
@@ -374,10 +394,22 @@ def _guarded_insert(conn: psycopg.Connection, session_id: UUID, user_id: UUID, i
         raise
 
 
+def normalize_note(raw: str | None) -> str:
+    """The free-form message: NFC, control characters dropped, whitespace collapsed. May be empty; at most MAX_NOTE characters."""
+    text = unicodedata.normalize("NFC", raw or "")
+    text = "".join(" " if c.isspace() else c for c in text if c.isspace() or unicodedata.category(c) not in ("Cc", "Cs"))
+    text = re.sub(r"\s+", " ", text).strip()
+    if len(text) > MAX_NOTE:
+        raise NoteTooLong(f"more than {MAX_NOTE} characters")
+    return text
+
+
 def submit_mark(conn: psycopg.Connection, user_id: UUID, kind: str, start_event_id: int, start_offset: int,
-                end_event_id: int, end_offset: int, fallacy_id: int) -> Mark:
-    """A player flags (passage, fallacy). Server-side: quote, latency, rate limit, duplicate and cap checks."""
+                end_event_id: int, end_offset: int, fallacy_id: int, note: str = "") -> Mark:
+    """A player flags (passage, fallacy), optionally with a free-form message for the admin. Server-side: quote, latency,
+    rate limit, duplicate and cap checks."""
     ensure_autocommit(conn)
+    note = normalize_note(note)
     session_id = _player_session(conn, user_id, fallacy_id)
     quote = build_quote(conn, session_id, kind, start_event_id, start_offset, end_event_id, end_offset)
 
@@ -385,13 +417,13 @@ def submit_mark(conn: psycopg.Connection, user_id: UUID, kind: str, start_event_
         with conn.cursor(row_factory=class_row(Mark)) as cur:
             cur.execute(
                 "INSERT INTO fallacy_marks (session_id, user_id, kind, start_event_id, start_offset, end_event_id, "
-                "end_offset, quote, fallacy_id, latency_ms, counts, created_at) "
+                "end_offset, quote, fallacy_id, latency_ms, counts, note, created_at) "
                 "SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, "
-                "       GREATEST(0, floor(extract(epoch FROM clock_timestamp() - e.fed_at) * 1000))::int, %s, clock_timestamp() "
+                "       GREATEST(0, floor(extract(epoch FROM clock_timestamp() - e.fed_at) * 1000))::int, %s, %s, clock_timestamp() "
                 "FROM stream_events e WHERE e.id = %s "
                 f"RETURNING {_MARK_COLS}",
                 (session_id, user_id, kind, start_event_id, start_offset, end_event_id, end_offset, quote, fallacy_id,
-                 counts, end_event_id))
+                 counts, note, end_event_id))
             return cur.fetchone()
     return _guarded_insert(conn, session_id, user_id, insert)
 
