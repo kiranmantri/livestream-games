@@ -228,3 +228,6 @@ data/corpus/*
 
 # Temporary DB backups (contain player names/IPs) - never commit
 data/backup/
+
+# Hermes agent plans/notes
+.hermes/

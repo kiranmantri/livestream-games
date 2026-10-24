@@ -587,7 +587,9 @@ Also state what the agent itself already ran and its real output; never claim su
     #   (2.8 s). The app image has ffmpeg 7.1 and reaches HTTPS without a certificate error.
     # NOT measured: the real-time factor of `small` on Fly's shared CPU, yt-dlp live audio from Fly's IP. Check after the app deploy:
     fly logs --app livebingo --no-tail | grep "stt "     # reasons for failures; none = working
-    # Cost control: the whisper Machine runs all the time. Stop it between lives: fly machine stop <id> --app livebingo-stt ; start it before a game.
+    # Cost control: the whisper Machine runs all the time. Stop it between lives with scripts/stt-stop.sh and start it a minute before a game with
+    #   scripts/stt-start.sh. Also scripts/app-stop.sh / app-start.sh (main app livebingo: asks to confirm, YES=1 skips) and all-stop.sh / all-start.sh.
+    #   They look up the Machine ids; DRY_RUN=1 prints the fly commands only (that is all I ran: no real stop/start was done).
     # Rollback: remove STT_* from deploy/fly.machine.json and redeploy (the page falls back to the typed box).
 
 ### Deploying to Fly.io - checklist (every release)

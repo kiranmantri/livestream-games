@@ -18,8 +18,8 @@ primary_region = "gru"
 [http_service]
   internal_port = 8000
   force_https = true
-  auto_stop_machines = "off"   # a game in progress / live-stream detection must not be put to sleep
-  auto_start_machines = true
+  auto_stop_machines = true    # Fly may stop an idle Machine, BUT min_machines_running = 1 below keeps the only one up (game workers need it)
+  auto_start_machines = false  # a Machine stopped on purpose (scripts/app-stop.sh) must STAY stopped: no visit or bot wakes it; use scripts/app-start.sh
   min_machines_running = 1
 
 [[vm]]

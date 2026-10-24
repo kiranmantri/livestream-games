@@ -25,6 +25,13 @@ def test_app_container_points_at_the_private_whisper_app():
 
 def test_whisper_app_is_private_small_model_on_a_shared_cpu():
     toml = (ROOT / "deploy" / "stt" / "fly.toml").read_text()
-    assert 'app = "livebingo-stt"' in toml and not re.search(r"^\[http_service\]", toml, re.M) and "shared-cpu" in toml
+    assert 'app = "livebingo-stt"' in toml and not re.search(r"^\[http_service\]", toml, re.MULTILINE) and "shared-cpu" in toml
     df = (ROOT / "deploy" / "stt" / "Dockerfile").read_text()
     assert "ggml-small.bin" in df and '"--host", "::"' in df and "USER stt" in df
+
+
+def test_a_machine_stopped_on_purpose_stays_stopped():
+    toml = (ROOT / "fly.toml").read_text()
+    assert re.search(r'^\s*auto_start_machines\s*=\s*false', toml, re.MULTILINE)
+    assert re.search(r"^\s*auto_stop_machines\s*=\s*true", toml, re.MULTILINE)
+    assert re.search(r"^\s*min_machines_running\s*=\s*1", toml, re.MULTILINE), "the only Machine must never be stopped by the proxy"
