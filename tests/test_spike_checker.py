@@ -7,6 +7,7 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from spikes import checker as K
 
+
 @pytest.fixture(autouse=True)
 def no_real_dotenv(monkeypatch, tmp_path_factory):
     """The spike falls back to <repo>/.env for API keys; a test must never see the developer's real one."""
