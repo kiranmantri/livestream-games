@@ -529,7 +529,9 @@ name = "live-games"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "httpx" },
     { name = "psycopg", extra = ["binary", "pool"] },
+    { name = "pydantic-ai-slim", extra = ["duckduckgo", "openai"] },
     { name = "python-dotenv" },
     { name = "python-fasthtml" },
     { name = "tzdata" },
@@ -537,10 +539,6 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
-checker = [
-    { name = "httpx" },
-    { name = "pydantic-ai-slim", extra = ["duckduckgo", "openai"] },
-]
 dev = [
     { name = "httpx" },
     { name = "pytest" },
@@ -549,7 +547,9 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.2" },
+    { name = "pydantic-ai-slim", extras = ["duckduckgo", "openai"], specifier = ">=2.61.0" },
     { name = "python-dotenv", specifier = ">=1.2.4" },
     { name = "python-fasthtml", specifier = ">=0.12" },
     { name = "tzdata", specifier = ">=2026.5" },
@@ -557,10 +557,6 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-checker = [
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "pydantic-ai-slim", extras = ["duckduckgo", "openai"], specifier = ">=2.61.0" },
-]
 dev = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "pytest", specifier = ">=8" },

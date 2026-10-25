@@ -915,6 +915,27 @@ Also state what the agent itself already ran and its real output; never claim su
     #   Postgres re-checks the row after the lock wait, so with the test's tiny jobs the result is the same. Kept because it prevents workers from queueing behind each other.
     # NOT built: the agent (FC2), the worker thread (FC3), pages (FC4), admin page (FC5), end screen (FC6), CHECKER_MODEL setting.
 
+### Validation for FC2 (fact-checking agent: app/factcheck.py) - no database, no page, nothing calls it yet
+    uv run pytest tests/test_factcheck.py -q           # expect: 75 passed (red run first: collection error, app.factcheck did not exist)
+    uv run pytest -q                                   # expect: all passed (the fake HTTP/ddgs/model are all local: no test touches the network)
+    uv run ruff check .                                # expect: All checks passed!
+    # What it is: PydanticChecker.check(claim, context_lines, note) -> checker.AiResult, or raises CheckFailed("short pt-BR reason"). The worker (FC3) will store
+    #   the result with checker.complete_check or the reason with checker.fail_check. FakeChecker(script) is the stand-in for worker tests and demos.
+    # Same two-step agent as the FC0 spike (research WITH tools -> plain notes; answer with NO tools and a JSON schema), validators unchanged (sources must be URLs the
+    #   search returned, score sign agrees with the verdict, unverifiable => 0), limits: 4 searches, 3 page fetches (SSRF-safe, every redirect hop re-checked),
+    #   240 s for the whole check. Errors become short reasons (429 / key refused / provider down / timeout / search blocked / invalid answer); a response body is never copied.
+    # Setting: CHECKER_MODEL=groq:<id> | openrouter:<id> (keys GROQ_API_KEY / OPENROUTER_API_KEY). Empty/other = off; factcheck.off_reason() says why (never a key).
+    #   Local Ollama is NOT supported here (dropped for cost); the spike still compares models: spikes/checker.py.
+    # Dependencies: pydantic-ai-slim[duckduckgo,openai] and httpx moved from the `checker` group into the main dependencies (the group is gone; the Dockerfile no longer
+    #   passes --no-group checker). NOT verified: `docker build` with them (do it before FC7's deploy), Python 3.14 in the image.
+    # tests/conftest.py also scrubs CHECKER_MODEL, GROQ_BASE_URL, OPENROUTER_BASE_URL from the environment.
+    # Mutation check (repo COPY, mutate_fc2.py): 41/42 killed (first run: 6 survivors -> 5 tests added/fixed, 1 redundant `except CancelledError` removed:
+    #   CancelledError is a BaseException, so `except Exception` never swallowed it; test_cancellation_is_not_swallowed guards it).
+    # NOT checked: a real model call through this module (only the spike called the real APIs), DuckDuckGo from Fly's IP.
+    # Real smoke (YOU, one claim, costs ~US$0.003; keys come from .env):
+    #   uv run python -c "import asyncio; from app import factcheck as F; c = F.from_env(); print(F.off_reason() or asyncio.run(c.check('os Annunakis existem')))"
+    #   expect (with CHECKER_MODEL=openrouter:openai/gpt-oss-120b): AiResult(verdict='false', score=-3 or -4, confidence='high', ..., 1-3 sources, tokens, elapsed_ms ~ 30-70 s)
+
 ## Conventions log
 (Append new conventions below as they are agreed.)
 - DB access from services: ALWAYS use an autocommit connection (`app.db.connect()` / pool with

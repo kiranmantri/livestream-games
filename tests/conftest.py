@@ -119,7 +119,7 @@ def _admin_throttle_reset():
 # app.config loads <repo>/.env when it is imported, so a developer's real STT settings and API keys would leak into every test
 # (a page rendered with live transcription ON, a worker with a real key). Tests that need one set it themselves with monkeypatch.
 _DEV_ONLY_ENV = ("STT_PROVIDER", "STT_LANGUAGE", "STT_URL", "STT_API_URL", "STT_PROMPT", "STT_CHUNK_S", "STT_OVERLAP_S",
-                 "GROQ_API_KEY", "XAI_API_KEY", "OPENROUTER_API_KEY")
+                 "GROQ_API_KEY", "XAI_API_KEY", "OPENROUTER_API_KEY", "CHECKER_MODEL", "GROQ_BASE_URL", "OPENROUTER_BASE_URL")
 
 
 @pytest.fixture(autouse=True)
