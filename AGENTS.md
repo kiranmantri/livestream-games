@@ -605,6 +605,18 @@ Also state what the agent itself already ran and its real output; never claim su
     # Output: data/spike/results.jsonl (one row per model x claim: time, requests, tool calls, searches, fetched pages, tokens, verdict/score/confidence/sources, error) + a summary table.
     # Rules proven offline: sources must come from the search results; sign of score agrees with verdict; unverifiable => score 0; max 3 page fetches, only of URLs the search returned
     #   and only public http(s); search count capped. NOT checked: any real model, Ollama's tool-calling with Gemma 4, DuckDuckGo from this network.
+    # Groq contender (added): `--models groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b` uses Groq's OpenAI-compatible API with OUR tools (web_search + fetch_page) and
+    #   validators (Groq's built-in browser search is NOT used: it does not work with structured outputs). Key from the shell: GROQ_API_KEY=... (missing => clear exit, key never printed).
+    #   The summary adds cost_usd_total / cost_usd_per_claim (prices in GROQ_PRICES, console.groq.com/docs/models; unknown model => no cost). Local tags cost 0. 44 tests (5 new, red first).
+    #   Keyless wire check: a fake key reaches Groq (HTTP 401, not Cloudflare 403).
+    #   REAL RUNS FAILED (user), fixed in three rounds; ALL are Groq/gpt-oss behaviours that a fake server did not show:
+    #     (1) answer as a forced final_result tool call => 400 tool_use_failed ("Tool choice is required, but model did not call a tool");
+    #     (2) response_format (json_schema OR json_object, incl. pydantic-ai's `prompted`) next to tools => 400 "json mode cannot be combined with tool/function calling";
+    #     (3) JSON as plain text with tools present => gpt-oss calls a made-up tool named 'json' => 400 tool_use_failed (failed_generation holds its answer).
+    #   Fix: `--output-mode twostep` (DEFAULT for groq:; Ollama keeps `tool`): step 1 researches WITH tools and ends in plain-text notes; step 2 has NO tools, gets the notes + the URLs
+    #   web_search returned, and answers with a JSON schema (native, strict false); the same output validators run on step 2. Cost: one extra request per claim. Usage is summed.
+    #   tests/test_spike_checker.py: the fake HTTP server now ENFORCES the rule (tools + response_format => 400) and checks that step 1 has tools/no response_format and step 2 the opposite (49 passed).
+    #   NOT verified with a real key: that step 2's json_schema is accepted and that gpt-oss writes useful notes. Lesson: only a real call proves the wire.
     # Next: send me the summary table; I decide hosting (Fly CPU vs Mac+tunnel vs rented GPU) from it. reset: rm -rf data/spike
 
 ### Validation for hosted STT (STT_PROVIDER=groq|grok: app/sttworker.py ApiTranscriber) - not deployed yet

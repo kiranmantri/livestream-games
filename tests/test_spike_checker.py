@@ -229,3 +229,161 @@ def test_claims_have_categories_and_cover_the_hard_cases():
 def test_the_first_five_claims_are_a_varied_smoke_set():
     first = K.load_claims()[:5]
     assert len({c["category"] for c in first}) == 5
+
+
+# ---------------------------------------------------------------- Groq contender (hosted gpt-oss) and cost
+def test_a_groq_spec_points_at_groqs_openai_endpoint(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test_key_123")
+    m = K.model_for("groq:openai/gpt-oss-120b", "http://127.0.0.1:11434")
+    assert m.model_name == "openai/gpt-oss-120b"
+    assert str(m.client.base_url).rstrip("/") == "https://api.groq.com/openai/v1"
+
+
+def test_a_groq_spec_without_a_key_fails_clearly_and_never_shows_a_key(monkeypatch):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    with pytest.raises(SystemExit) as e:
+        K.model_for("groq:openai/gpt-oss-120b", "http://127.0.0.1:11434")
+    assert "GROQ_API_KEY" in str(e.value)
+
+
+def test_an_ollama_tag_is_unchanged_by_the_groq_support(monkeypatch):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    m = K.model_for("qwen3:14b", "http://127.0.0.1:11434")
+    assert m.model_name == "qwen3:14b"
+
+
+def test_cost_uses_the_groq_price_per_million_tokens_and_local_is_free():
+    assert K.cost_usd("groq:openai/gpt-oss-120b", 1_000_000, 1_000_000) == pytest.approx(0.75)
+    assert K.cost_usd("groq:openai/gpt-oss-20b", 1_000_000, 1_000_000) == pytest.approx(0.375)
+    assert K.cost_usd("gemma4:e4b", 50_000, 5_000) == 0
+    assert K.cost_usd("groq:unknown-model", 10, 10) is None          # never invent a price
+
+
+def test_summary_adds_the_cost_per_claim_when_rows_carry_it():
+    def row(c):
+        return {"model": "g", "ok": True, "elapsed_s": 1, "expected": "true", "tool_calls": 1, "requests": 2, "input_tokens": 10,
+                "cost_usd": c, "output": {"verdict": "true", "confidence": "high"}}
+
+    (s,) = K.summarize([row(0.004), row(0.006)])
+    assert s["cost_usd_total"] == pytest.approx(0.01) and s["cost_usd_per_claim"] == pytest.approx(0.005)
+
+
+# ---------------------------------------------------------------- Groq 400 "tool_use_failed": the answer must not be a forced tool call
+import contextlib
+import json as _json
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+
+class _FakeGroq:
+    """Captures the request bodies; always answers with a valid 'unverifiable' JSON in message.content."""
+
+    def __init__(self):
+        self.bodies: list[dict] = []
+        outer = self
+
+        class H(BaseHTTPRequestHandler):
+            def do_POST(self):
+                body = _json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                outer.bodies.append(body)
+                if body.get("tools") and "response_format" in body:       # the real Groq rule, seen on the real API
+                    return self._send(400, {"error": {"message": "json mode cannot be combined with tool/function calling", "type": "invalid_request_error"}})
+                if body.get("tools"):                                      # research step: plain text, no tool call
+                    return self._send(200, self._chat("Notas: nada encontrado."))
+                answer = {"checkable": False, "verdict": "unverifiable", "score": 0, "confidence": "low", "explanation_pt": "Opinião.", "sources": []}
+                self._send(200, self._chat(_json.dumps(answer)))
+
+            def _chat(self, content):
+                return {"id": "x", "object": "chat.completion", "created": 0, "model": "m",
+                        "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": content}}],
+                        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}}
+
+            def _send(self, code, obj):
+                data = _json.dumps(obj).encode()
+                self.send_response(code); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(data))); self.end_headers()
+                self.wfile.write(data)
+
+            def log_message(self, *a):
+                pass
+
+        self.srv = HTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        self.url = f"http://127.0.0.1:{self.srv.server_port}/openai/v1"
+
+
+@pytest.fixture
+def fake_groq(monkeypatch):
+    f = _FakeGroq()
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test_key_123")
+    monkeypatch.setenv("GROQ_BASE_URL", f.url)
+    yield f
+    f.srv.shutdown()
+
+
+def _run_groq(mode=None):
+    agent = K.build_agent(K.model_for("groq:openai/gpt-oss-120b", "x"), **({"output_mode": mode} if mode else {}))
+    return agent.run_sync("Frase a verificar: Flamengo é o melhor", deps=deps()).output
+
+
+def test_default_output_mode_is_two_steps_for_groq_and_a_tool_for_ollama():
+    assert K.default_output_mode("groq:openai/gpt-oss-120b") == "twostep"        # Groq: tools + any final-answer format => 400 / a made-up 'json' tool
+    assert K.default_output_mode("gemma4:e4b") == "tool"
+
+
+def test_the_tool_mode_still_forces_a_final_result_tool(fake_groq):
+    with contextlib.suppress(Exception):       # the fake answers with text, so pydantic-ai retries/fails: only the first request matters
+        _run_groq("tool")
+    body = fake_groq.bodies[0]
+    assert any(t["function"]["name"] == "final_result" for t in body["tools"])
+
+
+def test_groq_default_researches_with_tools_then_answers_with_a_json_schema_and_no_tools(fake_groq):
+    """The fake answers 400 to tools + response_format, like the real Groq. Step 1 has tools and no response_format; step 2 the opposite."""
+    agent = K.build_agent(K.model_for("groq:openai/gpt-oss-120b", "x"), K.default_output_mode("groq:openai/gpt-oss-120b"))
+    res = agent.run_sync("Frase a verificar: x", deps=deps())
+    assert res.output.verdict == "unverifiable"
+    one, two = fake_groq.bodies
+    assert one["tools"] and "response_format" not in one and one.get("tool_choice") != "required"
+    assert "tools" not in two and two["response_format"]["type"] == "json_schema"
+    assert "Notas: nada encontrado." in _json.dumps(two["messages"])               # the notes travel to step 2
+
+
+def _two_step_model(answer_args, calls):
+    """Step 1 (function tools present): search once, then write notes. Step 2 (no tools): the structured answer."""
+    state = {"searched": False}
+
+    def fn(messages, info):
+        calls.append({"tools": [t.name for t in info.function_tools], "outputs": [t.name for t in info.output_tools], "text": str(messages)})
+        if info.function_tools:
+            if not state["searched"]:
+                state["searched"] = True
+                return ModelResponse(parts=[ToolCallPart("web_search", {"query": "q"})])
+            return ModelResponse(parts=[TextPart("Notas: A é falso segundo https://example.org/a")])
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, answer_args)])
+
+    return FunctionModel(fn)
+
+
+ANSWER = {"checkable": True, "verdict": "false", "score": -4, "confidence": "high", "explanation_pt": "Falso.",
+          "sources": [{"title": "Fonte A", "url": "https://example.org/a"}]}
+
+
+def test_two_step_agent_gives_step_two_the_notes_and_only_the_urls_the_search_returned():
+    calls: list[dict] = []
+    agent = K.TwoStepAgent(_two_step_model(ANSWER, calls), final_mode="tool")
+    d = deps()
+    res = agent.run_sync("Frase a verificar: A", deps=d)
+    assert res.output.verdict == "false" and res.output.sources[0].url == "https://example.org/a"
+    step2 = calls[-1]
+    assert step2["tools"] == [] and "Notas: A é falso" in step2["text"] and "https://example.org/a" in step2["text"]
+    assert d.searches == 1
+
+
+def test_two_step_agent_still_rejects_an_invented_source_and_sums_the_usage():
+    calls: list[dict] = []
+    bad = ANSWER | {"sources": [{"title": "X", "url": "https://invented.example/x"}]}
+    with pytest.raises(Exception) as e:
+        K.TwoStepAgent(_two_step_model(bad, calls), final_mode="tool").run_sync("Frase: A", deps=deps())
+    assert "UnexpectedModelBehavior" in type(e.value).__name__ or "retries" in str(e.value).lower()
+    ok = K.TwoStepAgent(_two_step_model(ANSWER, []), final_mode="tool").run_sync("Frase: A", deps=deps())
+    assert ok.usage.requests >= 3                                                  # search call + notes + answer, from both steps
