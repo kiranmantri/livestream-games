@@ -590,6 +590,8 @@ Also state what the agent itself already ran and its real output; never claim su
     #   3. deploy (checklist below), then:   fly ssh console --app livebingo --container app -C "printenv STT_PROVIDER STT_LANGUAGE"   # expect groq / pt (never print the key)
     #   4. start a Falacias game on a horizontal live; the pane fills in ~15 s;  fly logs --app livebingo --no-tail | grep "stt "   # none = working
     #   5. only after it works:  fly apps destroy livebingo-stt   (stops the whisper Machine for good; or `fly machine stop 827944b79991e8 --app livebingo-stt` first to keep a way back)
+    # GOTCHA: Fly MERGES a container's env on deploy: deleting STT_URL from deploy/fly.machine.json did NOT remove it from the running Machine (printenv still showed it).
+    #   Deleted env needs "NAME": "" in the file or a machine update; the code now ignores STT_URL for groq/grok instead.
     # Rollback: remove GROQ_API_KEY/STT_PROVIDER from the config (the page falls back to the typed phrase box).
 
 ### Validation for FC0 (fact-checker spike: spikes/checker.py) - YOU run it (model pulls of GBs, minutes per claim)
@@ -609,7 +611,7 @@ Also state what the agent itself already ran and its real output; never claim su
     uv run pytest tests/test_stt_api.py -q             # expect: 22 passed (red run first: 18 failed / 2 passed; the User-Agent test was red first too; fake HTTP server, no network, no keys)
     docker compose up -d db && uv run pytest -q         # YOU: the DB-backed worker tests need Postgres (the Docker daemon was OFF when I ran them: 55 passed, 39 errors, all DB fixtures)
     # Env: STT_PROVIDER=groq|grok, GROQ_API_KEY | XAI_API_KEY (a provider without its key is OFF, like STT_PROVIDER unset), STT_LANGUAGE (pt; auto = no language field),
-    #   STT_URL (optional: overrides the vendor URL, tests/proxies). whispercpp still works (STT_URL required). The key is not in repr(config()) nor in any error message.
+    #   STT_API_URL (optional: overrides the vendor URL, tests/proxies; STT_URL is IGNORED by groq/grok: Fly merges env, a stale STT_URL stayed on the live Machine). whispercpp still works (STT_URL required). The key is not in repr(config()) nor in any error message.
     # Requests: Groq whisper-large-v3-turbo (verbose_json, temperature 0, prompt = STT_PROMPT/default); xAI grok-voice-transcribe-2.0 (format=true + language; xAI has no free-text prompt).
     #   Multipart, file LAST. Errors (401/429/5xx/network) -> TranscribeError "<provider>: HTTP <code>" and the existing backoff; an EMPTY answer is asked once more (Grok dropped a 12 s chunk in the spike).
     # Local try (YOU, real audio from a live; keys from your shell, never in the repo):

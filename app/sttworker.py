@@ -438,7 +438,9 @@ def config() -> SttConfig:
     url = os.environ.get("STT_URL", "").strip()
     if provider in API_PROVIDERS:
         key = os.environ.get(API_PROVIDERS[provider][1], "").strip()
-        return SttConfig(provider if key else "off", url, chunk_s, overlap_s, prompt, lang, key)
+        # STT_URL is the whisper.cpp server only. Fly merges env, so a stale STT_URL can outlive its removal from the config and
+        # must never receive a hosted provider's key; STT_API_URL is the explicit override (tests, proxies).
+        return SttConfig(provider if key else "off", os.environ.get("STT_API_URL", "").strip(), chunk_s, overlap_s, prompt, lang, key)
     return SttConfig("whispercpp" if provider == "whispercpp" else "off", url, chunk_s, overlap_s, prompt, lang)
 
 

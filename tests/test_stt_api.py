@@ -94,8 +94,19 @@ def test_default_transcriber_is_built_from_the_config(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", KEY)
     t = W._default_transcriber(W.config())
     assert t.provider == "groq" and t.url == "https://api.groq.com/openai/v1/audio/transcriptions"
-    monkeypatch.setenv("STT_URL", "http://127.0.0.1:9/x")
-    assert W._default_transcriber(W.config()).url == "http://127.0.0.1:9/x", "STT_URL overrides the vendor URL (tests, proxies)"
+    monkeypatch.setenv("STT_API_URL", "http://127.0.0.1:9/x")
+    assert W._default_transcriber(W.config()).url == "http://127.0.0.1:9/x", "STT_API_URL overrides the vendor URL (tests, proxies)"
+
+
+@pytest.mark.parametrize("provider,env,vendor", [("groq", "GROQ_API_KEY", "https://api.groq.com/"), ("grok", "XAI_API_KEY", "https://api.x.ai/")])
+def test_a_stale_whisper_url_never_redirects_a_hosted_provider(monkeypatch, provider, env, vendor):
+    """Fly MERGES a container's env: STT_URL (whisper) stayed on the live Machine after it was removed from the file.
+    With it, the Groq key would have been POSTed to http://livebingo-stt.internal."""
+    monkeypatch.setenv("STT_PROVIDER", provider)
+    monkeypatch.setenv(env, KEY)
+    monkeypatch.setenv("STT_URL", "http://livebingo-stt.internal:8080")
+    t = W._default_transcriber(W.config())
+    assert t.url.startswith(vendor) and "livebingo-stt" not in t.url
 
 
 # ---------------------------------------------------------------- requests
