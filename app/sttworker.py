@@ -33,7 +33,7 @@ import urllib.request
 import uuid
 import wave
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 from uuid import UUID
@@ -214,6 +214,16 @@ class Transcriber(Protocol):
     def transcribe(self, wav: bytes, prompt: str = "") -> list[Segment]: ...
 
 
+def _multipart(fields: dict[str, str], wav: bytes) -> tuple[bytes, str]:
+    """multipart/form-data body: the text fields first, the audio file LAST (xAI requires that order)."""
+    boundary = uuid.uuid4().hex
+    parts = [f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode() for k, v in fields.items()]
+    parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="chunk.wav"\r\n'
+                 f"Content-Type: audio/wav\r\n\r\n".encode() + wav + b"\r\n")
+    parts.append(f"--{boundary}--\r\n".encode())
+    return b"".join(parts), f"multipart/form-data; boundary={boundary}"
+
+
 class WhisperCppTranscriber:
     """POST <url>/inference (multipart) to a whisper.cpp server. Raises TranscribeError on any failure."""
 
@@ -221,15 +231,10 @@ class WhisperCppTranscriber:
         self.url, self.timeout, self.language = url.rstrip("/"), timeout, language
 
     def _body(self, wav: bytes, prompt: str) -> tuple[bytes, str]:
-        boundary = uuid.uuid4().hex
         fields = {"temperature": "0.0", "temperature_inc": "0.2", "response_format": "verbose_json", "language": self.language}
         if prompt:
             fields["prompt"] = prompt
-        parts = [f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode() for k, v in fields.items()]
-        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="chunk.wav"\r\n'
-                     f"Content-Type: audio/wav\r\n\r\n".encode() + wav + b"\r\n")
-        parts.append(f"--{boundary}--\r\n".encode())
-        return b"".join(parts), f"multipart/form-data; boundary={boundary}"
+        return _multipart(fields, wav)
 
     def transcribe(self, wav: bytes, prompt: str = "") -> list[Segment]:
         body, ctype = self._body(wav, prompt)
@@ -239,6 +244,58 @@ class WhisperCppTranscriber:
                 return parse_whispercpp(json.loads(r.read().decode("utf-8", errors="replace")))
         except (urllib.error.URLError, OSError, ValueError) as e:
             raise TranscribeError(str(e)) from e
+
+
+# Hosted speech-to-text (chosen in the STT provider spike: spikes/stt_compare.py; the self-hosted whisper `small` on Fly's shared CPU was too slow).
+USER_AGENT = "livegames-stt/1.0"      # urllib's default one is blocked by Cloudflare (Groq answers 403, error code 1010)
+API_PROVIDERS = {          # name -> (default URL, key env var, model)
+    "groq": ("https://api.groq.com/openai/v1/audio/transcriptions", "GROQ_API_KEY", "whisper-large-v3-turbo"),
+    "grok": ("https://api.x.ai/v1/stt", "XAI_API_KEY", "grok-voice-transcribe-2.0"),
+}
+
+
+class ApiTranscriber:
+    """One multipart POST per chunk to Groq or xAI. TranscribeError on any failure (its message never contains the key).
+
+    An EMPTY answer for a chunk that is not silent is asked once more: in the spike Grok returned nothing for 12 s of clear speech.
+    Errors (401, 429, 5xx, network) are NOT retried here; the worker backs off and drops the chunk (live audio is stale later).
+    """
+
+    def __init__(self, provider: str, key: str, url: str = "", language: str = "pt", timeout: float = 30.0):
+        default_url, _, self.model = API_PROVIDERS[provider]
+        self.provider, self._key, self.url, self.language, self.timeout = provider, key, url or default_url, language, timeout
+
+    def _fields(self, prompt: str) -> dict[str, str]:
+        auto = self.language == "auto"
+        if self.provider == "groq":
+            f = {"model": self.model, "response_format": "verbose_json", "temperature": "0"}
+            if prompt:
+                f["prompt"] = prompt                   # xAI has no free-text prompt, only `keyterm`
+        else:
+            f = {"model": self.model}
+            if not auto:
+                f["format"] = "true"                   # formatting needs a language
+        if not auto:
+            f["language"] = self.language
+        return f
+
+    def _post(self, wav: bytes, prompt: str) -> list[Segment]:
+        body, ctype = _multipart(self._fields(prompt), wav)
+        req = urllib.request.Request(self.url, data=body, method="POST", headers={"Content-Type": ctype, "Authorization": f"Bearer {self._key}", "User-Agent": USER_AGENT})
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as r:
+                return parse_whispercpp(json.loads(r.read().decode("utf-8", errors="replace")))
+        except urllib.error.HTTPError as e:
+            raise TranscribeError(f"{self.provider}: HTTP {e.code}") from None      # no body, no headers: nothing that could carry the key
+        except (urllib.error.URLError, OSError, ValueError) as e:
+            raise TranscribeError(f"{self.provider}: {type(e).__name__}") from None
+
+    def transcribe(self, wav: bytes, prompt: str = "") -> list[Segment]:
+        for _ in range(2):
+            segments = self._post(wav, prompt)
+            if segments:
+                return segments
+        return []
 
 
 # ------------------------------------------------------------------ the audio capture process
@@ -357,6 +414,7 @@ class SttConfig:
     overlap_s: int
     prompt: str
     language: str = "pt"
+    api_key: str = field(default="", repr=False)      # never printed
 
 
 def _int_env(name: str, default: int, lo: int, hi: int) -> int:
@@ -377,13 +435,16 @@ def config() -> SttConfig:
     if not re.fullmatch(r"auto|[a-z]{2,3}", lang):
         lang = "pt"
     prompt = os.environ.get("STT_PROMPT", "").strip() or (DEFAULT_PROMPT if lang == "pt" else "")   # the default prompt is Portuguese
-    return SttConfig("whispercpp" if provider == "whispercpp" else "off", os.environ.get("STT_URL", "").strip(), chunk_s, overlap_s,
-                     prompt, lang)
+    url = os.environ.get("STT_URL", "").strip()
+    if provider in API_PROVIDERS:
+        key = os.environ.get(API_PROVIDERS[provider][1], "").strip()
+        return SttConfig(provider if key else "off", url, chunk_s, overlap_s, prompt, lang, key)
+    return SttConfig("whispercpp" if provider == "whispercpp" else "off", url, chunk_s, overlap_s, prompt, lang)
 
 
 def enabled() -> bool:
     c = config()
-    return c.provider == "whispercpp" and bool(c.url)
+    return c.provider in API_PROVIDERS or (c.provider == "whispercpp" and bool(c.url))
 
 
 def _default_source(video_id: str) -> SegmentSource:
@@ -392,6 +453,8 @@ def _default_source(video_id: str) -> SegmentSource:
 
 
 def _default_transcriber(cfg: SttConfig) -> Transcriber:
+    if cfg.provider in API_PROVIDERS:
+        return ApiTranscriber(cfg.provider, cfg.api_key, cfg.url, cfg.language)
     return WhisperCppTranscriber(cfg.url, language=cfg.language)
 
 

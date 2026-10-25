@@ -605,6 +605,23 @@ Also state what the agent itself already ran and its real output; never claim su
     #   and only public http(s); search count capped. NOT checked: any real model, Ollama's tool-calling with Gemma 4, DuckDuckGo from this network.
     # Next: send me the summary table; I decide hosting (Fly CPU vs Mac+tunnel vs rented GPU) from it. reset: rm -rf data/spike
 
+### Validation for hosted STT (STT_PROVIDER=groq|grok: app/sttworker.py ApiTranscriber) - not deployed yet
+    uv run pytest tests/test_stt_api.py -q             # expect: 22 passed (red run first: 18 failed / 2 passed; the User-Agent test was red first too; fake HTTP server, no network, no keys)
+    docker compose up -d db && uv run pytest -q         # YOU: the DB-backed worker tests need Postgres (the Docker daemon was OFF when I ran them: 55 passed, 39 errors, all DB fixtures)
+    # Env: STT_PROVIDER=groq|grok, GROQ_API_KEY | XAI_API_KEY (a provider without its key is OFF, like STT_PROVIDER unset), STT_LANGUAGE (pt; auto = no language field),
+    #   STT_URL (optional: overrides the vendor URL, tests/proxies). whispercpp still works (STT_URL required). The key is not in repr(config()) nor in any error message.
+    # Requests: Groq whisper-large-v3-turbo (verbose_json, temperature 0, prompt = STT_PROMPT/default); xAI grok-voice-transcribe-2.0 (format=true + language; xAI has no free-text prompt).
+    #   Multipart, file LAST. Errors (401/429/5xx/network) -> TranscribeError "<provider>: HTTP <code>" and the existing backoff; an EMPTY answer is asked once more (Grok dropped a 12 s chunk in the spike).
+    # Local try (YOU, real audio from a live; keys from your shell, never in the repo):
+    #   PATH=/opt/homebrew/bin:$PATH STT_PROVIDER=groq GROQ_API_KEY=... uv run uvicorn app.main:app --port 8000 --reload     (or grok + XAI_API_KEY)
+    #   start a Falacias game on a horizontal live: the transcript pane fills every ~12-15 s; `grep "stt "` in the server log shows failures with the reason.
+    # Fly (NOT done): set the secret(s), add them to the app container's "secrets" in deploy/fly.machine.json ({"env_var": "GROQ_API_KEY", "name": "GROQ_API_KEY"}; secrets are NOT
+    #   injected unless listed), change env STT_PROVIDER, drop STT_URL, deploy, then delete the whisper app (fly apps destroy livebingo-stt) and deploy/stt/. Never put a key in a file or in chat:
+    #   fly secrets set GROQ_API_KEY="$(pbpaste)" --app livebingo --stage     (copy the key first; --stage = no restart until the deploy)
+    # GOTCHA (found by the user, local run): "groq: HTTP 403" = Cloudflare error 1010 for urllib's default User-Agent. The worker sends `User-Agent: livegames-stt/1.0`.
+    #   Keyless proof: default UA -> 403 "error code: 1010"; custom UA -> 401 "Invalid API Key". xAI answers a WRONG KEY with HTTP 400 (not 401): "Incorrect API key provided".
+    # NOT checked: a real Groq/xAI call from the worker (only the spike called them), the whole path with a game, Fly's IP with yt-dlp live audio, Groq free-tier rate limits for 3 h.
+
 ### Deploying to Fly.io - checklist (every release)
     # 0. Local: tests green and everything committed + pushed.
     uv run ruff check . && uv run pytest -q                    # expect: All checks passed! / N passed
