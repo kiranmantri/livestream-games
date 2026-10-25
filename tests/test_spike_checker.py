@@ -471,3 +471,33 @@ def test_the_openrouter_default_researches_with_tools_then_answers_without(monke
         assert one["tools"] and "response_format" not in one and "tools" not in two and two["response_format"]["type"] == "json_schema"
     finally:
         f.srv.shutdown()
+
+
+# ---------------------------------------------------------------- search: "no results" is an answer, not a crash (seen on the real run)
+def test_a_search_with_no_results_returns_an_empty_list(monkeypatch):
+    import asyncio
+
+    import ddgs
+    from ddgs.exceptions import DDGSException
+
+    class Empty:
+        def text(self, *a, **k):
+            raise DDGSException("No results found.")
+
+    monkeypatch.setattr(ddgs, "DDGS", Empty)
+    assert asyncio.run(K.default_search("consulta sem resultado")) == []
+
+
+def test_other_search_failures_still_raise(monkeypatch):
+    import asyncio
+
+    import ddgs
+    from ddgs.exceptions import DDGSException
+
+    class Limited:
+        def text(self, *a, **k):
+            raise DDGSException("429 rate limit")
+
+    monkeypatch.setattr(ddgs, "DDGS", Limited)
+    with pytest.raises(DDGSException):
+        asyncio.run(K.default_search("x"))

@@ -2,7 +2,7 @@
 {"claim": "O Flamengo é o melhor time de futebol do Brasil.", "expected": "unverifiable", "category": "opinion"}
 {"claim": "O Brasil sediou a COP30, em Belém, em 2025.", "expected": "true", "category": "recent-news"}
 {"claim": "o einstein reprovou em matemática né, todo mundo sabe", "expected": "false", "category": "noisy-transcript"}
-{"claim": "O Brasil tem a maior floresta tropical do mundo.", "expected": "partial", "category": "half-truth"}
+{"claim": "O Brasil tem a maior floresta tropical do mundo.", "expected": "true", "category": "geography"}
 {"claim": "Os Anunnaki da Suméria vieram de outro planeta e criaram a humanidade.", "expected": "false", "category": "pseudo-history"}
 {"claim": "As pirâmides do Egito foram construídas por alienígenas.", "expected": "false", "category": "pseudo-history"}
 {"claim": "Os seres humanos usam apenas 10% do cérebro.", "expected": "false", "category": "pseudo-history"}

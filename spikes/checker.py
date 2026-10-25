@@ -162,8 +162,21 @@ def extract_text(html: str, limit: int = PAGE_CHARS) -> str:
 
 
 async def default_search(query: str) -> list[dict]:
+    """DuckDuckGo. "No results found" is a normal answer (the model can rephrase or say it found nothing), so it is []; rate limits and timeouts still raise."""
     from ddgs import DDGS
-    return await asyncio.to_thread(lambda: DDGS().text(query, region="br-pt", max_results=6))
+    from ddgs.exceptions import DDGSException, RatelimitException, TimeoutException
+
+    def go() -> list[dict]:
+        try:
+            return DDGS().text(query, region="br-pt", max_results=6)
+        except (RatelimitException, TimeoutException):
+            raise
+        except DDGSException as e:
+            if "no results" in str(e).lower():
+                return []
+            raise
+
+    return await asyncio.to_thread(go)
 
 
 async def default_fetch(url: str) -> str:

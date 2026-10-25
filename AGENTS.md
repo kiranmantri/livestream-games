@@ -898,6 +898,23 @@ Also state what the agent itself already ran and its real output; never claim su
     # Real checks done (me): the scripts against a STUB fly (order, stdin, no value printed, active-game refusal), DRY_RUN against the real .env (names only), compose rendered with a throwaway env file.
     #   NOT run: a real `fly secrets import` / `fly deploy` with these scripts.
 
+### Validation for FC1 (fact-checker game: migration 0013, app/checker.py) - services only, no AI, no page yet
+    uv run pytest tests/test_checker.py -q             # expect: 82 passed (red run first: collection error, app.checker did not exist)
+    uv run pytest -q                                   # expect: all passed (test_schema's migration list now ends in 0013_checker.sql)
+    uv run migrate                                     # YOU, dev DB: expect "applied: 0013_checker.sql". CLOUD: backup first (deploy checklist); nothing uses it until FC4.
+    docker compose exec db psql -U livegames -c '\d fact_checks' -c '\d fact_claims'    # expect the CHECKs: verdict/score sign, guess -5..5, one claim per player+text
+    # Third game_type 'checker' ("Quem ta metendo o loco?"), one active session like the others, cookie lg_token_checker. Players GUESS -5..+5; an AI check
+    #   (FC2/FC3) or the admin gives the real score. ONE check per distinct text per session (casefolded), many claims point at it.
+    # Points (computed on demand, so an admin override re-scores everybody): max(0, 5 - |guess - final|) + 2 if the sign is right (0 has no sign);
+    #   a guess of 0 earns nothing when |final| >= 3; none while pending / dismissed / unverifiable. Final = admin score, else the AI score of a `done` check.
+    # Check states: queued -> running -> done | needs_admin (low confidence, unverifiable, 3 failed runs) -> resolved (admin score, or dismissed = admin_score NULL).
+    #   A needs_admin result is still shown to players but earns no points until the admin acts.
+    # Limits: 10 claims per player (MAX_CLAIMS_PER_PLAYER), one per 10 s, same player+text refused, 1..300 chars typed, message <= 280.
+    # Winner: most points; ties: more exact guesses, then whoever sent the last claim first; nobody above 0 -> no winner.
+    # Mutation check (repo COPY, mutate_fc1.py): 30/31 killed (first run: 5 survivors -> tests added). Survivor: dropping SKIP LOCKED from claim_next_check;
+    #   Postgres re-checks the row after the lock wait, so with the test's tiny jobs the result is the same. Kept because it prevents workers from queueing behind each other.
+    # NOT built: the agent (FC2), the worker thread (FC3), pages (FC4), admin page (FC5), end screen (FC6), CHECKER_MODEL setting.
+
 ## Conventions log
 (Append new conventions below as they are agreed.)
 - DB access from services: ALWAYS use an autocommit connection (`app.db.connect()` / pool with

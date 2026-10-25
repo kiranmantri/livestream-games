@@ -24,7 +24,7 @@ from app.db import ensure_autocommit
 
 MAX_NAME_LEN = 20
 COOKIE_NAME = "lg_token"          # the Bingo cookie (kept: players of a running game stay logged in)
-GAMES = ("bingo", "falacias")
+GAMES = ("bingo", "falacias", "checker")
 
 
 def check_game(game_type: str) -> str:
