@@ -4,21 +4,18 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def _load_dotenv(path: Path) -> None:
-    if not path.exists():
-        return
-    for line in path.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+def load_env(path: Path | None = None) -> bool:
+    """Read a .env file (default: <repo>/.env) with python-dotenv. Real environment variables always win; no ${VAR} interpolation,
+    so a secret that contains '${...}' reaches the app unchanged. A missing file is fine (Docker/Fly inject real env vars)."""
+    return load_dotenv(path or ROOT / ".env", override=False, interpolate=False)
 
 
-_load_dotenv(ROOT / ".env")
+load_env()
 
 
 def database_url() -> str:

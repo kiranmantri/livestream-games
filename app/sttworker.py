@@ -43,6 +43,7 @@ import psycopg
 from app.db import connect
 
 log = logging.getLogger(__name__)
+_warned: set[str] = set()      # reasons already logged by ensure()
 
 POLL_S = 1.0
 STALL_S = 60.0                # no audio chunk for this long (segments arrive every ~12 s) => restart the capture
@@ -444,6 +445,21 @@ def config() -> SttConfig:
     return SttConfig("whispercpp" if provider == "whispercpp" else "off", url, chunk_s, overlap_s, prompt, lang)
 
 
+def off_reason() -> str | None:
+    """Why live transcription is off, in words for the server log; None when it is on. Never contains a key."""
+    raw = os.environ.get("STT_PROVIDER", "").strip().lower()
+    if not raw:
+        return "STT_PROVIDER is not set (use groq, grok or whispercpp; the keys alone do not turn it on)"
+    if raw == "off":
+        return "STT_PROVIDER=off"
+    if raw in API_PROVIDERS:
+        var = API_PROVIDERS[raw][1]
+        return None if os.environ.get(var, "").strip() else f"STT_PROVIDER={raw} but {var} is empty"
+    if raw == "whispercpp":
+        return None if os.environ.get("STT_URL", "").strip() else "STT_PROVIDER=whispercpp but STT_URL is empty"
+    return f"STT_PROVIDER={raw!r} is not one of groq, grok, whispercpp"
+
+
 def enabled() -> bool:
     c = config()
     return c.provider in API_PROVIDERS or (c.provider == "whispercpp" and bool(c.url))
@@ -617,6 +633,10 @@ def _run(w: SttWorker) -> None:
 def ensure(session_id: UUID, video_id: str) -> SttWorker | None:
     """Start (once) the transcription worker of a live session; None while STT is off/misconfigured."""
     if not enabled():
+        reason = off_reason() or "unknown"
+        if reason not in _warned:                  # once per reason: a silent "off" cost a debugging session
+            _warned.add(reason)
+            log.warning("stt is off, the page shows the typed-phrase box: %s", reason)
         return None
     with _lock:
         cur = _workers.get(session_id)

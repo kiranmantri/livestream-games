@@ -9,6 +9,7 @@ dependencies = [
     "psycopg[binary,pool]>=3.2",
     "yt-dlp>=2026.3.17",
     "tzdata>=2026.5",
+    "python-dotenv>=1.2.4",
 ]
 
 [dependency-groups]

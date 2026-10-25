@@ -7,7 +7,7 @@ Standalone: no database, no web app. One pydantic-ai Agent with
   * output validators that matter more than the prompt: sources must come from the search results, sign must agree with the verdict.
 
     uv run python -m spikes.checker --models gemma4:e4b,gemma4:26b,qwen3:14b      # all claims in spikes/claims.jsonl
-    GROQ_API_KEY=... uv run python -m spikes.checker --models groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b   # hosted, per-claim cost in the summary
+    uv run python -m spikes.checker --models groq:openai/gpt-oss-120b,openrouter:openai/gpt-oss-120b      # hosted; keys from .env (GROQ_API_KEY, OPENROUTER_API_KEY); per-claim cost in the summary
     uv run python -m spikes.checker --models gemma4:e4b --claim "A Terra tem 6 mil anos"        # one claim
 
 Results are appended to data/spike/results.jsonl as they come. Needs `ollama serve` with OLLAMA_CONTEXT_LENGTH=32768 (see AGENTS.md).
@@ -38,14 +38,18 @@ from typing import Literal
 from urllib.parse import urljoin, urlparse
 
 import httpx
+from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, ModelRetry, NativeOutput, PromptedOutput, RunContext, Tool
 from pydantic_ai.capabilities import WebSearch
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.ollama import OllamaProvider
 from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.providers.openrouter import OpenRouterProvider
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.usage import UsageLimits
+
+from app.config import load_env  # reads <repo>/.env (real env vars win)
 
 ROOT = Path(__file__).resolve().parents[1]
 CLAIMS = Path(__file__).with_name("claims.jsonl")
@@ -209,7 +213,7 @@ def default_output_mode(tag: str) -> str:
     `tool` => 400 tool_use_failed ("Tool choice is required..."), `native`/`prompted` (a response_format next to tools) => 400 "json mode cannot be
     combined with tool/function calling", and plain JSON text => gpt-oss calls a made-up tool named 'json' (400 tool_use_failed). So Groq gets `twostep`:
     step 1 researches WITH tools and ends in plain text notes; step 2 has NO tools and answers with a JSON schema."""
-    return "twostep" if tag.startswith(GROQ_PREFIX) else "tool"
+    return "twostep" if tag.startswith(HOSTED_PREFIXES) else "tool"
 
 
 RESEARCH_INSTRUCTIONS = """Você é um pesquisador de fatos para um jogo ao vivo. Data de hoje: {today}.
@@ -293,25 +297,63 @@ def build_agent(model, output_mode: str = "tool") -> Agent[Deps, Check] | TwoSte
 
 
 GROQ_PREFIX = "groq:"
+OPENROUTER_PREFIX = "openrouter:"
+HOSTED_PREFIXES = (GROQ_PREFIX, OPENROUTER_PREFIX)
 GROQ_URL = "https://api.groq.com/openai/v1"
+OPENROUTER_URL = "https://openrouter.ai/api/v1"
 # USD per 1M tokens (input, output), from console.groq.com/docs/models. Unknown hosted model => no cost shown (never invented).
 GROQ_PRICES = {"openai/gpt-oss-120b": (0.15, 0.60), "openai/gpt-oss-20b": (0.075, 0.30)}
 
 
+def _api_key(name: str) -> str | None:
+    load_env()                                   # a key in <repo>/.env works without exporting it in the shell
+    return os.environ.get(name) or None
+
+
 def model_for(tag: str, base_url: str) -> OpenAIChatModel:
-    """`groq:<model id>` = Groq's OpenAI-compatible API (key from GROQ_API_KEY); anything else = an Ollama tag."""
+    """`groq:<model id>` = Groq, `openrouter:<model id>` = OpenRouter (both OpenAI-compatible; keys GROQ_API_KEY / OPENROUTER_API_KEY from the
+    shell or <repo>/.env); anything else = an Ollama tag."""
     if tag.startswith(GROQ_PREFIX):
-        key = os.environ.get("GROQ_API_KEY")
+        key = _api_key("GROQ_API_KEY")
         if not key:
-            raise SystemExit(f"{tag}: set GROQ_API_KEY in your shell (never in a file).")
+            raise SystemExit(f"{tag}: set GROQ_API_KEY in your shell or in .env (see .env.example).")
         return OpenAIChatModel(tag[len(GROQ_PREFIX):], provider=OpenAIProvider(base_url=os.environ.get("GROQ_BASE_URL", GROQ_URL), api_key=key))
+    if tag.startswith(OPENROUTER_PREFIX):
+        key = _api_key("OPENROUTER_API_KEY")
+        if not key:
+            raise SystemExit(f"{tag}: set OPENROUTER_API_KEY in your shell or in .env (see .env.example).")
+        client = AsyncOpenAI(base_url=os.environ.get("OPENROUTER_BASE_URL", OPENROUTER_URL), api_key=key)
+        return OpenAIChatModel(tag[len(OPENROUTER_PREFIX):], provider=OpenRouterProvider(openai_client=client))
     return OpenAIChatModel(tag, provider=OllamaProvider(base_url=base_url.rstrip("/") + "/v1"))
 
 
+_or_prices: dict[str, tuple[float, float]] | None = None
+
+
+def fetch_openrouter_models() -> dict:
+    """OpenRouter's public price list (no key needed): pricing.prompt / pricing.completion are USD PER TOKEN, as strings."""
+    return httpx.get(OPENROUTER_URL + "/models", timeout=20).raise_for_status().json()
+
+
+def _openrouter_price(model_id: str) -> tuple[float, float] | None:
+    """(input, output) USD per 1M tokens, or None when the list is unreachable or the model is not in it. Fetched once."""
+    global _or_prices
+    if _or_prices is None:
+        try:
+            _or_prices = {m["id"]: (float(m["pricing"]["prompt"]) * 1e6, float(m["pricing"]["completion"]) * 1e6)
+                          for m in fetch_openrouter_models()["data"] if m.get("pricing")}
+        except Exception:  # noqa: BLE001  offline, bad JSON, a non-numeric price: no price is better than a wrong one
+            _or_prices = {}
+    return _or_prices.get(model_id)
+
+
 def cost_usd(tag: str, input_tokens: int | None, output_tokens: int | None) -> float | None:
-    if not tag.startswith(GROQ_PREFIX):
+    if tag.startswith(GROQ_PREFIX):
+        price = GROQ_PRICES.get(tag[len(GROQ_PREFIX):])
+    elif tag.startswith(OPENROUTER_PREFIX):
+        price = _openrouter_price(tag[len(OPENROUTER_PREFIX):])
+    else:
         return 0.0                                       # local model: no per-token price
-    price = GROQ_PRICES.get(tag[len(GROQ_PREFIX):])
     if price is None:
         return None
     return ((input_tokens or 0) * price[0] + (output_tokens or 0) * price[1]) / 1_000_000
@@ -408,14 +450,14 @@ async def _no_fetch(url: str) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--models", default="gemma4:e4b", help="comma separated: Ollama tags, or groq:<model id> e.g. groq:openai/gpt-oss-120b")
+    ap.add_argument("--models", default="gemma4:e4b", help="comma separated: Ollama tags, groq:<model id> or openrouter:<model id>, e.g. groq:openai/gpt-oss-120b")
     ap.add_argument("--claim", help="one claim instead of spikes/claims.jsonl")
     ap.add_argument("--expected", choices=LABELS)
     ap.add_argument("--claims", type=Path, default=CLAIMS)
     ap.add_argument("--limit", type=int, help="only the first N claims")
     ap.add_argument("--out", type=Path, default=OUT)
     ap.add_argument("--base-url", default=os.environ.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434"))
-    ap.add_argument("--output-mode", choices=OUTPUT_MODES, help="how the answer travels (default: twostep for groq:, tool for Ollama)")
+    ap.add_argument("--output-mode", choices=OUTPUT_MODES, help="how the answer travels (default: twostep for groq:/openrouter:, tool for Ollama)")
     ap.add_argument("--no-fetch", action="store_true", help="snippets only (compare with the page-fetch variant)")
     a = ap.parse_args(argv)
     claims = [{"claim": a.claim, "expected": a.expected}] if a.claim else load_claims(a.claims)

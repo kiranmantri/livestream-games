@@ -7,6 +7,12 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from spikes import checker as K
 
+@pytest.fixture(autouse=True)
+def no_real_dotenv(monkeypatch, tmp_path_factory):
+    """The spike falls back to <repo>/.env for API keys; a test must never see the developer's real one."""
+    monkeypatch.setattr("app.config.ROOT", tmp_path_factory.mktemp("emptyroot"))
+
+
 HIT = [{"title": "Fonte A", "href": "https://example.org/a", "body": "trecho"}, {"title": "B", "href": "https://example.org/b", "body": "x"}]
 
 
@@ -387,3 +393,80 @@ def test_two_step_agent_still_rejects_an_invented_source_and_sums_the_usage():
     assert "UnexpectedModelBehavior" in type(e.value).__name__ or "retries" in str(e.value).lower()
     ok = K.TwoStepAgent(_two_step_model(ANSWER, []), final_mode="tool").run_sync("Frase: A", deps=deps())
     assert ok.usage.requests >= 3                                                  # search call + notes + answer, from both steps
+
+
+# ---------------------------------------------------------------- OpenRouter contender + .env
+OR_MODELS = {"data": [{"id": "openai/gpt-oss-120b", "pricing": {"prompt": "0.00000015", "completion": "0.0000006"}},
+                      {"id": "meta/some-model:free", "pricing": {"prompt": "0", "completion": "0"}}]}
+
+
+@pytest.fixture
+def or_prices(monkeypatch):
+    monkeypatch.setattr(K, "_or_prices", None)                                  # reset the cache
+    monkeypatch.setattr(K, "fetch_openrouter_models", lambda: OR_MODELS)
+
+
+def test_an_openrouter_spec_points_at_openrouters_openai_endpoint(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test-123")
+    monkeypatch.delenv("OPENROUTER_BASE_URL", raising=False)
+    m = K.model_for("openrouter:openai/gpt-oss-120b", "http://127.0.0.1:11434")
+    assert m.model_name == "openai/gpt-oss-120b"
+    assert str(m.client.base_url).rstrip("/") == "https://openrouter.ai/api/v1"
+
+
+def test_an_openrouter_spec_without_a_key_fails_clearly(monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setattr("app.config.ROOT", __import__("pathlib").Path("/nonexistent"))   # no .env to fall back on
+    with pytest.raises(SystemExit) as e:
+        K.model_for("openrouter:openai/gpt-oss-120b", "x")
+    assert "OPENROUTER_API_KEY" in str(e.value)
+
+
+def test_keys_are_read_from_the_dotenv_file_when_the_shell_has_none(monkeypatch, tmp_path):
+    (tmp_path / ".env").write_text("GROQ_API_KEY=gsk_from_file_123\nOPENROUTER_API_KEY=sk-or-from-file\n")
+    for k in ("GROQ_API_KEY", "OPENROUTER_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr("app.config.ROOT", tmp_path)
+    assert K.model_for("groq:openai/gpt-oss-120b", "x").client.api_key == "gsk_from_file_123"
+    assert K.model_for("openrouter:openai/gpt-oss-120b", "x").client.api_key == "sk-or-from-file"
+
+
+def test_hosted_models_default_to_two_steps():
+    assert K.default_output_mode("openrouter:openai/gpt-oss-120b") == "twostep"
+
+
+def test_openrouter_cost_uses_the_price_list_of_the_models_api(or_prices):
+    assert K.cost_usd("openrouter:openai/gpt-oss-120b", 1_000_000, 1_000_000) == pytest.approx(0.75)
+    assert K.cost_usd("openrouter:meta/some-model:free", 5000, 500) == 0
+    assert K.cost_usd("openrouter:nobody/unknown", 10, 10) is None
+
+
+def test_openrouter_cost_is_none_when_the_price_list_is_unreachable(monkeypatch):
+    def boom():
+        raise OSError("offline")
+
+    monkeypatch.setattr(K, "_or_prices", None)
+    monkeypatch.setattr(K, "fetch_openrouter_models", boom)
+    assert K.cost_usd("openrouter:openai/gpt-oss-120b", 10, 10) is None          # never invent a price
+
+
+def test_the_price_list_is_fetched_once(monkeypatch):
+    calls = []
+    monkeypatch.setattr(K, "_or_prices", None)
+    monkeypatch.setattr(K, "fetch_openrouter_models", lambda: calls.append(1) or OR_MODELS)
+    K.cost_usd("openrouter:openai/gpt-oss-120b", 1, 1)
+    K.cost_usd("openrouter:openai/gpt-oss-120b", 1, 1)
+    assert len(calls) == 1
+
+
+def test_the_openrouter_default_researches_with_tools_then_answers_without(monkeypatch):
+    f = _FakeGroq()
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test-123")
+    monkeypatch.setenv("OPENROUTER_BASE_URL", f.url)
+    try:
+        agent = K.build_agent(K.model_for("openrouter:openai/gpt-oss-120b", "x"), K.default_output_mode("openrouter:openai/gpt-oss-120b"))
+        assert agent.run_sync("Frase a verificar: x", deps=deps()).output.verdict == "unverifiable"
+        one, two = f.bodies
+        assert one["tools"] and "response_format" not in one and "tools" not in two and two["response_format"]["type"] == "json_schema"
+    finally:
+        f.srv.shutdown()

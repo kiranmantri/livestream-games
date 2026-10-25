@@ -876,6 +876,28 @@ Also state what the agent itself already ran and its real output; never claim su
     #   fal:spoken-sent event in falacias.js, mobile layout), nor against the real live end to end. Do that before the deploy.
     # reset: TRUNCATE game_sessions, users CASCADE.
 
+### Validation for .env, OpenRouter and the Fly secret scripts (app/config.py, deploy/env_secrets.py, scripts/fly-secrets.sh, scripts/fly-deploy.sh)
+    uv run pytest tests/test_config_env.py tests/test_env_and_deploy.py tests/test_spike_checker.py -q     # expect: 84 passed (red run first: 14 failed + 1 error + a collection error)
+    # .env: `cp .env.example .env`, fill it in, never commit it (.gitignore + .dockerignore). app/config.py `load_env()` uses python-dotenv (now a declared dependency; the Docker
+    #   image skips the `checker` group): real env vars win, no ${VAR} interpolation, a missing file is fine. The spike (spikes/checker.py) reads GROQ_API_KEY / OPENROUTER_API_KEY from it too.
+    #   New in .env.example: STT_PROVIDER, STT_LANGUAGE, GROQ_API_KEY, XAI_API_KEY, OPENROUTER_API_KEY. Your existing .env is NOT touched: append those lines yourself.
+    # OpenRouter (spike only): `--models openrouter:openai/gpt-oss-120b` (OpenAI-compatible, https://openrouter.ai/api/v1, OPENROUTER_API_KEY). Hosted models default to --output-mode twostep.
+    #   Cost per claim comes from OpenRouter's public price list (GET /models, fetched once; offline or unknown model => no cost shown, never a guess). ":free" models cost 0 but have tight rate limits (not measured).
+    #   NOT verified with a real key: that your chosen OpenRouter model/provider handles tools and the step-2 json_schema; try `--output-mode tool` or pick another model if it 400s.
+    # docker compose: reads .env by itself; the app container now gets STT_PROVIDER, STT_LANGUAGE, GROQ_API_KEY, XAI_API_KEY AT RUN TIME. Secrets are never build args/ENV (they would stay in image layers).
+    #   Check: docker compose --env-file .env -f docker-compose.yml config | grep -E "STT_|GROQ"      (prints the key: do not paste the output anywhere)
+    # Fly: scripts/fly-secrets.sh stages ONLY GROQ_API_KEY / XAI_API_KEY / OPENROUTER_API_KEY that a container of deploy/fly.machine.json receives (today only GROQ_API_KEY).
+    #   DATABASE_URL, POSTGRES_PASSWORD, ADMIN_PASSWORD, SESSION_SECRET are NEVER synced: the local values would lock the cloud app out of its own database. To let the app receive XAI or
+    #   OPENROUTER keys, list them under the app container's "secrets" in deploy/fly.machine.json first.
+    #   DRY_RUN=1 scripts/fly-secrets.sh      # names only; DRY_RUN=1 scripts/fly-deploy.sh   # the whole flow without touching Fly
+    #   scripts/fly-deploy.sh                 # 1 active-game check (asks), 2 git clean/pushed check (asks), 3 stage keys, 4 `fly deploy --ha=false`; YES=1 skips the questions
+    #   It does NOT take a backup: a release with a migration still needs the backup step of the deploy checklist first.
+    # STT silently OFF was a trap (a .env with GROQ_API_KEY but no STT_PROVIDER => typed-phrase box, nothing in the log). sttworker.off_reason() now names the cause and ensure()
+    #   logs it ONCE per cause at WARNING ("stt is off, the page shows the typed-phrase box: STT_PROVIDER is not set ..."). tests/test_stt_off_reason.py (10, red first). After editing .env RESTART
+    #   uvicorn (--reload watches .py only) and start a NEW game (the message is rendered at page load).
+    # Real checks done (me): the scripts against a STUB fly (order, stdin, no value printed, active-game refusal), DRY_RUN against the real .env (names only), compose rendered with a throwaway env file.
+    #   NOT run: a real `fly secrets import` / `fly deploy` with these scripts.
+
 ## Conventions log
 (Append new conventions below as they are agreed.)
 - DB access from services: ALWAYS use an autocommit connection (`app.db.connect()` / pool with
