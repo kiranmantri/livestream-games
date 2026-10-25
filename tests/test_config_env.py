@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from app import config
 
@@ -56,5 +57,5 @@ def test_the_default_path_is_the_repo_root(tmp_path, monkeypatch):
 def test_python_dotenv_is_a_declared_runtime_dependency():
     """The Docker image skips the `checker` group, so the loader must not depend on it."""
     import tomllib
-    deps = tomllib.loads((config.ROOT / "pyproject.toml").read_text())["project"]["dependencies"]
+    deps = tomllib.loads((Path(__file__).resolve().parents[1] / "pyproject.toml").read_text())["project"]["dependencies"]
     assert any(d.lower().startswith("python-dotenv") for d in deps)

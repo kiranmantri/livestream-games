@@ -108,6 +108,14 @@ def no_replay_collector(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_checker_worker():
+    """The AI-check worker thread never outlives a test."""
+    yield
+    from app import checkworker
+    checkworker.stop()
+
+
+@pytest.fixture(autouse=True)
 def _admin_throttle_reset():
     """The admin brute-force throttle is process-wide state: every test starts with nobody locked."""
     from app import admin
@@ -123,6 +131,8 @@ _DEV_ONLY_ENV = ("STT_PROVIDER", "STT_LANGUAGE", "STT_URL", "STT_API_URL", "STT_
 
 
 @pytest.fixture(autouse=True)
-def _no_developer_stt_or_keys(monkeypatch):
+def _no_developer_stt_or_keys(monkeypatch, tmp_path_factory):
     for name in _DEV_ONLY_ENV:
         monkeypatch.delenv(name, raising=False)
+    # code that calls config.load_env() again (factcheck.off_reason) must not bring the developer's .env back in
+    monkeypatch.setattr("app.config.ROOT", tmp_path_factory.mktemp("emptyroot"))

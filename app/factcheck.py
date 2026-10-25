@@ -37,7 +37,7 @@ from pydantic_ai.settings import ModelSettings
 from pydantic_ai.usage import UsageLimits
 
 from app import config
-from app.checker import AiResult
+from app.checker import CHECKER_MODEL_UNSET, AiResult, CheckFailed
 
 MAX_SEARCHES = 4
 MAX_FETCHES = 3
@@ -54,10 +54,6 @@ OPENROUTER_PREFIX = "openrouter:"
 GROQ_URL = "https://api.groq.com/openai/v1"
 OPENROUTER_URL = "https://openrouter.ai/api/v1"
 KEYS = {GROQ_PREFIX: "GROQ_API_KEY", OPENROUTER_PREFIX: "OPENROUTER_API_KEY"}
-
-
-class CheckFailed(Exception):
-    """The check could not be completed. The message is short, in pt-BR, and never contains a key or a response body."""
 
 
 # ---------------------------------------------------------------- interface + fake
@@ -363,7 +359,7 @@ def off_reason(env: Mapping[str, str] | None = None) -> str | None:
     env = _env(env)
     spec = (env.get("CHECKER_MODEL") or "").strip()
     if not spec:
-        return "CHECKER_MODEL is not set (use groq:<model id> or openrouter:<model id>)"
+        return CHECKER_MODEL_UNSET
     if spec.lower() == "off":
         return "CHECKER_MODEL is off"
     for prefix, key in KEYS.items():

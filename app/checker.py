@@ -40,6 +40,13 @@ MAX_EXPLANATION = 1000
 MAX_SOURCES = 3
 
 
+class CheckFailed(Exception):
+    """The AI check could not be completed. The message is a short pt-BR reason shown to the admin; it never contains a key or a response body."""
+
+
+CHECKER_MODEL_UNSET = "CHECKER_MODEL is not set (use groq:<model id> or openrouter:<model id>)"
+
+
 class CheckerError(SessionError):
     code = "checker_error"
 

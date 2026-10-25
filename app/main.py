@@ -35,6 +35,7 @@ from starlette.responses import PlainTextResponse, RedirectResponse, Response
 
 from app import (
     admin_web,
+    checkworker,
     falacias_admin_web,
     falacias_web,
     fallacies_web,
@@ -267,9 +268,11 @@ def create_app(db_url: str | None = None, live: livestream.LiveStream | None = N
         pool.wait()
         live.current()          # start the first live-stream lookup in the background right away
         replaycollector.ensure_started(url)     # downloads queued replays (off with REPLAY_COLLECTOR=off)
+        checkworker.ensure_started(url)         # AI fact checks (off unless CHECKER_MODEL and its key are set)
         try:
             yield
         finally:
+            checkworker.stop()
             replaycollector.stop()
             pool.close()
 

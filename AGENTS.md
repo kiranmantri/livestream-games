@@ -936,6 +936,28 @@ Also state what the agent itself already ran and its real output; never claim su
     #   uv run python -c "import asyncio; from app import factcheck as F; c = F.from_env(); print(F.off_reason() or asyncio.run(c.check('os Annunakis existem')))"
     #   expect (with CHECKER_MODEL=openrouter:openai/gpt-oss-120b): AiResult(verdict='false', score=-3 or -4, confidence='high', ..., 1-3 sources, tokens, elapsed_ms ~ 30-70 s)
 
+### Validation for FC3 (checker worker: app/checkworker.py, started by app/main.py's lifespan) - no page yet
+    uv run pytest tests/test_checkworker.py -q         # expect: 33 passed (red run first: collection error, app.checkworker did not exist)
+    uv run pytest -q                                   # expect: all passed
+    # What it does: daemon threads (CHECKER_WORKERS, default 2, max 4) take queued fact checks of ACTIVE checker games (checker.claim_next_check, SKIP LOCKED), call
+    #   the checker with the claim + the lines around the passage + the player's message, and store the answer (complete_check) or the reason (fail_check):
+    #   failure => back to the queue with the reason, after 3 runs => admin queue (needs_admin). Inconsistent answer => "resultado invalido" failure. A restart requeues
+    #   checks left running. wake() (FC4 will call it after a claim) skips the 5 s poll. No checker configured => NO thread; claims stay queued (the admin scores by hand, FC5).
+    # Off/on is logged once per cause: "fact-checker is off: CHECKER_MODEL is not set ..." (INFO) or "... needs GROQ_API_KEY, which is not set" (WARNING);
+    #   "fact-checker on: <model>, N worker(s)". Failures log "fact check <id> failed (attempt n): <reason>". grep the app log for "fact".
+    # Try it (YOU; needs CHECKER_MODEL + key in .env, costs ~US$0.003 per claim, there is no page to send a claim yet, so insert one):
+    #   uv run uvicorn app.main:app --port 8000 ; expect the log line "fact-checker on: ..."
+    #   uv run python -c "
+    #   from app.db import connect; from app import sessions as S, checker as C
+    #   c = connect(); S.start_session_as_admin(c, game_type='checker'); _, p, _ = S.join_session(c, 'Ana', '10.0.0.1', game_type='checker')
+    #   print(C.submit_typed_claim(c, p.id, 'os Annunakis existem', -4).check_id)"
+    #   docker compose exec db psql -U livegames -c "select status, verdict, ai_score, confidence, model, elapsed_ms, error from fact_checks"   # queued -> running -> done in ~30-70 s
+    #   (the worker polls every 5 s; there is no wake yet because nothing calls it from a page). reset: TRUNCATE game_sessions, users CASCADE (see Task 7).
+    # CheckFailed moved to app/checker.py (factcheck re-exports it) so the worker does not import pydantic-ai when the game is off: the 1 GB Machine starts as before.
+    # tests/conftest.py now ALSO points app.config.ROOT at an empty dir: factcheck.off_reason() calls load_env() again, which brought the developer's .env keys back into a test.
+    # Mutation check (repo COPY, mutate_fc3.py): 26/26 killed (first run: 3 survivors -> 3 tests added: requeue by another thread, drain without wake, closed connections).
+    # NOT checked: the worker against a real model and a real game; the app's startup time/memory with pydantic-ai loaded on Fly (it loads only when CHECKER_MODEL is set).
+
 ## Conventions log
 (Append new conventions below as they are agreed.)
 - DB access from services: ALWAYS use an autocommit connection (`app.db.connect()` / pool with
