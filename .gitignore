@@ -231,3 +231,8 @@ data/backup/
 
 # Hermes agent plans/notes
 .hermes/
+
+# spike outputs (audio, results)
+data/spike/
+mlx_models/
+some-api-keys.txt

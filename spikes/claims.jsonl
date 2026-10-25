@@ -1,0 +1,33 @@
+{"claim": "os Annunakis existem", "expected": "false", "category": "pseudo-history"}
+{"claim": "O Flamengo é o melhor time de futebol do Brasil.", "expected": "unverifiable", "category": "opinion"}
+{"claim": "O Brasil sediou a COP30, em Belém, em 2025.", "expected": "true", "category": "recent-news"}
+{"claim": "o einstein reprovou em matemática né, todo mundo sabe", "expected": "false", "category": "noisy-transcript"}
+{"claim": "O Brasil tem a maior floresta tropical do mundo.", "expected": "partial", "category": "half-truth"}
+{"claim": "Os Anunnaki da Suméria vieram de outro planeta e criaram a humanidade.", "expected": "false", "category": "pseudo-history"}
+{"claim": "As pirâmides do Egito foram construídas por alienígenas.", "expected": "false", "category": "pseudo-history"}
+{"claim": "Os seres humanos usam apenas 10% do cérebro.", "expected": "false", "category": "pseudo-history"}
+{"claim": "A Bíblia é o melhor livro já escrito.", "expected": "unverifiable", "category": "opinion"}
+{"claim": "Deus existe.", "expected": "unverifiable", "category": "opinion"}
+{"claim": "O Brasil vai ganhar a próxima Copa do Mundo.", "expected": "unverifiable", "category": "prediction"}
+{"claim": "Daqui a dez anos ninguém mais vai usar dinheiro em espécie.", "expected": "unverifiable", "category": "prediction"}
+{"claim": "Isso aí é tudo mentira, gente.", "expected": "unverifiable", "category": "vague"}
+{"claim": "Os cientistas escondem a verdade de nós.", "expected": "unverifiable", "category": "vague"}
+{"claim": "a vacina da covid causa autismo, eu vi num estudo", "expected": "false", "category": "noisy-transcript"}
+{"claim": "o sol é uma estrela, não é um planeta como falaram", "expected": "true", "category": "noisy-transcript"}
+{"claim": "O Brasil é um dos países que mais perderam área de floresta nos últimos anos.", "expected": "partial", "category": "recent-news"}
+{"claim": "Hitler era ateu.", "expected": "partial", "category": "half-truth"}
+{"claim": "A evolução é só uma teoria, não um fato.", "expected": "partial", "category": "half-truth"}
+{"claim": "O Big Bang foi uma explosão que aconteceu em um ponto do espaço.", "expected": "partial", "category": "half-truth"}
+{"claim": "O ateísmo é uma religião.", "expected": "partial", "category": "half-truth"}
+{"claim": "Einstein foi reprovado em matemática na escola.", "expected": "false", "category": "person"}
+{"claim": "Darwin se converteu ao cristianismo no leito de morte.", "expected": "false", "category": "person"}
+{"claim": "O Papa João Paulo II disse que a evolução é mais do que uma hipótese.", "expected": "true", "category": "person"}
+{"claim": "Elon Musk é o dono do X, antigo Twitter.", "expected": "true", "category": "person"}
+{"claim": "O DNA humano é formado por três fitas enroladas.", "expected": "false", "category": "science"}
+{"claim": "Cientistas já provaram que o universo não tem criador.", "expected": "false", "category": "science"}
+{"claim": "Os seres humanos e os dinossauros viveram na mesma época.", "expected": "false", "category": "science"}
+{"claim": "A Constituição brasileira atual foi promulgada em 1988.", "expected": "true", "category": "history"}
+{"claim": "Jesus nasceu em 25 de dezembro do ano 1.", "expected": "false", "category": "history"}
+{"claim": "A população mundial passou de oito bilhões de pessoas.", "expected": "true", "category": "numbers"}
+{"claim": "O Brasil é o maior produtor de café do mundo.", "expected": "true", "category": "numbers"}
+{"claim": "O Everest é a montanha mais alta do mundo medida do nível do mar.", "expected": "true", "category": "numbers"}

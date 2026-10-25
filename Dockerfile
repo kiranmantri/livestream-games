@@ -7,7 +7,7 @@ COPY --from=uv /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-dev --no-group checker --no-install-project
 
 # --- runtime: venv + source only, non-root. The code runs from /app (config.ROOT = parent of app/).
 FROM python:3.14-slim

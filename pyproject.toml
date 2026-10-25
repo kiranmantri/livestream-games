@@ -12,6 +12,10 @@ dependencies = [
 ]
 
 [dependency-groups]
+checker = [
+    "httpx>=0.28.1",
+    "pydantic-ai-slim[duckduckgo,openai]>=2.61.0",
+]
 dev = [
     "httpx>=0.28.1",
     "pytest>=8",
@@ -34,3 +38,6 @@ line-length = 100
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.uv]
+default-groups = ["dev", "checker"]

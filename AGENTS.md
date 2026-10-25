@@ -592,6 +592,19 @@ Also state what the agent itself already ran and its real output; never claim su
     #   They look up the Machine ids; DRY_RUN=1 prints the fly commands only (that is all I ran: no real stop/start was done).
     # Rollback: remove STT_* from deploy/fly.machine.json and redeploy (the page falls back to the typed box).
 
+### Validation for FC0 (fact-checker spike: spikes/checker.py) - YOU run it (model pulls of GBs, minutes per claim)
+    uv run pytest tests/test_spike_checker.py -q       # expect: 39 passed (scripted FunctionModel, no Ollama, no network; first 35 written with the code, last 4 red first)
+    # Group `checker` (pydantic-ai-slim[openai,duckduckgo], httpx) is a default uv group but is NOT installed in the Docker image (--no-group checker).
+    brew services start ollama   # or: OLLAMA_CONTEXT_LENGTH=32768 ollama serve   (default 4096 is too small; with brew set it in the service env)
+    ollama pull gemma4:e4b; ollama pull gemma4:26b; ollama pull qwen3:14b      # + gemma4:12b / :31b if you want all of them; qwen3 = a second family    # tags NOT verified: if one fails, `ollama search gemma4` / ollama.com/library/gemma4
+    uv run python -m spikes.checker --claim "A Terra tem 6 mil anos" --expected false --models gemma4:e4b   # one claim first (expect: verdict false, score < 0, sources from the search)
+    uv run python -m spikes.checker --models gemma4:e4b,gemma4:26b,qwen3:14b                    # 33 claims (categories: pseudo-history incl. "os Annunakis existem", opinion, prediction, vague, noisy-transcript, recent-news, half-truth, person, science, history, numbers) x models (long); --limit 5 = a varied smoke set; --no-fetch = snippets only
+    # Summary adds refused_ok (opinion/prediction/vague correctly answered "unverifiable"), refused_wrong (checkable claims it gave up on) and by_category.
+    # Output: data/spike/results.jsonl (one row per model x claim: time, requests, tool calls, searches, fetched pages, tokens, verdict/score/confidence/sources, error) + a summary table.
+    # Rules proven offline: sources must come from the search results; sign of score agrees with verdict; unverifiable => score 0; max 3 page fetches, only of URLs the search returned
+    #   and only public http(s); search count capped. NOT checked: any real model, Ollama's tool-calling with Gemma 4, DuckDuckGo from this network.
+    # Next: send me the summary table; I decide hosting (Fly CPU vs Mac+tunnel vs rented GPU) from it. reset: rm -rf data/spike
+
 ### Deploying to Fly.io - checklist (every release)
     # 0. Local: tests green and everything committed + pushed.
     uv run ruff check . && uv run pytest -q                    # expect: All checks passed! / N passed
