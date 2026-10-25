@@ -578,19 +578,19 @@ Also state what the agent itself already ran and its real output; never claim su
     #   Replay games are unchanged (transcript | chat, no video). Phones (<= 760 px): one column, video first.
     # NOT checked in a real browser (widths, iframe size in a 1/3 column, the hide/show script, phones).
 
-### Validation for S3 (STT on Fly: ffmpeg in the app image, private whisper app `livebingo-stt`)
-    uv run pytest tests/test_deploy_stt.py -q           # expect: 3 passed (written together with the config: no red run)
-    # Files: Dockerfile (apt ffmpeg), deploy/fly.machine.json (app env STT_PROVIDER=whispercpp, STT_URL=http://livebingo-stt.internal:8080, STT_LANGUAGE=pt),
-    #   deploy/stt/Dockerfile + deploy/stt/fly.toml (whisper.cpp v1.7.6 built from source, ggml-small baked in, shared-cpu-4x / 2 GB, NO public IP).
-    # Create/deploy the whisper app (done once):  fly apps create livebingo-stt --org personal ; cd deploy/stt && fly deploy --ha=false --no-public-ips
-    # Checked locally (Docker, arm64): the whisper image builds (1.09 GB), the server answers /inference; a Portuguese sentence made with `say` came back exactly
-    #   (2.8 s). The app image has ffmpeg 7.1 and reaches HTTPS without a certificate error.
-    # NOT measured: the real-time factor of `small` on Fly's shared CPU, yt-dlp live audio from Fly's IP. Check after the app deploy:
-    fly logs --app livebingo --no-tail | grep "stt "     # reasons for failures; none = working
-    # Cost control: the whisper Machine runs all the time. Stop it between lives with scripts/stt-stop.sh and start it a minute before a game with
-    #   scripts/stt-start.sh. Also scripts/app-stop.sh / app-start.sh (main app livebingo: asks to confirm, YES=1 skips) and all-stop.sh / all-start.sh.
-    #   They look up the Machine ids; DRY_RUN=1 prints the fly commands only (that is all I ran: no real stop/start was done).
-    # Rollback: remove STT_* from deploy/fly.machine.json and redeploy (the page falls back to the typed box).
+### Validation for S3 (STT on Fly) - SUPERSEDED: Groq is the default; the self-hosted whisper app is gone
+    # The whisper.cpp `small` app `livebingo-stt` (shared-cpu-4x) could not keep up: 13 s chunks took > 60 s, requests timed out ("failed to encode / client disconnected").
+    #   Provider spike (spikes/stt_compare.py, 5 min of pt-BR): Groq whisper-large-v3-turbo 19% (WER vs YouTube captions), 0.9 s per chunk, US$0.04/h, 0 empty chunks;
+    #   Grok 16%, 0.6 s, US$0.10/h, 1 empty chunk; local small models 27-28%. Decision (user): Groq is the default. ffmpeg stays in the app image.
+    # Files now: deploy/fly.machine.json app env STT_PROVIDER=groq, STT_LANGUAGE=pt (no STT_URL), secret GROQ_API_KEY listed under the app container's "secrets".
+    # Removed: deploy/stt/ and scripts/stt-*.sh, all-*.sh (scripts/app-start.sh / app-stop.sh remain). Whisper support stays in the code (STT_PROVIDER=whispercpp + STT_URL), unused.
+    # Cloud steps (YOU; the key never goes in a file or in the chat):
+    #   1. copy the Groq key to the clipboard, then:   fly secrets set GROQ_API_KEY="$(pbpaste)" --app livebingo --stage
+    #   2. fly secrets list --app livebingo            # expect GROQ_API_KEY "Staged"
+    #   3. deploy (checklist below), then:   fly ssh console --app livebingo --container app -C "printenv STT_PROVIDER STT_LANGUAGE"   # expect groq / pt (never print the key)
+    #   4. start a Falacias game on a horizontal live; the pane fills in ~15 s;  fly logs --app livebingo --no-tail | grep "stt "   # none = working
+    #   5. only after it works:  fly apps destroy livebingo-stt   (stops the whisper Machine for good; or `fly machine stop 827944b79991e8 --app livebingo-stt` first to keep a way back)
+    # Rollback: remove GROQ_API_KEY/STT_PROVIDER from the config (the page falls back to the typed phrase box).
 
 ### Validation for FC0 (fact-checker spike: spikes/checker.py) - YOU run it (model pulls of GBs, minutes per claim)
     uv run pytest tests/test_spike_checker.py -q       # expect: 39 passed (scripted FunctionModel, no Ollama, no network; first 35 written with the code, last 4 red first)
@@ -616,7 +616,7 @@ Also state what the agent itself already ran and its real output; never claim su
     #   PATH=/opt/homebrew/bin:$PATH STT_PROVIDER=groq GROQ_API_KEY=... uv run uvicorn app.main:app --port 8000 --reload     (or grok + XAI_API_KEY)
     #   start a Falacias game on a horizontal live: the transcript pane fills every ~12-15 s; `grep "stt "` in the server log shows failures with the reason.
     # Fly (NOT done): set the secret(s), add them to the app container's "secrets" in deploy/fly.machine.json ({"env_var": "GROQ_API_KEY", "name": "GROQ_API_KEY"}; secrets are NOT
-    #   injected unless listed), change env STT_PROVIDER, drop STT_URL, deploy, then delete the whisper app (fly apps destroy livebingo-stt) and deploy/stt/. Never put a key in a file or in chat:
+    #   injected unless listed), change env STT_PROVIDER, drop STT_URL, deploy, then delete the whisper app (fly apps destroy livebingo-stt). Never put a key in a file or in chat:
     #   fly secrets set GROQ_API_KEY="$(pbpaste)" --app livebingo --stage     (copy the key first; --stage = no restart until the deploy)
     # GOTCHA (found by the user, local run): "groq: HTTP 403" = Cloudflare error 1010 for urllib's default User-Agent. The worker sends `User-Agent: livegames-stt/1.0`.
     #   Keyless proof: default UA -> 403 "error code: 1010"; custom UA -> 401 "Invalid API Key". xAI answers a WRONG KEY with HTTP 400 (not 401): "Incorrect API key provided".
