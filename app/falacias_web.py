@@ -11,6 +11,7 @@ Selecting a passage and flagging it (Task 4), the leaderboard (Task 4), the admi
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections import defaultdict
 
 from fasthtml.common import (
@@ -138,11 +139,10 @@ def picker_view(fallacies: list[F.Fallacy]):
                           data_name=f.name.casefold()) for f in items], cls="grp") for cat, items in by_cat.items()]
     return Form(
         Div(Span(T.FAL_SELECTED, cls="who"), Button(T.FAL_CLEAR, type="button", id="pk-clear", cls="link"), cls="bar"),
-        P(id="pk-quote", cls="quote", data_empty=T.FAL_NO_SELECTION),
         *[Input(type="hidden", name=n, id=f"pk-{n}") for n in ("kind", "start_id", "start_off", "end_id", "end_off")],
         Input(type="text", id="pk-filter", placeholder=T.FAL_FILTER, autocomplete="off", aria_label=T.FAL_FILTER),
         Div(*groups, cls="opts"),
-        Label(T.FAL_NOTE_LABEL, Textarea(id="pk-note", name="note", maxlength=F.MAX_NOTE, rows=3, placeholder=T.FAL_NOTE_PLACEHOLDER,
+        Label(T.FAL_NOTE_LABEL, Textarea(id="pk-note", name="note", maxlength=F.MAX_QUOTE, rows=4, placeholder=T.FAL_NOTE_PLACEHOLDER,
                                          autocomplete="off"), cls="notefield"),
         Div(Button(T.FAL_SEND, type="submit", cls="primary"), Div(id="feedback", role="status"), cls="sendrow"),
         Small(A(T.FAL_SOURCE, href=T.FAL_SOURCE_URL, target="_blank", rel="noopener noreferrer"), cls="muted"),
@@ -374,7 +374,7 @@ def register(rt, pool, live: livestream.LiveStream | None = None) -> None:
             if me is None:
                 return Response(status_code=401, headers={"HX-Refresh": "true"})
             try:
-                text = F.normalize_note(note)
+                text = F.normalize_note(note, F.MAX_QUOTE)      # an untouched passage may be longer than a typed text
                 has_selection = bool(start_id.strip() or end_id.strip())
                 has_fallacy = bool(fallacy_id.strip())
                 if has_fallacy and not re.fullmatch(rf"\d{{1,{MAX_INT_DIGITS}}}", fallacy_id.strip()):
@@ -384,14 +384,19 @@ def register(rt, pool, live: livestream.LiveStream | None = None) -> None:
                     if not has_fallacy:
                         raise F.NeedFallacy("a fallacy is needed for a selected passage")
                     feed.ensure_up(conn, me.session_id)
-                    F.submit_mark(conn, me.id, kind, to_int(start_id), to_int(start_off), to_int(end_id), to_int(end_off),
-                                  to_int(fallacy_id), note=text)
+                    ints = (to_int(start_id), to_int(start_off), to_int(end_id), to_int(end_off))
+                    quote = F.build_quote(conn, me.session_id, kind, *ints)
+                    if not text or text == unicodedata.normalize("NFC", quote):
+                        F.submit_mark(conn, me.id, kind, *ints, to_int(fallacy_id))       # the text is still the passage: anchored pair
+                    else:
+                        # The player edited the text: it is no longer that passage. Sent as typed text, without context or speed bonus.
+                        F.submit_spoken(conn, me.id, F.normalize_note(text), to_int(fallacy_id))
                 elif has_fallacy:
                     if not text:
                         raise F.NeedText("a fallacy needs a passage or a typed phrase")
-                    F.submit_spoken(conn, me.id, text, to_int(fallacy_id))
+                    F.submit_spoken(conn, me.id, F.normalize_note(text), to_int(fallacy_id))
                 elif text:
-                    H.send(conn, me.id, text)
+                    H.send(conn, me.id, F.normalize_note(text))
                     message_only = True
                 else:
                     raise F.NothingToSend("nothing to send")

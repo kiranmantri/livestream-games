@@ -160,7 +160,7 @@ FAL_JOIN_HEADING = "Tem uma partida de Falácias rolando!"
 FAL_GAME_OVER = "Fim da partida de Falácias!"
 
 FAL_PICK_HELP = "Selecione um trecho da transcrição ou do chat, depois escolha a falácia."
-FAL_SELECTED = "Trecho selecionado"
+FAL_SELECTED = "Enviar ao apresentador"
 FAL_FILTER = "Buscar falácia..."
 FAL_SEND = "Enviar"
 FAL_CLEAR = "Limpar"
@@ -184,9 +184,9 @@ FAL_ERRORS = {
     "note_too_long": "Mensagem longa demais (máximo 280 caracteres).",
     "generic": "Algo deu errado. Tente de novo.",
 }
-FAL_NOTE_LABEL = "Mensagem ou frase falada"
-FAL_NOTE_PLACEHOLDER = ("Escreva a frase que foi dita (se o chat ou a transcrição falhou), um comentário sobre o trecho "
-                        "ou uma mensagem para o apresentador.")
+FAL_NOTE_LABEL = "Texto"
+FAL_NOTE_PLACEHOLDER = ("Clique no chat ou na transcrição para trazer o trecho até aqui. Você pode editar o texto, ou escrever a frase "
+                        "que foi dita (se o chat ou a transcrição falhou). Sem falácia escolhida, o texto vai como mensagem ao apresentador.")
 FAL_NO_SELECTION = "Nenhum trecho selecionado. Clique ou selecione texto no chat ou na transcrição, ou escreva abaixo."
 FAL_SENT_MESSAGE = "Mensagem enviada ao apresentador!"
 AF_NOTE = "Mensagem do jogador"

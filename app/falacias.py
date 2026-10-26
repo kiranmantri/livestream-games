@@ -394,13 +394,13 @@ def _guarded_insert(conn: psycopg.Connection, session_id: UUID, user_id: UUID, i
         raise
 
 
-def normalize_note(raw: str | None) -> str:
-    """The free-form message: NFC, control characters dropped, whitespace collapsed. May be empty; at most MAX_NOTE characters."""
+def normalize_note(raw: str | None, limit: int = MAX_NOTE) -> str:
+    """The free-form message: NFC, control characters dropped, whitespace collapsed. May be empty; at most `limit` (MAX_NOTE) characters."""
     text = unicodedata.normalize("NFC", raw or "")
     text = "".join(" " if c.isspace() else c for c in text if c.isspace() or unicodedata.category(c) not in ("Cc", "Cs"))
     text = re.sub(r"\s+", " ", text).strip()
-    if len(text) > MAX_NOTE:
-        raise NoteTooLong(f"more than {MAX_NOTE} characters")
+    if len(text) > limit:
+        raise NoteTooLong(f"more than {limit} characters")
     return text
 
 

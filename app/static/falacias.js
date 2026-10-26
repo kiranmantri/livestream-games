@@ -33,7 +33,7 @@
 
   // ---------------------------------------------------------------- the slide panel (selection, fallacy, message)
   // A click on a chat/transcript pane opens it, with or without selected text: the transcript or the chat may fail, and then the
-  // player types the phrase or a message in the panel's message box.
+  // player types the phrase or a message in the panel's text box.
   var picker = document.getElementById('picker');
   if (!picker) return;
   var timer = null;
@@ -82,22 +82,42 @@
     field('start_off').value = so;
     field('end_id').value = last.dataset.id;
     field('end_off').value = eo;
-    field('quote').textContent = '“' + sel.toString().replace(/\s+/g, ' ').trim().slice(0, 200) + '”';
+    // Same text the server rebuilds from the offsets (only the .tx spans, not names or times).
+    var parts = lines.map(function (l, i) {
+      var t = l.querySelector('.tx').textContent;
+      return t.slice(i === 0 ? so : 0, i === lines.length - 1 ? eo : t.length);
+    });
+    putText(parts.join(' '), [pane.dataset.kind, first.dataset.id, so, last.dataset.id, eo].join(':'));
     openPicker();
     markPicked();
   }
 
   function openPicker() { picker.hidden = false; }
 
+  // The passage goes into the (editable) text box. Untouched text is replaced by a new selection; text the player changed is kept and
+  // the new passage is appended. The server compares the box with the selected passage: equal = anchored pair, different = typed text.
+  var auto = '', lastKey = '';
+  function putText(t, key) {
+    if (key === lastKey) return;                    // the same selection fired again
+    lastKey = key;
+    t = t.replace(/\s+/g, ' ').trim();
+    var box = field('note');
+    if (!box.value.trim() || box.value === auto) { box.value = t; auto = t; }
+    else { box.value = box.value.trim() + ' ' + t; auto = ''; }
+  }
+
   function schedule() { clearTimeout(timer); timer = setTimeout(capture, 200); }
   document.addEventListener('selectionchange', schedule);          // mouse, keyboard and touch handles
   document.addEventListener('mouseup', schedule);
   document.addEventListener('touchend', schedule);
 
-  // Forget the selected passage only (the panel stays open, a typed message stays too).
+  // Forget the selected passage (and its text, if untouched). The panel stays open; text the player typed or edited stays.
   function clearSelection() {
     ['kind', 'start_id', 'start_off', 'end_id', 'end_off'].forEach(function (n) { field(n).value = ''; });
-    field('quote').textContent = '';
+    var box = field('note');
+    if (box.value === auto) box.value = '';          // only text we put there ourselves
+    auto = '';
+    lastKey = '';
     markPicked();
     var sel = window.getSelection();
     if (sel) sel.removeAllRanges();

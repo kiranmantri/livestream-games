@@ -59,9 +59,10 @@ def test_the_old_boxes_are_gone_and_the_panel_has_the_message_field(web, conn, f
     assert not hasattr(T, "FAL_SPOKEN_HEADING") and not hasattr(T, "HM_HEADING")
     picker = re.search(r'<form[^>]*id="picker".*?</form>', html, re.DOTALL).group(0)
     note = re.search(r"<textarea[^>]*name=\"note\"[^>]*>", picker)
-    assert note and 'maxlength="280"' in note.group(0) and "required" not in note.group(0)
+    assert note and 'maxlength="500"' in note.group(0) and "required" not in note.group(0)
     assert picker.index('name="note"') < picker.index(f">{T.FAL_SEND}<"), "the message box comes right before the send button"
     assert T.FAL_NOTE_LABEL in picker
+    assert 'id="pk-quote"' not in picker, "there is ONE text box: the selected passage is written into it"
 
 
 def test_choosing_a_fallacy_is_no_longer_mandatory_in_the_form(web, conn, fal, game):
@@ -83,10 +84,31 @@ def test_the_old_routes_are_gone(web, conn, fal, game):
 
 
 # ---------------------------------------------------------------- a pair with a note
-def test_passage_and_fallacy_make_a_pair_and_the_note_travels_with_it(web, conn, fal, game):
-    r = post(game["ana"], **sel(conn), fallacy_id=fal["Espantalho"], note="  acho que  é  espantalho  ")
+def test_passage_in_the_text_box_untouched_is_an_anchored_pair(web, conn, fal, game):
+    r = post(game["ana"], **sel(conn), fallacy_id=fal["Espantalho"], note="  fala   um ")
     assert r.status_code == 200 and T.FAL_SENT in r.text and "fal:sent" in r.headers.get("hx-trigger", "")
-    assert marks(conn) == [("transcript", "fala um", "acho que é espantalho")] and messages(conn) == []
+    assert marks(conn) == [("transcript", "fala um", "")] and messages(conn) == []
+
+
+def test_a_passage_whose_text_was_edited_becomes_typed_text_without_context(web, conn, fal, game):
+    r = post(game["ana"], **sel(conn), fallacy_id=fal["Espantalho"], note="acho que fala um é espantalho")
+    assert T.FAL_SENT in r.text
+    assert marks(conn) == [("spoken", "acho que fala um é espantalho", "")] and messages(conn) == []
+
+
+def test_an_empty_text_box_with_a_passage_still_sends_the_anchored_pair(web, conn, fal, game):
+    post(game["ana"], **sel(conn), fallacy_id=fal["Espantalho"])
+    assert marks(conn) == [("transcript", "fala um", "")]
+
+
+def test_an_edited_passage_text_is_capped_at_280_but_an_untouched_passage_may_be_longer(web, conn, fal, game):
+    assert T.FAL_ERRORS["note_too_long"] in post(game["ana"], **sel(conn), fallacy_id=fal["Espantalho"], note="fala um " + "x" * 300).text
+    assert marks(conn) == []
+
+
+def test_the_script_writes_the_passage_into_the_text_box(web):
+    js = (ROOT / "app" / "static" / "falacias.js").read_text()
+    assert "putText(" in js and "field('quote')" not in js
 
 
 def test_a_pair_without_a_note_has_an_empty_note(web, conn, fal, game):
@@ -94,8 +116,9 @@ def test_a_pair_without_a_note_has_an_empty_note(web, conn, fal, game):
     assert marks(conn) == [("transcript", "fala um", "")]
 
 
-def test_the_admin_queue_shows_the_note_escaped(web, conn, fal, game):
-    post(game["ana"], **sel(conn), fallacy_id=fal["Espantalho"], note="<b>veja</b> o minuto 3")
+def test_the_admin_queue_shows_a_stored_note_escaped(web, conn, fal, game):
+    post(game["ana"], **sel(conn), fallacy_id=fal["Espantalho"])
+    conn.execute("UPDATE fallacy_marks SET note = %s", ("<b>veja</b> o minuto 3",))      # notes of marks sent before the single text box
     html = game["admin"].get("/admin/falacias", headers=basic()).text
     assert "&lt;b&gt;veja&lt;/b&gt; o minuto 3" in html and "<b>veja</b>" not in html
     assert T.AF_NOTE in html

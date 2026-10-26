@@ -157,7 +157,7 @@ def test_live_game_page_explains_there_is_no_transcript_and_has_the_typed_quote_
     with tc:
         start(named(b, "Ana"), "Ana")
         html = b.get("/falacias").text
-    assert T.FAL_NO_TRANSCRIPT in html and 'name="note"' in html and 'maxlength="280"' in html and 'id="spokenbox"' not in html
+    assert T.FAL_NO_TRANSCRIPT in html and 'name="note"' in html and 'maxlength="500"' in html and 'id="spokenbox"' not in html
     assert T.FAL_REPLAY not in html                                       # it is not a replay
 
 

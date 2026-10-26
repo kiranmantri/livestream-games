@@ -989,7 +989,11 @@ Also state what the agent itself already ran and its real output; never claim su
     #   (tested, nothing links to them); /admin/checker/{start,finish} were deleted.
     # Real Chrome (throwaway DB, replay 'QaReplay001'): dialog, start, header with video + end button at 1280 and 390 px; no sideways scroll; phones: games in the bottom bar.
     #   NOT checked: ending from the header in the browser, a real live link, Safari/Firefox.
-    # Still to do (next step): the slide panel of both video games (clicks fill an editable text box; remove the "Mensagem para o host" box).
+    # Slide panel, Quem é Falacioso? (done): ONE text box (name=note, 500 chars). Clicking/selecting lines writes the passage into it (falacias.js putText; untouched text is
+    #   replaced by a new selection, edited text is kept and the new passage appended). POST /falacias/mark compares the box with the passage it rebuilds from the offsets:
+    #   equal or empty = anchored pair (context + speed bonus); EDITED = typed text (kind 'spoken', no context, <= 280 chars); no fallacy + no selection = message to the host.
+    #   A selection without a fallacy is still refused. Tests: tests/test_unified_panel.py (+5). Full suite 1768 passed, 1 skipped.
+    #   NOT checked in a browser (box filling on click, extending a selection, phones). Aponte o mentiroso! gets the same panel with FC4 (claim form).
 
 ## Conventions log
 (Append new conventions below as they are agreed.)
