@@ -49,7 +49,7 @@ later blocks supersede earlier ones where they disagree. Expected test counts ar
     #   Whisper answered one quiet chunk with its own prompt; such segments are now dropped (tests were written together with that code: no red run for it).
     # NOT checked: the whole thing through the web app with a game (only the worker's pieces), Fly, other models.
     # Status panel on /admin/falacias: the source link ("Transmissao ao vivo da partida: ..." / "Video da partida (replay): ...") is a row INSIDE the status panel
-    #   (also when ended). "Ninguem pontuou desta vez." was removed (admin and player end screens). The entry page of Falacias no longer says
+    #   (ONLY while the game runs since the "source link only while running" change, see ui-admin.md). "Ninguem pontuou desta vez." was removed (admin and player end screens). The entry page of Falacias no longer says
     #   "O canal nao esta ao vivo agora." / "So transmissoes na horizontal sao usadas.".
 
 ### Validation for hosted STT (STT_PROVIDER=groq|grok: app/sttworker.py ApiTranscriber) - not deployed yet

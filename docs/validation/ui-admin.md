@@ -144,3 +144,12 @@ later blocks supersede earlier ones where they disagree. Expected test counts ar
     # Real Chrome (me, dev DB, read-only pages): left edges equal (sub-pixel) on all 5 pages at 1280 and 900 px (1 px off before the gap fix; also checked 1000/800),
     #   no sideways scroll; 390 px phone layout as before. NOT checked: the header WITH a running session (video link + "Finalizar sessão" in column 6), Safari/Firefox.
 
+### Validation for "source link only while the game runs" (app/falacias_admin_web.py, app/checker_admin_web.py page_view)
+    uv run pytest tests/test_start_by_url.py tests/test_checker_admin_web.py -q   # expect: all passed (red run first: the 2 ended-game tests failed)
+    uv run pytest -q                                    # expect: 1875 passed, 1 skipped
+    # /admin/falacias and /admin/checker: the status panel row "Transmissão ao vivo da partida: <link>" / "Vídeo da partida (replay): <link>" is shown ONLY
+    #   while that game is active. With nothing running (the panel shows the last, ended game) the row is gone. Bingo has no such row.
+    # The header is separate: while ANY game of the session runs it still shows the session's video link next to "Finalizar sessão" (correct).
+    # Try: start a session from the header with a live link -> the row is in the panel; "Finalizar sessão" -> the row disappears from both pages.
+    # NOT checked in a real browser.
+

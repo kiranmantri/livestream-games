@@ -256,7 +256,8 @@ def page_view(conn, session: S.GameSession | None, pw: str, error: str | None = 
     token = A_.csrf_token(pw, session.id)
     active = session.status == "active"
     winner = None if active else next((r for r in F.leaderboard(conn, session.id) if r.user_id == session.winner_user_id), None)
-    parts.append(status_bar(session, S.count_players(conn, session.id), None, winner=None, source=source_line(conn, session)))
+    # the live / video link belongs to a RUNNING game only (an ended one is just its result)
+    parts.append(status_bar(session, S.count_players(conn, session.id), None, winner=None, source=source_line(conn, session) if active else None))
     if not active and winner:
         parts.append(P(f"{T.ADMIN_WINNER}: {winner.name} ({F.fmt_points(winner.points)})", cls="winner"))
     if active:

@@ -250,7 +250,7 @@ def page_view(conn, session: S.GameSession | None, pw: str, all_: bool = False, 
     active = session.status == "active"
     winner = None if active else next((r for r in C.leaderboard(conn, session.id) if r.user_id == session.winner_user_id), None)
     parts.append(status_bar(session, S.count_players(conn, session.id), None, winner=winner.name if winner else None,
-                            source=source_line(conn, session)))
+                            source=source_line(conn, session) if active else None))   # the video link only while the game runs
     if active:
         parts.append(auto_line())
     parts += [toolbar(q, sort, dir_, all_, active), panel_view(conn, session, pw, all_, q, sort, dir_), Script(src="/admin.js", defer=True), Script(src="/checker.js", defer=True), Script(src="/ckadmin.js", defer=True)]

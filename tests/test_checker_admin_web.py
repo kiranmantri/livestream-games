@@ -364,6 +364,20 @@ def test_a_running_game_is_shown_with_its_players(app, conn, players, text):
     assert T.CK_RUNNING_HEADING in html and text in html and 'action="/checker/join"' in html and T.CK_NONE_HEADING not in html
 
 
+@pytest.mark.parametrize("ended", [False, True])
+def test_the_admin_panel_names_the_video_only_while_the_game_runs(admin, conn, ended):
+    s = S.start_session_as_admin(conn, game_type="checker", video_id=LIVE, source_mode="live")
+    if ended:
+        S.end_session(conn, s.id, None)
+    html = admin.get("/admin/checker", headers=basic()).text
+    url = f"https://www.youtube.com/watch?v={LIVE}"
+    if ended:
+        assert T.ADMIN_ENDED in html and T.SRC_SESSION_LIVE not in html and 'class="srcrow"' not in html
+        assert url not in html.split('<header', 1)[0] + html.split('</header>', 1)[-1]
+    else:
+        assert T.SRC_SESSION_LIVE in html and url in html
+
+
 def test_a_running_game_with_a_video_links_to_it(app, conn):
     S.start_session_as_admin(conn, game_type="checker", video_id=LIVE, source_mode="live")
     html = visitor(app).get("/checker").text

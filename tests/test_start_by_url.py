@@ -356,16 +356,24 @@ def status_panel(html):
     raise AssertionError("unbalanced")
 
 
-@pytest.mark.parametrize("ended", [False, True])
-def test_the_source_link_is_part_of_the_status_panel(web, conn, fal, ended):
+def test_the_source_link_is_part_of_the_status_panel(web, conn, fal):
     go(web, LINK.format(LIVE))
-    if ended:
-        finish_falacias(web, conn)
     html = web.get("/admin/falacias", headers=basic()).text
     panel = status_panel(html)
-    assert (T.ADMIN_ENDED if ended else T.ADMIN_ACTIVE) in panel
+    assert T.ADMIN_ACTIVE in panel
     assert T.SRC_SESSION_LIVE in panel and LINK.format(LIVE) in panel
     assert html.count(T.SRC_SESSION_LIVE) == 1, "not repeated outside the panel"
+
+
+def test_an_ended_game_shows_no_source_link(web, conn, fal):
+    """The video belongs to a RUNNING session: once it ended (or nothing runs) the panel names no live/video."""
+    go(web, LINK.format(LIVE))
+    finish_falacias(web, conn)
+    html = web.get("/admin/falacias", headers=basic()).text
+    assert T.ADMIN_ENDED in status_panel(html)
+    body = html.split("</header>", 1)[-1]          # the header may still show the SESSION's video: Bingo / checker of it keep running
+    assert T.SRC_SESSION_LIVE not in html and T.SRC_VIDEO not in html and LINK.format(LIVE) not in body
+    assert 'class="srcrow"' not in html
 
 
 def test_a_replay_game_names_its_video_in_the_panel(web, conn, fal):
