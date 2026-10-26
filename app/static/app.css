@@ -681,3 +681,37 @@ dialog.startdlg .dlgactions button { min-height: 44px; }
 .showvideo { margin: 4px 0; }
 .showvideo[hidden] { display: none; }
 @media (max-width: 760px) { .panes.three, .panes.three.novideo { grid-template-columns: 1fr; } .pane .pill[data-hidevideo], .showvideo { min-height: 44px; padding: 0 16px; } }
+
+/* fact-checker admin: one card per check */
+ol.queue li.ckitem { background: var(--surface-raised, rgba(255,255,255,.04)); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 6px; }
+.ckitem.needs_admin { border-color: var(--accent); }
+.ckitem .ckclaim { font-weight: 700; overflow-wrap: anywhere; }
+.ckitem .ckscore { font-weight: 800; font-variant-numeric: tabular-nums; }
+.ckitem .ckdecided { font-weight: 700; color: var(--ok); }
+.ckitem .acts { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: end; }
+.ckitem .acts input[type=number] { width: 5.5em; }
+
+/* ---- admin shell v2: row 1 = brand (far left) | the three games | session (start, or video + end) ; row 2 = Jogo | Conteúdo */
+.appbar.admin { flex-direction: column; align-items: stretch; gap: 0; padding-block: 0; }
+.appbar.admin .adminrow { display: flex; align-items: center; gap: 14px; min-height: 52px; padding: 6px 0; min-width: 0; }
+.appbar.admin .brand { flex: 0 0 auto; }
+.appbar.admin .gamenav { flex: 1 1 auto; justify-content: flex-start; min-width: 0; }
+.appbar.admin .sessionctl { display: flex; align-items: center; gap: 10px; margin-left: auto; min-width: 0; flex: 0 1 auto; }
+.appbar.admin .sessionctl form { margin: 0; }
+.appbar.admin .sessionctl button, .appbar.admin .sessionctl a.btn { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 4px 14px; margin: 0; font-size: .9rem; white-space: nowrap; }
+.appbar.admin .sessionurl { color: var(--accent); min-width: 0; max-width: 30ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .85rem; }
+.appbar.admin .subnav { display: flex; gap: 4px; padding: 0 0 4px; border-top: 1px solid var(--line); }
+.appbar.admin .subnav a { display: inline-flex; align-items: center; min-height: 38px; padding: 4px 16px; border-radius: 0 0 10px 10px; text-decoration: none; font-weight: 600; font-size: .9rem; color: var(--muted); }
+.appbar.admin .subnav a:hover { color: var(--text); background: rgba(255,255,255,.05); }
+.appbar.admin .subnav a.active { color: var(--text); background: var(--surface-raised); box-shadow: inset 0 -2px 0 var(--accent); }
+#statusbar { top: 104px; }
+@media (max-width: 1100px) { .appbar.admin .sessionurl { max-width: 16ch; } }
+@media (max-width: 760px) {
+  .appbar.admin .adminrow { flex-wrap: wrap; gap: 6px 10px; }
+  .appbar.admin .brand { flex: 0 0 auto; }
+  .appbar.admin .sessionurl { display: none; }
+  .appbar.admin .sessionctl .pill { display: none; }
+  .appbar.admin .sessionctl button, .appbar.admin .sessionctl a.btn { min-height: 44px; }
+  .appbar.admin .subnav a { min-height: 44px; }
+  #statusbar { top: 0; position: static; }
+}

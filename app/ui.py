@@ -35,8 +35,9 @@ from app import texts as T
 
 COOKIE_MAX_AGE = 60 * 60 * 48
 NAME_COOKIE = "lg_name"          # the nickname, asked once for both games (NOT an identity: only pre-fills joins)
-TAB_PATHS = ("/", "/falacias")
-MENU = (("bingo", T.MENU_BINGO, "/", "🎯", T.MENU_BINGO_SUB), ("falacias", T.MENU_FALACIAS, "/falacias", "🔎", T.MENU_FALACIAS_SUB))
+TAB_PATHS = ("/", "/falacias", "/checker")
+MENU = (("bingo", T.MENU_BINGO, "/", "🎯", T.MENU_BINGO_SUB), ("falacias", T.MENU_FALACIAS, "/falacias", "🔎", T.MENU_FALACIAS_SUB),
+        ("checker", T.MENU_CHECKER, "/checker", "🕵️", T.MENU_CHECKER_SUB))
 BRAND_ICON = "🎲"
 
 
@@ -79,7 +80,7 @@ def personal_link(cookies: dict[str, str] | None = None) -> str | None:
 def usermenu(who: str, current: str):
     """The player's name as a small avatar button; opens a popover with the way to change it (no JS: <details>). To its left, the
     icon with the personal link (only when the player has joined a game)."""
-    path = TAB_PATHS[1] if current == "falacias" else TAB_PATHS[0]
+    path = {"falacias": TAB_PATHS[1], "checker": TAB_PATHS[2]}.get(current, TAB_PATHS[0])
     link = personal_link()
     return Div(A("🔗", href=link, cls="mylink", title=T.MYLINK_TITLE, aria_label=T.MYLINK_TITLE,
                     data_copied=T.MYLINK_COPIED, data_failed=T.MYLINK_FAILED) if link else None,

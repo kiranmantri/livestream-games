@@ -244,24 +244,19 @@ def source_line(conn, session: S.GameSession):
 def page_view(conn, session: S.GameSession | None, pw: str, error: str | None = None, detail: str | None = None,
               replay_error: str | None = None, url_error: str | None = None, url_value: str = "",
               url_notice: str | None = None, show_start: bool = False):
-    can_start = session is None or session.status != "active"
-    parts = [title_row(T.AF_TITLE, start_trigger() if can_start else None)]
-    if can_start:
-        parts.append(start_dialog(conn, pw, url_error, url_notice, url_value, show_start))
+    """The game page. Starting and ending happen in the header (one session for the three games)."""
+    parts = [title_row(T.AF_TITLE)]
     if replay_error:
         parts.append(Div(replay_error, cls="error", role="alert"))
     if error:
         parts.append(Div(error_text(error, detail), cls="error", role="alert"))
     if session is None:
-        parts += [P(T.AF_NO_SESSION, cls="muted"), Script(src="/startdlg.js", defer=True)]
+        parts += [P(T.AF_NO_SESSION, cls="muted"), P(T.SESSION_NONE_HINT, cls="muted")]
         return (Title(T.AF_TITLE), admin_tabs("falacias"), Main(*parts, cls="wide"))
     token = A_.csrf_token(pw, session.id)
     active = session.status == "active"
     winner = None if active else next((r for r in F.leaderboard(conn, session.id) if r.user_id == session.winner_user_id), None)
-    finish = Form(Input(type="hidden", name="session_id", value=str(session.id)), Input(type="hidden", name="csrf", value=token),
-                  Button(T.AF_FINISH, type="submit", cls="primary danger"), method="post", action="/admin/falacias/finish",
-                  onsubmit=f"return confirm({T.AF_FINISH_CONFIRM!r})") if active else None
-    parts.append(status_bar(session, S.count_players(conn, session.id), finish, winner=None, source=source_line(conn, session)))
+    parts.append(status_bar(session, S.count_players(conn, session.id), None, winner=None, source=source_line(conn, session)))
     if not active and winner:
         parts.append(P(f"{T.ADMIN_WINNER}: {winner.name} ({F.fmt_points(winner.points)})", cls="winner"))
     if active:
@@ -273,7 +268,6 @@ def page_view(conn, session: S.GameSession | None, pw: str, error: str | None = 
                          Ol(*[item_view(i, token) for i in items], id="queue", cls="queue only-pending"),
                          P(T.AF_QUEUE_EMPTY, cls="muted empty"), poller(after), Script(src="/admin.js", defer=True), cls="panel"))
     parts.append(side_view(conn, session, token))
-    parts.append(Script(src="/startdlg.js", defer=True) if can_start else None)
     return (Title(T.AF_TITLE), admin_tabs("falacias"), Main(*parts, cls="wide"))
 
 

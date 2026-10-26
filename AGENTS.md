@@ -958,6 +958,39 @@ Also state what the agent itself already ran and its real output; never claim su
     # Mutation check (repo COPY, mutate_fc3.py): 26/26 killed (first run: 3 survivors -> 3 tests added: requeue by another thread, drain without wake, closed connections).
     # NOT checked: the worker against a real model and a real game; the app's startup time/memory with pydantic-ai loaded on Fly (it loads only when CHECKER_MODEL is set).
 
+### Validation for FC5 + the player's tab (admin page /admin/checker: app/checker_admin_web.py; player tab: app/checker_web.py)
+    uv run pytest tests/test_checker_admin_web.py -q   # expect: 58 passed (red run first: 55 failed / 3 passed)
+    uv run pytest -q                                   # expect: 1742 passed, 1 skipped (3 tests in test_refresh.py now count 3 player tabs / 5 admin tabs)
+    uv run migrate                                     # YOU, dev DB: 0012 + 0013 (the checker tables)
+    uv run uvicorn app.main:app --port 8001            # then http://127.0.0.1:8001/admin/checker (user admin, ADMIN_PASSWORD)
+    # Admin: 3rd tab in "Partidas". "Iniciar nova partida" opens the dialog: empty link = game without video (scores by hand work the same); a horizontal live link
+    #   follows the live; a finished video needs its replay already collected (do it on the Falacias tab; this page does NOT queue collections).
+    #   Panel: "Verificacoes" (pending = queued / running / waiting for you; "Mostrar todas" lists decided ones too) and the board. Each check shows the claim, status,
+    #   the guesses ("Ana: -4"), the AI answer (verdict, score, confidence, explanation, sources opening in a new tab) and, while the game runs, "Definir nota" (-5..5)
+    #   and "Ninguem pontua". A score replaces the AI's even when it was confident; points are computed on read, so the board follows at once.
+    #   The panel polls every 3 s with a signature and answers 204 while nothing changed. NOTE: when it DOES change it is redrawn whole, which drops a half-typed score.
+    #   The page says whether the automatic check is on ("Verificacao automatica ligada: <model>") or why not (CHECKER_MODEL unset ...).
+    # Player: 3rd tab "Quem ta metendo o loco?" (/checker) on every page, name gate first. It shows "Nenhuma partida agora" or "Tem uma partida rolando!" (players, video link)
+    #   and follows the game every 10 s. There is NO join / claim form yet (FC4). The personal link (/r) still covers only Bingo and Falacias.
+    # Hand check without a model: start a game here, run the snippet of the FC3 block to insert a claim, score it in the page, then "Encerrar partida".
+    # Mutation check: not run. NOT checked: any of it in a real browser (htmx swaps, dialog, phones: the 3rd player tab label is long for the bottom bar).
+
+### Validation for admin shell v2 (one session for the three games; app/globalsession.py, app/admin_web.py)
+    uv run pytest tests/test_admin_shell.py -q         # expect: 43 passed (red run first: 42 failed). Full suite: uv run pytest -q -> 1763+ passed, 1 skipped
+    # Names: Bingo | Quem é Falacioso? | Aponte o mentiroso! (admin tabs AND the player menu/titles; texts.py). Admin bar: row 1 = brand "Admin" (far left),
+    #   the three games, session controls (right), "Ver o site"; row 2 = Jogo | Conteúdo of the active game (Bingo: Frases do Bingo; Falacioso: Lista de falácias;
+    #   Aponte o mentiroso!: only Jogo, with the cards of every check, pending or decided).
+    # ONE session: "Iniciar sessão" (header, every admin page) opens a dialog: a collected replay (select) OR any YouTube link (a typed link wins). It starts Bingo,
+    #   Falacioso and Aponte o mentiroso! together; the two video games follow the same video (Bingo has none). A game already running is kept. A SOURCE IS REQUIRED
+    #   (empty = message): there is no "Bingo alone / no video" start any more. A finished video not collected yet is queued in the replay catalogue and the dialog says so.
+    #   While anything runs the header shows the video link and "Finalizar sessão" (asks to confirm), which ends all running games (each game's own winner rules).
+    #   No-JS: /admin/session shows the dialog open. Routes: POST /admin/session/start|finish (token A.session_token), GET /admin/session.
+    # Per-game start/finish buttons were REMOVED from the pages. The old routes /admin/start, /admin/finish, /admin/falacias/{start,start-url,finish,replays/*} still exist
+    #   (tested, nothing links to them); /admin/checker/{start,finish} were deleted.
+    # Real Chrome (throwaway DB, replay 'QaReplay001'): dialog, start, header with video + end button at 1280 and 390 px; no sideways scroll; phones: games in the bottom bar.
+    #   NOT checked: ending from the header in the browser, a real live link, Safari/Firefox.
+    # Still to do (next step): the slide panel of both video games (clicks fill an editable text box; remove the "Mensagem para o host" box).
+
 ## Conventions log
 (Append new conventions below as they are agreed.)
 - DB access from services: ALWAYS use an autocommit connection (`app.db.connect()` / pool with

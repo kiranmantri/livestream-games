@@ -413,6 +413,50 @@ def admin_queue_count(conn: psycopg.Connection, session_id: UUID) -> int:
     return conn.execute("SELECT count(*) FROM fact_checks WHERE session_id = %s AND status = 'needs_admin'", (session_id,)).fetchone()[0]
 
 
+PENDING_STATES = ("queued", "running", "needs_admin")
+
+
+@dataclass(frozen=True)
+class AdminCheck:
+    """One check as the admin sees it: the AI answer, the admin's score, and who guessed what."""
+    check_id: UUID
+    claim_text: str
+    status: str
+    verdict: str | None
+    ai_score: int | None
+    confidence: str | None
+    explanation: str
+    sources: list
+    error: str | None
+    admin_score: int | None
+    created_at: datetime
+    guesses: list        # [(player name, guess)] in the order they were sent
+
+
+def admin_checks(conn: psycopg.Connection, session_id: UUID, pending_only: bool = True) -> list[AdminCheck]:
+    """Every check of the session (or only queued / running / waiting for the admin), oldest first, with the guesses."""
+    where = " AND c.status = ANY(%s)" if pending_only else ""
+    args = (session_id, list(PENDING_STATES)) if pending_only else (session_id,)
+    rows = conn.execute(
+        "SELECT c.id, c.claim_text, c.status, c.verdict, c.ai_score, c.confidence, c.explanation, c.sources, c.error, c.admin_score, "
+        f"c.created_at FROM fact_checks c WHERE c.session_id = %s{where} ORDER BY c.created_at, c.id", args).fetchall()
+    guesses: dict = {}
+    for check_id, name, guess in conn.execute(
+            "SELECT k.check_id, u.name, k.guess FROM fact_claims k JOIN users u ON u.id = k.user_id "
+            "WHERE k.session_id = %s ORDER BY k.created_at, k.id", (session_id,)):
+        guesses.setdefault(check_id, []).append((name, guess))
+    return [AdminCheck(*r, guesses=guesses.get(r[0], [])) for r in rows]
+
+
+def admin_check(conn: psycopg.Connection, session_id: UUID, check_id: UUID) -> AdminCheck | None:
+    return next((c for c in admin_checks(conn, session_id, pending_only=False) if c.check_id == check_id), None)
+
+
+def pending_count(conn: psycopg.Connection, session_id: UUID) -> int:
+    return conn.execute("SELECT count(*) FROM fact_checks WHERE session_id = %s AND status = ANY(%s)",
+                        (session_id, list(PENDING_STATES))).fetchone()[0]
+
+
 # ------------------------------------------------------------------ what a player sees
 @dataclass(frozen=True)
 class ClaimView:

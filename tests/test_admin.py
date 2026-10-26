@@ -117,7 +117,7 @@ def test_admin_lists_users_cards_and_marks(web, conn):
     cells = conn.execute("SELECT cells FROM bingo_cards c JOIN users u ON u.id=c.user_id WHERE u.name='Ana'").fetchone()[0]
     assert cells[0]["text"] in html and cells[15]["text"] in html        # real card content shown
     assert "Bia &lt;i&gt; - 3/16" in html
-    assert "/admin/finish" in html and "csrf" in html
+    assert "/admin/session/finish" in html and "Finalizar sessão" in html
 
 
 def test_players_table_read_model(conn):
@@ -138,11 +138,10 @@ def test_users_listed_in_join_order(web):
 
 
 # ------------------------------------------------------------ web: finish
-def _csrf_of(html: str) -> tuple[str, str]:
-    import re
-    sid = re.search(r'name="session_id" value="([^"]+)"', html).group(1)
-    tok = re.search(r'name="csrf" value="([^"]+)"', html).group(1)
-    return sid, tok
+def _csrf_of(conn) -> tuple[str, str]:
+    """The per-session finish token (the page no longer carries it: ending is done from the header)."""
+    sid = S.get_active_session(conn).id
+    return str(sid), A.csrf_token(PW, sid)
 
 
 def test_finish_ends_session_and_records_winner(web, conn):
@@ -152,7 +151,7 @@ def test_finish_ends_session_and_records_winner(web, conn):
     a.post("/mark/0")
     b.post("/mark/0")
     b.post("/mark/1")
-    sid, tok = _csrf_of(admin.get("/admin", headers=basic()).text)
+    sid, tok = _csrf_of(conn)
     r = admin.post("/admin/finish", data={"session_id": sid, "csrf": tok}, headers=basic())
     assert r.status_code == 303 and r.headers["location"] == "/admin"
     st, winner = conn.execute("SELECT status, u.name FROM game_sessions g JOIN users u ON u.id=g.winner_user_id").fetchone()
@@ -189,7 +188,7 @@ def test_double_finish_is_harmless_and_keeps_winner(web, conn):
     a, admin = web(), web("203.0.113.99")
     a.post("/start", data={"name": "Ana"})
     a.post("/mark/0")
-    sid, tok = _csrf_of(admin.get("/admin", headers=basic()).text)
+    sid, tok = _csrf_of(conn)
     for _ in range(2):
         assert admin.post("/admin/finish", data={"session_id": sid, "csrf": tok}, headers=basic()).status_code == 303
     assert conn.execute("SELECT count(*) FROM game_sessions WHERE status='ended' AND winner_user_id IS NOT NULL").fetchone()[0] == 1
@@ -198,7 +197,7 @@ def test_double_finish_is_harmless_and_keeps_winner(web, conn):
 def test_new_game_can_start_after_admin_finish(web, conn):
     a, admin = web(), web("203.0.113.99")
     a.post("/start", data={"name": "Ana"})
-    sid, tok = _csrf_of(admin.get("/admin", headers=basic()).text)
+    sid, tok = _csrf_of(conn)
     admin.post("/admin/finish", data={"session_id": sid, "csrf": tok}, headers=basic())
     assert web("203.0.113.50").post("/start", data={"name": "Caio"}).status_code == 303
     assert "Partida em andamento" in admin.get("/admin", headers=basic()).text
@@ -227,14 +226,13 @@ def test_players_read_model_has_mark_times(conn):
 
 
 # ---------------------------------------------------------------- admin starts a session
-def _start_csrf(html: str) -> str:
-    import re
-    return re.search(r'action="/admin/start".*?name="csrf" value="([^"]+)"', html, re.DOTALL).group(1)
+def _start_csrf(html: str = "") -> str:
+    return A.start_token(PW)
 
 
 def test_admin_page_offers_start_when_no_session(web):
     html = web().get("/admin", headers=basic()).text
-    assert "Iniciar nova partida" in html and 'action="/admin/start"' in html
+    assert "Iniciar sessão" in html and 'action="/admin/session/start"' in html
 
 
 def test_admin_start_flow_then_players_join(web, conn):
@@ -246,7 +244,7 @@ def test_admin_start_flow_then_players_join(web, conn):
     assert s is not None and s.created_by is None
     page = admin.get("/admin", headers=basic()).text
     assert "Partida em andamento" in page and "Jogadores: 0" in page
-    assert "Iniciar nova partida" not in page and "/admin/finish" in page
+    assert "Iniciar sessão" not in page and "/admin/session/finish" in page
     visitor = web("203.0.113.10")
     visitor.cookies.set("lg_name", "Ana")                                     # the name gate comes first
     home = visitor.get("/").text
@@ -258,10 +256,10 @@ def test_admin_start_flow_then_players_join(web, conn):
 def test_admin_start_after_a_finished_game_shows_button_next_to_results(web, conn):
     a, admin = web(), web("203.0.113.99")
     a.post("/start", data={"name": "Ana"})
-    sid, tok = _csrf_of(admin.get("/admin", headers=basic()).text)
+    sid, tok = _csrf_of(conn)
     admin.post("/admin/finish", data={"session_id": sid, "csrf": tok}, headers=basic())
     html = admin.get("/admin", headers=basic()).text
-    assert "Partida encerrada" in html and "Iniciar nova partida" in html
+    assert "Partida encerrada" in html and "Iniciar sessão" in html
     assert admin.post("/admin/start", data={"csrf": _start_csrf(html)}, headers=basic()).status_code == 303
     assert S.get_active_session(conn) is not None
     assert "Fim de jogo!" not in a.get("/").text                             # Ana's old cookie: now sees the join page

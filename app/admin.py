@@ -169,6 +169,15 @@ def fallacies_ok(password: str, token: str | None) -> bool:
     return bool(token) and hmac.compare_digest(fallacies_token(password), token or "")
 
 
+def session_token(password: str) -> str:
+    """One token for the header's start / end of the whole session."""
+    return hmac.new(password.encode(), b"session", hashlib.sha256).hexdigest()
+
+
+def session_ok(password: str, token: str | None) -> bool:
+    return bool(token) and hmac.compare_digest(session_token(password), token or "")
+
+
 def replays_token(password: str) -> str:
     """One token for every replay-catalogue action (add / start / retry / delete)."""
     return hmac.new(password.encode(), b"replays", hashlib.sha256).hexdigest()

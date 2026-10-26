@@ -350,7 +350,7 @@ def test_admin_start_page_never_has_a_video_field_in_the_start_form(conn, test_d
         tc, adm = admin_app(test_db_url, make_live(info))
         with tc:
             html = adm.get("/admin/falacias", headers=basic()).text
-        assert 'name="video"' in html and 'action="/admin/falacias/start-url"' in html      # the start dialog takes ANY link
+        assert 'name="video"' in html and 'action="/admin/session/start"' in html      # the start dialog takes ANY link
         assert 'action="/admin/falacias/start"' not in html                                  # no automatic channel button any more
 
 

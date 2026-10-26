@@ -129,7 +129,7 @@ def test_admin_unmark_blocks_the_cell_and_unblock_lifts_it(web, conn):
     a, admin = web("203.0.113.10"), web("203.0.113.99")
     a.post("/start", data={"name": "Ana"})
     a.post("/mark/3")
-    sid, tok = _csrf_of(admin.get("/admin", headers=basic()).text)
+    sid, tok = _csrf_of(conn)
     uid = str(conn.execute("SELECT id FROM users WHERE name='Ana'").fetchone()[0])
     data = {"session_id": sid, "user_id": uid, "cell": "3", "csrf": tok}
     assert admin.post("/admin/unmark", data={**data, "csrf": "bad"}, headers=basic()).status_code == 403
@@ -174,7 +174,7 @@ def test_admin_unmark_over_htmx_returns_only_the_card_and_the_users_table(web, c
     for i in (0, 1, 2, 3):
         a.post(f"/mark/{i}")                                  # a full row -> star
     page = admin.get("/admin", headers=basic()).text
-    sid, tok = _csrf_of(page)
+    sid, tok = _csrf_of(conn)
     uid = str(conn.execute("SELECT id FROM users WHERE name='Ana'").fetchone()[0])
     assert 'hx-post="/admin/unmark"' in page and f'hx-target="#card-{uid}"' in page and f'id="card-{uid}"' in page
     data = {"session_id": sid, "user_id": uid, "cell": "0", "csrf": tok}

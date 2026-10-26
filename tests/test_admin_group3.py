@@ -44,22 +44,22 @@ def running(conn):
     return s
 
 
-def test_admin_tabs_are_grouped_into_games_and_content(bweb, conn):
+def test_admin_tabs_are_the_three_games_with_a_jogo_conteudo_sub_menu(bweb, conn):
     html = bweb.get("/admin", headers=basic()).text
     nav = re.search(r'<nav[^>]*admintabs.*?</nav>', html, re.DOTALL).group(0)
-    assert nav.count('class="admingroup"') == 2
-    assert nav.index(T.ADMIN_GROUP_GAMES) < nav.index(T.ADMIN_TAB_BINGO) < nav.index(T.ADMIN_TAB_FALACIAS) \
-        < nav.index(T.ADMIN_GROUP_CONTENT) < nav.index(T.ADMIN_TAB_PHRASES) < nav.index(T.ADMIN_TAB_FALLACIES)
-    assert T.ADMIN_TAB_FALLACIES == "Lista de falácias"            # no longer confusable with the game tab
+    assert nav.index(T.ADMIN_TAB_BINGO) < nav.index(T.ADMIN_TAB_FALACIAS) < nav.index(T.ADMIN_TAB_CHECKER)
+    sub = re.search(r'<nav[^>]*subnav.*?</nav>', html, re.DOTALL).group(0)
+    assert sub.index(T.ADMIN_SUB_GAME) < sub.index(T.ADMIN_SUB_CONTENT)
+    assert T.ADMIN_TAB_FALLACIES == "Lista de falácias"
 
 
-def test_bingo_status_bar_has_state_count_elapsed_and_finish_at_the_end(bweb, running):
+def test_bingo_status_bar_has_state_count_and_elapsed_and_no_finish_button(bweb, running):
     html = bweb.get("/admin", headers=basic()).text
-    bar = re.search(r'<div[^>]*id="statusbar".*?action="/admin/finish".*?</form>', html, re.DOTALL)
+    bar = re.search(r'<div[^>]*id="statusbar".*?</div>', html, re.DOTALL)
     assert bar, "sticky status bar"
     b = bar.group(0)
     assert T.ADMIN_ACTIVE in b and 'id="playercount"' in b and re.search(r'<time[^>]*data-since="\d+"', b)
-    assert 'action="/admin/finish"' in b and b.index('id="playercount"') < b.index('action="/admin/finish"')
+    assert 'action="/admin/finish"' not in html and 'action="/admin/session/finish"' in html        # ending lives in the header
     assert 'src="/admin.js"' in html
 
 

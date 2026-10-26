@@ -159,6 +159,14 @@ def ensure_started(db_url: str, checker=None) -> CheckWorker | None:
         return _worker
 
 
+def status() -> tuple[str | None, str | None]:
+    """(model name, None) while the AI worker runs, else (None, why it is off): what the admin page tells the host."""
+    w = _worker
+    if w is not None and w.running():
+        return str(getattr(w.checker, "name", "?")), None
+    return None, _off_reason() or "o servidor ainda não iniciou o verificador"
+
+
 def current() -> CheckWorker | None:
     return _worker
 

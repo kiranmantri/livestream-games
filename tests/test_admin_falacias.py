@@ -114,17 +114,17 @@ def test_admin_is_disabled_without_a_password(conn, test_db_url, monkeypatch):
 def test_tabs_are_on_every_admin_page_with_the_current_one_marked(web, conn):
     for path, key in (("/admin", "/admin"), ("/admin/falacias", "/admin/falacias"), ("/admin/phrases", "/admin/phrases")):
         html = web(IP_ADMIN).get(path, headers=basic()).text
-        assert 'class="menu admintabs"' in html
-        for href in ("/admin", "/admin/falacias", "/admin/phrases"):
+        assert 'class="menu admintabs gamenav"' in html
+        for href in ("/admin", "/admin/falacias", "/admin/checker"):
             assert f'href="{href}"' in html
         assert re.search(rf'<a[^>]*href="{key}"[^>]*aria-current="page"|<a[^>]*aria-current="page"[^>]*href="{key}"', html)
-        assert html.count('aria-current="page"') == 1
+        assert html.count('aria-current="page"') == 2          # the game tab and its Jogo / Conteúdo entry
 
 
 # ================================================================ start / finish
 def test_page_without_a_session_offers_start(web):
     html = web(IP_ADMIN).get("/admin/falacias", headers=basic()).text
-    assert T.AF_NO_SESSION in html and 'data-open="startdlg"' in html and 'action="/admin/falacias/start-url"' in html
+    assert T.AF_NO_SESSION in html and 'data-open="startdlg"' in html and 'action="/admin/session/start"' in html
 
 
 def test_start_needs_csrf_then_creates_an_admin_started_session(web, conn):

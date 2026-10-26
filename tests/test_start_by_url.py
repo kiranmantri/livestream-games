@@ -58,7 +58,7 @@ def web(conn, test_db_url, monkeypatch):
 
 
 def go(web, link="", replay=""):
-    return web.post("/admin/falacias/start-url", data={"csrf": A.start_token(PW), "video": link, "replay": replay}, headers=basic())
+    return web.post("/admin/session/start", data={"csrf": A.session_token(PW), "video": link, "replay": replay}, headers=basic())
 
 
 def active(conn):
@@ -77,8 +77,8 @@ def dialog(html):
 def test_the_start_dialog_has_the_replay_select_and_the_link_box(web, conn, fal):
     html = web.get("/admin/falacias", headers=basic()).text
     d = dialog(html)
-    assert 'action="/admin/falacias/start-url"' in d and 'name="video"' in d and 'name="replay"' in d and "<select" in d
-    assert A.start_token(PW) in d and T.AF_URL_LABEL in d and "open" not in d.split(">")[0].split()
+    assert 'action="/admin/session/start"' in d and 'name="video"' in d and 'name="replay"' in d and "<select" in d
+    assert A.session_token(PW) in d and T.AF_URL_LABEL in d and "open" not in d.split(">")[0].split()
 
 
 def test_the_old_panels_are_gone_from_the_page(web, conn, fal):
@@ -108,13 +108,13 @@ def test_with_no_replays_the_select_says_so(web, conn, fal):
     assert T.AF_REPLAY_EMPTY in dialog(web.get("/admin/falacias", headers=basic()).text)
 
 
-def test_the_title_button_opens_the_dialog_and_works_without_js(web, conn, fal):
+def test_the_header_button_opens_the_dialog_and_works_without_js(web, conn, fal):
     import re
     html = web.get("/admin/falacias", headers=basic()).text
-    assert re.search(r'<a[^>]*data-open="startdlg"[^>]*href="/admin/falacias\?start=1"|<a[^>]*href="/admin/falacias\?start=1"[^>]*data-open="startdlg"', html)
+    assert re.search(r'<a[^>]*data-open="startdlg"[^>]*href="/admin/session"|<a[^>]*href="/admin/session"[^>]*data-open="startdlg"', html)
     assert "<dialog" in html and re.match(r"<dialog[^>]*\bopen\b", dialog(html)) is None
-    forced = web.get("/admin/falacias?start=1", headers=basic()).text
-    assert re.match(r"<dialog[^>]*\bopen\b", dialog(forced)), "no JS: ?start=1 shows the dialog"
+    forced = web.get("/admin/session", headers=basic()).text
+    assert re.match(r"<dialog[^>]*\bopen\b", dialog(forced)), "no JS: /admin/session shows the dialog"
     assert 'src="/startdlg.js"' in html
 
 
@@ -154,7 +154,7 @@ def test_messages_come_back_inside_the_dialog_which_opens_by_itself(web, conn, f
 # ---------------------------------------------------------------- live
 def test_a_horizontal_live_of_any_channel_starts_a_live_game(web, conn, fal):
     r = go(web, LINK.format(LIVE))
-    assert r.status_code == 303 and r.headers["location"] == "/admin/falacias"
+    assert r.status_code == 303 and r.headers["location"] == "/admin"
     assert active(conn) == (LIVE, "live")
     assert S.get_active_session(conn, "falacias").created_by is None
 
@@ -303,39 +303,26 @@ def finish_falacias(web, conn):
     web.post("/admin/falacias/finish", data={"session_id": str(sid), "csrf": A.csrf_token(PW, uuid.UUID(str(sid)))}, headers=basic())
 
 
-def test_the_falacias_start_button_is_called_nova_partida_and_sits_on_the_title_line(web, conn, fal):
-    import re
-    assert T.AF_START == T.ADMIN_START == "Iniciar nova partida"
-    html = web.get("/admin/falacias", headers=basic()).text
-    assert re.search(r'<div class="titlerow">\s*<h1>[^<]*</h1>\s*<a[^>]*data-open="startdlg"[^>]*>' + re.escape(T.AF_START) + "</a>", html, re.DOTALL)
-
-
-def test_the_bingo_start_button_is_on_the_title_line_too(web, conn, fal):
-    import re
-    html = web.get("/admin", headers=basic()).text
-    assert re.search(TITLE_ROW.format("/admin/start", re.escape(T.ADMIN_START)), html, re.DOTALL)
-    assert html.count(f">{T.ADMIN_START}<") == 1
-
-
-def test_no_title_line_button_while_a_game_runs(web, conn, fal):
+def test_no_start_dialog_while_a_game_runs(web, conn, fal):
     go(web, LINK.format(LIVE))
     html = web.get("/admin/falacias", headers=basic()).text
-    assert 'action="/admin/falacias/start"' not in html and T.AF_START not in html and "<dialog" not in html
+    assert "<dialog" not in html and "Iniciar sessão" not in html
 
 
 def test_the_link_form_is_still_there_after_a_game_ended(web, conn, fal):
-    """Bug seen locally: the textbox vanished once a game had ended (the ended page only offered the automatic button)."""
+    """Bug seen locally: the textbox vanished once a game had ended."""
     go(web, LINK.format(LIVE))
-    finish_falacias(web, conn)
+    web.post("/admin/session/finish", data={"csrf": A.session_token(PW)}, headers=basic())
     html = web.get("/admin/falacias", headers=basic()).text
-    assert 'action="/admin/falacias/start-url"' in dialog(html) and 'data-open="startdlg"' in html and T.ADMIN_ENDED in html
+    assert 'action="/admin/session/start"' in dialog(html) and 'data-open="startdlg"' in html and T.ADMIN_ENDED in html
 
 
-def test_a_refused_link_after_a_game_ended_keeps_the_results_and_the_form(web, conn, fal):
+def test_a_refused_link_after_a_game_ended_keeps_the_results(web, conn, fal):
     go(web, LINK.format(LIVE))
     finish_falacias(web, conn)
     r = go(web, LINK.format(VERT))
-    assert T.AF_URL_ERRORS["vertical"] in dialog(r.text) and T.ADMIN_ENDED in r.text
+    assert T.AF_URL_ERRORS["vertical"] in dialog(r.text)
+    assert T.ADMIN_ENDED in web.get("/admin/falacias", headers=basic()).text
 
 
 def test_css_lays_the_title_line_out_with_the_button_on_the_right():

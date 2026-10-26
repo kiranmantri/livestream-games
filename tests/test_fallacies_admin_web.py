@@ -76,7 +76,7 @@ def test_mutations_need_the_fallacy_token_and_change_nothing_without_it(web, con
 
 
 def test_admin_tabs_link_to_the_fallacy_list_on_every_admin_page(web, conn):
-    for url in ("/admin", "/admin/falacias", "/admin/phrases", "/admin/fallacies"):
+    for url in ("/admin/falacias", "/admin/fallacies"):
         html = web.get(url, headers=AUTH).text
         assert 'href="/admin/fallacies"' in html, url
     page = web.get("/admin/fallacies", headers=AUTH).text

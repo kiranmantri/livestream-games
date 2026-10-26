@@ -35,6 +35,8 @@ from starlette.responses import PlainTextResponse, RedirectResponse, Response
 
 from app import (
     admin_web,
+    checker_admin_web,
+    checker_web,
     checkworker,
     falacias_admin_web,
     falacias_web,
@@ -401,11 +403,13 @@ def create_app(db_url: str | None = None, live: livestream.LiveStream | None = N
             conn.execute("SELECT 1")
         return PlainTextResponse("ok")
 
-    admin_web.register(rt, pool)
+    admin_web.register(rt, pool, live)
     phrases_web.register(rt, pool)
     fallacies_web.register(rt, pool)
     falacias_web.register(rt, pool, live)
     falacias_admin_web.register(rt, pool, live)
+    checker_admin_web.register(rt, pool, live)
+    checker_web.register(rt, pool)
     ui.register(rt, pool)
     app.add_middleware(ui.CookieContext)
     return app

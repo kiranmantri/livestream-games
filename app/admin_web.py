@@ -11,6 +11,7 @@ from fasthtml.common import (
     A,
     Button,
     Details,
+    Dialog,
     Div,
     Form,
     Header,
@@ -18,8 +19,10 @@ from fasthtml.common import (
     Label,
     Main,
     Nav,
+    Option,
     P,
     Script,
+    Select,
     Small,
     Span,
     Summary,
@@ -37,11 +40,12 @@ from starlette.responses import PlainTextResponse, RedirectResponse, Response
 
 from app import admin as A_
 from app import cards as C
+from app import feed, globalsession, livestream, replaycollector, timefmt
 from app import marks as M
+from app import replays as R
 from app import scoring as G
 from app import sessions as S
 from app import texts as T
-from app import timefmt
 from app.lines import complete_lines, is_full, line_boxes
 from app.ui import client_ip_of
 
@@ -172,34 +176,88 @@ def admin_page(session: S.GameSession, rows: list[A_.PlayerRow], standings: list
     rank = {s.user_id: s.rank for s in standings}
     active = session.status == "active"
     winner = next((r for r in rows if r.user_id == session.winner_user_id), None)
-    finish = Form(
-        Input(type="hidden", name="session_id", value=str(session.id)),
-        Input(type="hidden", name="csrf", value=token),
-        Button(T.ADMIN_FINISH, type="submit", cls="primary danger"),
-        method="post", action="/admin/finish",
-        onsubmit=f"return confirm({T.ADMIN_FINISH_CONFIRM!r})") if active else None
-    bar = status_bar(session, len(rows), finish, winner.name if winner else None)
+    bar = status_bar(session, len(rows), None, winner.name if winner else None)
     cards = [card_panel(r, session.id, token, active, str(r.user_id) == open_uid) for r in rows]
     return (Title(f"{T.TITLE} - admin"), admin_tabs("bingo"),
-            Main(title_row(f"{T.TITLE} - admin", start_form(start_token) if not active else None), bar,
+            Main(title_row(f"{T.TITLE} - admin"), bar,
                  users_panel(rows, rank, sort, direction, poll=active),
                  H2(T.ADMIN_CARDS), *cards, settings, Script(src="/admin.js", defer=True), cls="wide"))
 
 
-def admin_tabs(active: str):
-    """Two groups: the games being played, and the content behind them (phrases, fallacies)."""
-    games = (("bingo", T.ADMIN_TAB_BINGO, "/admin", "🎯"), ("falacias", T.ADMIN_TAB_FALACIAS, "/admin/falacias", "🔎"))
-    content = (("phrases", T.ADMIN_TAB_PHRASES, "/admin/phrases", "📝"), ("fallacies", T.ADMIN_TAB_FALLACIES, "/admin/fallacies", "📚"))
+GAME_OF = {"bingo": "bingo", "phrases": "bingo", "falacias": "falacias", "fallacies": "falacias", "checker": "checker"}
+GAME_TABS = (("bingo", T.ADMIN_TAB_BINGO, "/admin", "🎯"), ("falacias", T.ADMIN_TAB_FALACIAS, "/admin/falacias", "🔎"),
+             ("checker", T.ADMIN_TAB_CHECKER, "/admin/checker", "🕵️"))
+SUB_TABS = {"bingo": (("bingo", T.ADMIN_SUB_GAME, "/admin"), ("phrases", T.ADMIN_SUB_CONTENT, "/admin/phrases")),
+            "falacias": (("falacias", T.ADMIN_SUB_GAME, "/admin/falacias"), ("fallacies", T.ADMIN_SUB_CONTENT, "/admin/fallacies")),
+            "checker": (("checker", T.ADMIN_SUB_GAME, "/admin/checker"),)}
+_pool = None
 
-    def links(items):
-        return [A(Span(icon, cls="ico", aria_hidden="true"), Span(Span(label, cls="lbl"), cls="txt"),
-                  href=href, cls="active" if key == active else None,
-                  aria_current="page" if key == active else None) for key, label, href, icon in items]
-    return Header(A(Span("🛠", cls="mark", aria_hidden="true"), Span(T.ADMIN_BRAND, cls="name"), href="/admin", cls="brand"),
-                  Nav(Span(T.ADMIN_GROUP_GAMES, cls="admingroup"), *links(games),
-                      Span(T.ADMIN_GROUP_CONTENT, cls="admingroup"), *links(content),
-                      cls="menu admintabs", aria_label="admin"),
-                  A(T.ADMIN_VIEW_SITE, " ↗", href="/", cls="viewsite", target="_blank", rel="noopener"),
+
+def replay_option(r):
+    label = r.title or r.video_id
+    if r.status == "ready":
+        return Option(label, value=r.video_id)
+    return Option(f"{label} — {T.AF_REPLAY_STATUS.get(r.status, r.status)}", value=r.video_id, disabled=True)
+
+
+def session_dialog(conn, pw: str, error: str | None = None, notice: str | None = None, value: str = "", show: bool = False):
+    """"Iniciar sessão": a replay already collected (select) OR any YouTube link. One video for the three games."""
+    rows = R.list_replays(conn)
+    message = bool(error or notice)
+    attrs = {"open": True} if show or message else {}
+    if message:
+        attrs["data_autoopen"] = "1"
+    return Dialog(
+        Form(H2(T.ADMIN_SESSION_START),
+             Div(error, cls="error", role="alert") if error else None,
+             Div(notice, cls="notice", role="status") if notice else None,
+             Input(type="hidden", name="csrf", value=A_.session_token(pw)),
+             Label(T.AF_PICK_LABEL, Select(Option(T.AF_PICK_NONE, value=""), *[replay_option(r) for r in rows], name="replay", aria_label=T.AF_PICK_LABEL)),
+             None if rows else P(T.AF_REPLAY_EMPTY, cls="muted"),
+             Div(T.OR, cls="or"),
+             Label(T.AF_URL_LABEL, Input(type="url", name="video", value=value, placeholder=T.AF_URL_PLACEHOLDER, maxlength="200", autocomplete="off",
+                                         aria_label=T.AF_URL_LABEL)),
+             Small(T.SESSION_DIALOG_HELP, cls="muted"),
+             Div(Button(T.AF_URL_CANCEL, type="button", data_close="1"), Button(T.AF_URL_START, type="submit", cls="primary"), cls="dlgactions"),
+             method="post", action="/admin/session/start"),
+        id="startdlg", cls="startdlg", **attrs)
+
+
+def session_controls(conn, pw: str):
+    """Top right of every admin page: start the session, or (while one runs) its video and the end button."""
+    active = globalsession.active_games(conn)
+    if not active:
+        return Div(A(T.ADMIN_SESSION_START, href="/admin/session", cls="btn primary", data_open="startdlg"), cls="sessionctl")
+    video = globalsession.current_video(conn)
+    url = f"https://www.youtube.com/watch?v={video[0]}" if video else None
+    return Div(A(url.removeprefix("https://www."), href=url, target="_blank", rel="noopener", cls="sessionurl", title=url) if url else None,
+               Form(Input(type="hidden", name="csrf", value=A_.session_token(pw)),
+                    Button(T.ADMIN_SESSION_END, type="submit", cls="primary danger"), method="post", action="/admin/session/finish",
+                    onsubmit=f"return confirm({T.ADMIN_SESSION_END_CONFIRM!r})"),
+               cls="sessionctl")
+
+
+def admin_tabs(active: str, dialog: bool = True):
+    """Top row: brand at the far left, the three games, the session (start / video + end). Second row: Jogo | Conteúdo of the active game."""
+    game = GAME_OF.get(active)
+    pw = A_.admin_password() or ""
+    games = [A(Span(icon, cls="ico", aria_hidden="true"), Span(Span(label, cls="lbl"), cls="txt"),
+               href=href, cls="active" if key == game else None, aria_current="page" if key == game else None)
+             for key, label, href, icon in GAME_TABS]
+    subs = [A(Span(label, cls="lbl"), href=href, cls="active" if key == active else None, aria_current="page" if key == active else None)
+            for key, label, href in SUB_TABS.get(game, ())]
+    conn_ctx = _pool.connection() if _pool is not None else None
+    if conn_ctx is None:
+        controls, dlg = Div(cls="sessionctl"), None
+    else:
+        with conn_ctx as conn:
+            controls = session_controls(conn, pw)
+            dlg = session_dialog(conn, pw) if dialog and not globalsession.active_games(conn) else None
+    return Header(Div(A(Span("🛠", cls="mark", aria_hidden="true"), Span(T.ADMIN_BRAND, cls="name"), href="/admin", cls="brand"),
+                      Nav(*games, cls="menu admintabs gamenav", aria_label="admin"), controls,
+                      A(T.ADMIN_VIEW_SITE, " ↗", href="/", cls="viewsite", target="_blank", rel="noopener"), cls="adminrow"),
+                  Nav(*subs, cls="subnav", aria_label="admin submenu") if subs else None, dlg,
+                  Script(src="/startdlg.js", defer=True) if dlg is not None else None,
                   cls="appbar admin")
 
 
@@ -243,7 +301,10 @@ def denied(request: Request):
     return None
 
 
-def register(rt, pool):
+def register(rt, pool, live: livestream.LiveStream | None = None):
+    global _pool
+    _pool = pool
+    live = live or livestream.LiveStream()
     @rt("/admin")
     def admin_get(request: Request, sort: str = "rank", dir: str = "", open: str = "", err: str = ""):
         if (d := denied(request)) is not None:
@@ -254,7 +315,7 @@ def register(rt, pool):
             settings = ip_limit_form(S.max_users_per_ip(conn), A_.settings_token(pw), err == "ip_limit")
             if session is None:
                 return (Title(f"{T.TITLE} - admin"), admin_tabs("bingo"),
-                        Main(title_row(f"{T.TITLE} - admin", start_form(A_.start_token(pw))), P(T.ADMIN_NO_SESSION, cls="muted"),
+                        Main(title_row(f"{T.TITLE} - admin"), P(T.ADMIN_NO_SESSION, cls="muted"), P(T.SESSION_NONE_HINT, cls="muted"),
                             settings,
                             Div(A(T.ADMIN_PHRASES_LINK, href="/admin/phrases", cls="btn"),
                                 A(T.ADMIN_REFRESH, href="/admin", cls="btn"), cls="adminbar"), cls="wide"))
@@ -286,6 +347,70 @@ def register(rt, pool):
                 S.set_max_users_per_ip(conn, limit)
             except ValueError:
                 return RedirectResponse("/admin?err=ip_limit", status_code=303)
+        return RedirectResponse("/admin", status_code=303)
+
+    # ---- the session: start / end the three games together
+    def session_view(conn, error: str | None = None, notice: str | None = None, value: str = ""):
+        pw = A_.admin_password() or ""
+        return (Title(T.ADMIN_SESSION_START), admin_tabs("", dialog=False),
+                Main(title_row(T.ADMIN_SESSION_START), session_dialog(conn, pw, error, notice, value, show=True), Script(src="/startdlg.js", defer=True),
+                     cls="wide"))
+
+    @rt("/admin/session", methods=["GET"])
+    def session_page(request: Request):
+        if (d := denied(request)) is not None:
+            return d
+        with pool.connection() as conn:
+            if len(globalsession.active_games(conn)) == len(globalsession.GAMES):
+                return RedirectResponse("/admin", status_code=303)
+            return session_view(conn)
+
+    @rt("/admin/session/start", methods=["POST"])
+    def session_start(request: Request, csrf: str = "", video: str = "", replay: str = ""):
+        if (d := denied(request)) is not None:
+            return d
+        if not A_.session_ok(A_.admin_password() or "", csrf):
+            return PlainTextResponse("bad csrf token", status_code=403)
+        shown = video.strip()[:200]
+        with pool.connection() as conn:
+            if len(globalsession.active_games(conn)) == len(globalsession.GAMES):
+                return RedirectResponse("/admin", status_code=303)           # a double click or a stale page
+            try:
+                if shown:                                                      # a typed link wins over the select
+                    source = feed.source_from_url(conn, shown, live.probe)     # may wait ~5-15 s for YouTube
+                elif replay.strip():                                           # a collected replay: nothing to ask YouTube
+                    source = feed.Source("replay", feed.parse_video_id(replay))
+                    feed.check_video_ready(conn, source.video_id)
+                else:
+                    return session_view(conn, error=T.AF_URL_ERRORS["empty"])
+                globalsession.start_all(conn, source)
+            except feed.UrlRefused as e:
+                if e.reason != "not_imported":
+                    return session_view(conn, error=T.AF_URL_ERRORS[e.reason], value=shown)
+                try:                                                           # a finished video: collect its replay (the cache), start later
+                    R.submit(conn, shown)
+                except R.ReplayError as re_:
+                    if re_.code == "already_running":
+                        return session_view(conn, notice=T.AF_URL_COLLECTING, value=shown)
+                    return session_view(conn, error=T.AF_REPLAY_ERRORS.get(re_.code, T.AF_REPLAY_ERRORS["generic"]), value=shown)
+                replaycollector.wake()
+                return session_view(conn, notice=T.AF_URL_QUEUED, value=shown)
+            except feed.FeedUnavailable:                                       # a picked replay that is not ready (forged post)
+                return session_view(conn, error=T.AF_REPLAY_ERRORS.get("not_ready", T.AF_REPLAY_ERRORS["generic"]), value=shown)
+            except feed.InvalidVideo:
+                return session_view(conn, error=T.AF_URL_ERRORS["invalid"], value=shown)
+            except feed.FeedError:
+                return session_view(conn, error=T.ERRORS["generic"], value=shown)
+        return RedirectResponse("/admin", status_code=303)
+
+    @rt("/admin/session/finish", methods=["POST"])
+    def session_finish(request: Request, csrf: str = ""):
+        if (d := denied(request)) is not None:
+            return d
+        if not A_.session_ok(A_.admin_password() or "", csrf):
+            return PlainTextResponse("bad csrf token", status_code=403)
+        with pool.connection() as conn:
+            globalsession.finish_all(conn)               # nothing running: harmless double click
         return RedirectResponse("/admin", status_code=303)
 
     @rt("/admin/start", methods=["POST"])

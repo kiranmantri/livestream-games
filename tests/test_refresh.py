@@ -60,15 +60,15 @@ def test_pages_after_the_gate_have_one_app_bar_with_brand_tabs_and_user_menu(me)
 def test_each_tab_has_an_icon_a_label_and_a_one_line_subtitle(me):
     menu = re.search(r'<nav[^>]*id="menu".*?</nav>', me.get("/").text, re.DOTALL).group(0)
     tabs = re.findall(r"<a [^>]*>.*?</a>", menu, re.DOTALL)
-    assert len(tabs) == 2
-    for tab, label, sub in zip(tabs, (T.MENU_BINGO, T.MENU_FALACIAS), (T.MENU_BINGO_SUB, T.MENU_FALACIAS_SUB), strict=True):
+    assert len(tabs) == 3
+    for tab, label, sub in zip(tabs, (T.MENU_BINGO, T.MENU_FALACIAS, T.MENU_CHECKER), (T.MENU_BINGO_SUB, T.MENU_FALACIAS_SUB, T.MENU_CHECKER_SUB), strict=True):
         assert 'class="ico"' in tab and label in tab and f'<small class="sub">{sub}</small>' in tab
     assert 'aria-current="page"' in tabs[0] and 'aria-current="page"' not in tabs[1]
 
 
 def test_menu_fragment_keeps_icons_and_subtitles(me):
     frag = me.get("/menu?cur=falacias").text
-    assert frag.count('class="ico"') == 2 and frag.count('class="sub"') == 2
+    assert frag.count('class="ico"') == 3 and frag.count('class="sub"') == 3
 
 
 def test_user_menu_shows_the_name_and_change_name_for_the_current_page(me):
@@ -161,15 +161,15 @@ from tests.test_admin_group3 import basic, bweb, running  # noqa: F401
 
 
 def test_every_admin_page_has_the_app_bar_with_icons_brand_and_a_link_to_the_site(bweb, running):
-    for path in ("/admin", "/admin/falacias", "/admin/phrases", "/admin/fallacies"):
+    for path in ("/admin", "/admin/falacias", "/admin/phrases", "/admin/fallacies", "/admin/checker"):
         html = bweb.get(path, headers=basic()).text
         assert re.search(r'<header class="appbar admin"', html), path
         assert re.search(r'<a[^>]*class="brand"[^>]*href="/admin"|<a[^>]*href="/admin"[^>]*class="brand"', html), path
         assert T.ADMIN_BRAND in html and T.ADMIN_VIEW_SITE in html
         assert re.search(r'<a[^>]*href="/"[^>]*class="viewsite"|<a[^>]*class="viewsite"[^>]*href="/"', html), path
         nav = re.search(r"<nav[^>]*admintabs.*?</nav>", html, re.DOTALL).group(0)
-        assert nav.count('class="ico"') == 4, "one icon per tab"
-        assert html.count('aria-current="page"') == 1
+        assert nav.count('class="ico"') == 3, "one icon per game"
+        assert html.count('aria-current="page"') == 2
 
 
 def test_admin_status_pill_has_a_live_dot_only_while_the_game_runs(bweb, running, conn):
