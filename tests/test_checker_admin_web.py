@@ -153,7 +153,7 @@ def test_a_check_waiting_for_the_admin_shows_the_claim_the_ai_result_and_the_gue
     html = admin.get("/admin/checker", headers=basic()).text
     assert "A Terra é plana" in html and T.CK_STATUS["needs_admin"] in html
     assert T.CK_VERDICTS["false"] in html and "-3" in html and T.CK_CONFIDENCE["low"] in html and "Não existem provas." in html
-    assert "Ana: -4" in html and "Bia: +1" in html
+    assert re.search(r"Ana.*?-4", html, re.DOTALL) and re.search(r"Bia.*?\+1", html, re.DOTALL)
     m = re.search(r'<a[^>]*href="https://example.org/a"[^>]*>', html)
     assert m and 'target="_blank"' in m.group(0) and "noopener" in m.group(0)
     assert "Fonte &lt;A&gt;" in html and "Fonte <A>" not in html
@@ -213,7 +213,7 @@ def test_the_admin_sets_a_score_and_only_that_item_comes_back(admin, conn):
     assert r.status_code == 200
     ck = C.get_check(conn, cl.check_id)
     assert (ck.status, ck.admin_score) == ("resolved", -5)
-    assert f'id="ck-{cl.check_id}"' in r.text and f"{T.CK_ADMIN_SCORE}: -5" in r.text and 'id="pendingcount"' in r.text
+    assert f'id="ck-{cl.check_id}"' in r.text and "Nota do apresentador" not in r.text and 'id="pendingcount"' in r.text
     assert "<html" not in r.text
 
 
@@ -234,7 +234,7 @@ def test_the_admin_can_override_a_confident_ai_result_and_the_board_follows(admi
     assert re.search(r"Ana.*?>7<", board, re.DOTALL)
     score(admin, conn, ck.id, "5")
     board = admin.get("/admin/checker?all=1", headers=basic()).text
-    assert re.search(r"Bia.*?>7<", board, re.DOTALL) and "Falso" in board
+    assert re.search(r"Bia.*?>7<", board, re.DOTALL) and "Falsa" in board
 
 
 def test_the_admin_can_score_a_check_the_ai_never_ran(admin, conn):
@@ -361,7 +361,7 @@ def test_no_game_means_about_to_start(app, conn):
 def test_a_running_game_is_shown_with_its_players(app, conn, players, text):
     game(conn, ("Ana", "Bia")[:players])
     html = visitor(app).get("/checker").text
-    assert T.CK_RUNNING_HEADING in html and text in html and T.CK_SOON in html and T.CK_NONE_HEADING not in html
+    assert T.CK_RUNNING_HEADING in html and text in html and 'action="/checker/join"' in html and T.CK_NONE_HEADING not in html
 
 
 def test_a_running_game_with_a_video_links_to_it(app, conn):
@@ -370,10 +370,10 @@ def test_a_running_game_with_a_video_links_to_it(app, conn):
     assert f"https://www.youtube.com/watch?v={LIVE}" in html and T.SRC_SESSION_LIVE in html
 
 
-def test_the_player_page_has_no_join_or_admin_controls_yet(app, conn):
+def test_the_player_page_has_a_join_button_but_no_admin_controls(app, conn):
     game(conn)
     html = visitor(app).get("/checker").text
-    assert 'action="/checker/' not in html and "/admin" not in html and "csrf" not in html
+    assert 'action="/checker/join"' in html and "/admin" not in html and "csrf" not in html
 
 
 def test_the_status_fragment_follows_the_game_without_a_reload(app, conn):

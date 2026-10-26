@@ -89,7 +89,7 @@ def test_submit_answers_with_my_pairs_and_the_leaderboard_out_of_band(web, conn,
     r = a.post("/falacias/mark", data=body(conn, fal, "fala um"))
     assert 'id="side"' in r.text and 'hx-swap-oob="true"' in r.text
     assert "fala um" in r.text and "Espantalho" in r.text and T.FAL_PENDING in r.text
-    assert "Ana" in r.text and "5,0" in r.text                               # the base 5 points, on the leaderboard
+    assert "5,0 pontos" in a.get("/falacias/score").text and T.LEADERBOARD not in r.text     # the base 5 points, in the score line (no panel any more)
 
 
 def test_submit_across_two_lines_of_one_pane(web, conn, fal):
@@ -221,9 +221,10 @@ def test_leaderboard_lists_everybody_ranked_and_marks_me(web, conn, fal):
     b = named(web(IP_B), "Bia")
     b.post("/falacias/join")
     a.post("/falacias/mark", data=body(conn, fal))
-    html = b.get("/falacias/side").text
+    html = b.get("/falacias/board", headers={"hx-request": "true"}).text
     assert html.index("Ana") < html.index("Bia")                                   # Ana has points, Bia none
     assert re.search(r'<li class="me"[^>]*>.*?Bia', html, re.DOTALL) and "Espantalho" not in html   # Ana's pair is not mine
+    assert "Espantalho" not in b.get("/falacias/side").text
 
 
 def test_side_is_per_player_and_needs_identity(web, conn, fal):

@@ -46,6 +46,7 @@ from starlette.responses import RedirectResponse, Response
 from app import falacias as F
 from app import feed, livestream, sttworker, timefmt
 from app import host_messages as H
+from app import scorebar as SB
 from app import sessions as S
 from app import texts as T
 from app.ui import (
@@ -167,13 +168,23 @@ def side_view(conn, me: S.Player, oob: bool = False):
     names = {f.id: f.name for f in F.list_fallacies(conn, enabled_only=False)}
     mine = [Li(Span(status_badge(m), Span(F.fmt_points(F.points_of(m)), cls="pts"), cls="meta"),
                Span(f"“{m.quote}”", cls="q"), Span(names.get(m.fallacy_id, "?"), cls="fl")) for m in F.user_marks(conn, me.id)]
-    rows = F.leaderboard(conn, me.session_id)
-    board = [Li(Span(f"{r.rank}.", cls="pos"), Span(r.name, cls="nm"), Span(F.fmt_points(r.points), cls="pts"),
-                cls="me" if r.user_id == me.id else None) for r in rows]
     return Div(Div(H2(T.FAL_MINE), Ol(*mine, cls="pairs") if mine else P(T.FAL_NO_PAIRS, cls="muted"), cls="panel"),
-               Div(H2(T.LEADERBOARD), Ol(*board, cls="lb"), cls="panel"),
                id="side", cls="side", hx_get="/falacias/side", hx_trigger="every 5s", hx_swap="outerHTML",
                **({"hx_swap_oob": "true"} if oob else {}))
+
+
+def points_text(hundredths: int) -> str:
+    return T.POINTS_N.format(n=F.fmt_points(hundredths))
+
+
+def score_view(conn, me: S.Player):
+    rows = F.leaderboard(conn, me.session_id)
+    mine = next((r for r in rows if r.user_id == me.id), None)
+    return SB.score_bar("/falacias", me.name, points_text(mine.points if mine else 0))
+
+
+def board_view(conn, me: S.Player):
+    return SB.board_list([(r.rank, r.name, points_text(r.points), r.user_id == me.id) for r in F.leaderboard(conn, me.session_id)])
 
 
 def source_view(live: livestream.LiveStream, sess: tuple[str | None, str | None] | None = None):
@@ -219,7 +230,7 @@ def entry_view(active: S.GameSession | None, n_players: int = 0, error: str | No
 
 
 def game_view(me: S.Player, events: list[feed.Event], last_id: int, st: str, fallacies, side, source=None,
-              live: bool = False, video_id: str | None = None, stt: bool = False, tr: str = "ok"):
+              live: bool = False, video_id: str | None = None, stt: bool = False, tr: str = "ok", score=None):
     stt = stt and live
     by_kind = {k: [e for e in events if e.kind == k] for k, _ in PANES}
     intro = [P(T.FAL_LIVE_HOW_TO_STT if stt else T.FAL_LIVE_HOW_TO, cls="muted")] if live else [P(T.FAL_HOW_TO, cls="muted"), P(T.FAL_PICK_HELP, cls="muted"),
@@ -227,7 +238,7 @@ def game_view(me: S.Player, events: list[feed.Event], last_id: int, st: str, fal
     show = bool(live and video_id)                  # live game: video | chat | transcript; replay: transcript | chat as before
     kinds = (("chat", T.FAL_CHAT), ("transcript", T.FAL_TRANSCRIPT)) if show else PANES
     return fal_page(
-        H1(T.FAL_TITLE), P(f"{me.name} ({T.YOU})", cls="tag"), *intro,
+        H1(T.FAL_TITLE), score or P(f"{me.name} ({T.YOU})", cls="tag"), *intro,
         source,
         banner_view(st, live=live),
         stt_banner_view(tr) if stt else None,
@@ -240,6 +251,7 @@ def game_view(me: S.Player, events: list[feed.Event], last_id: int, st: str, fal
         poller_view(last_id, st, tr if stt else None),
         picker_view(fallacies),
         side,
+        SB.board_dialog(),
         Script(src="/falacias.js", defer=True),
         cls="fal", who=me.name)
 
@@ -308,7 +320,7 @@ def register(rt, pool, live: livestream.LiveStream | None = None) -> None:
                 return game_view(me, events, feed.last_event_id(conn, me.session_id), feed.status(conn, me.session_id),
                                  F.list_fallacies(conn), side_view(conn, me), source_view(live, src),
                                  live=src[1] == "live", video_id=src[0],
-                                 stt=stt, tr=sttworker.health(me.session_id) if stt else "ok")
+                                 stt=stt, tr=sttworker.health(me.session_id) if stt else "ok", score=score_view(conn, me))
             active = S.get_active_session(conn, GAME)
             found = S.find_player(conn, token_of(request, GAME))
             if active is None and found and found[1].status == "ended" and found[1].game_type == GAME:
@@ -413,6 +425,26 @@ def register(rt, pool, live: livestream.LiveStream | None = None) -> None:
     def falacias_source(request: Request):
         with pool.connection() as conn:
             return fragment(source_view(live, session_src(conn, request)))        # public information, like /menu
+
+    @rt("/falacias/score")
+    def falacias_score(request: Request):
+        with pool.connection() as conn:
+            me = S.resume(conn, token_of(request, GAME), GAME)
+            if me is None:
+                return Response(status_code=200, headers={"HX-Refresh": "true"})
+            return Response(to_xml(score_view(conn, me)), media_type="text/html")
+
+    @rt("/falacias/board")
+    def falacias_board(request: Request):
+        """The modal's body (htmx), or a plain page when the link is followed without JS."""
+        with pool.connection() as conn:
+            me = S.resume(conn, token_of(request, GAME), GAME)
+            if me is None:
+                return Response(status_code=200, headers={"HX-Refresh": "true"})
+            board = board_view(conn, me)
+        if request.headers.get("hx-request"):
+            return Response(to_xml(board), media_type="text/html")
+        return fal_page(H1(T.SCORE_NOW), Div(board, cls="panel"), P(A(T.FAL_TITLE, href="/falacias")), who=me.name)
 
     @rt("/falacias/side")
     def falacias_side(request: Request):

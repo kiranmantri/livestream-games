@@ -250,12 +250,14 @@ def tick(conn: psycopg.Connection, session_id: UUID, cfg: FeedConfig | None = No
     with conn.transaction():
         # one releaser per session at a time: stream_events ids must follow the replay offsets
         conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (f"falacias-feed:{session_id}",))
-        row = conn.execute("SELECT extract(epoch FROM clock_timestamp() - created_at) * 1000, video_id, source_mode "
-                           "FROM game_sessions WHERE id = %s AND status = 'active' AND game_type = 'falacias'",
+        row = conn.execute("SELECT extract(epoch FROM clock_timestamp() - created_at) * 1000, video_id, source_mode, game_type "
+                           "FROM game_sessions WHERE id = %s AND status = 'active' AND game_type IN ('falacias', 'checker')",
                            (session_id,)).fetchone()
         if row is None:
             return 0
         if row[2] == "live":          # no replay clock: its chat arrives from the chat worker (started here, once)
+            if row[3] == "checker":
+                return _mirror_live(conn, session_id, row[1])
             chatworker.ensure(session_id, row[1])
             sttworker.ensure(session_id, row[1])          # None unless STT_PROVIDER is configured
             return 0
@@ -275,6 +277,32 @@ def tick(conn: psycopg.Connection, session_id: UUID, cfg: FeedConfig | None = No
             "ORDER BY r.offset_ms, r.id ON CONFLICT DO NOTHING",
             {"sid": session_id, "vid": cfg.video_id, "start": cfg.start_at_ms, "speed": cfg.speed, "limit": limit_ms},
         ).rowcount
+
+
+def sibling_falacias(conn: psycopg.Connection, session_id: UUID) -> tuple[UUID, str] | None:
+    """The active Falácias session that follows the same video as this (checker) session: it owns the chat and STT workers."""
+    row = conn.execute("SELECT f.id, f.video_id FROM game_sessions c JOIN game_sessions f ON f.video_id = c.video_id "
+                       "WHERE c.id = %s AND f.game_type = 'falacias' AND f.status = 'active' AND f.source_mode = 'live' "
+                       "ORDER BY f.created_at DESC LIMIT 1", (session_id,)).fetchone()
+    return (row[0], row[1]) if row else None
+
+
+def _mirror_live(conn: psycopg.Connection, session_id: UUID, video_id: str) -> int:
+    """A live CHECKER session has no workers of its own (one chat poll and one STT bill per live, not two): the workers run for the
+    Falácias session of the same video, and its new lines are copied here (same text, author, time and source key)."""
+    sib = sibling_falacias(conn, session_id)
+    if sib is None:
+        return 0
+    chatworker.ensure(sib[0], sib[1])
+    sttworker.ensure(sib[0], sib[1])
+    return conn.execute(
+        "INSERT INTO stream_events (session_id, kind, source_key, author, text, fed_at) "
+        "SELECT %(c)s, f.kind, f.source_key, f.author, f.text, f.fed_at FROM stream_events f "
+        "WHERE f.session_id = %(f)s AND f.kind IN ('transcript', 'chat') "
+        "  AND f.id > COALESCE((SELECT max(f2.id) FROM stream_events f2 JOIN stream_events c2 "
+        "                        ON c2.session_id = %(c)s AND c2.kind = f2.kind AND c2.source_key = f2.source_key "
+        "                       WHERE f2.session_id = %(f)s), 0) "
+        "ORDER BY f.id ON CONFLICT DO NOTHING", {"c": session_id, "f": sib[0]}).rowcount
 
 
 _last_tick: dict[UUID, float] = {}
@@ -328,6 +356,9 @@ def status(conn: psycopg.Connection, session_id: UUID, cfg: FeedConfig | None = 
     cfg = cfg or feed_config()
     video_id, mode = session_source(conn, session_id)
     if mode == "live":
+        if conn.execute("SELECT game_type FROM game_sessions WHERE id = %s", (session_id,)).fetchone()[0] == "checker":
+            sib = sibling_falacias(conn, session_id)
+            return chatworker.health(sib[0]) if sib else "down"
         return chatworker.health(session_id)
     if video_id:
         cfg = replace(cfg, video_id=video_id)

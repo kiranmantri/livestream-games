@@ -350,7 +350,6 @@ CK_TAGLINE = "Alguém disse algo na live. É verdade ou é lorota? Dê o seu pal
 CK_NONE_HEADING = "Nenhuma partida agora"
 CK_NONE_HELP = "Quando o apresentador iniciar uma partida, ela aparece aqui. Deixe esta página aberta."
 CK_RUNNING_HEADING = "Tem uma partida rolando!"
-CK_SOON = "Em breve você poderá entrar na partida e dar a sua nota às frases."
 ADMIN_TAB_CHECKER = "Aponte o mentiroso!"
 CK_ADMIN_TITLE = "Aponte o mentiroso! - admin"
 CK_NO_SESSION = "Nenhuma partida de “Aponte o mentiroso!” em andamento."
@@ -367,7 +366,7 @@ CK_SHOW_ALL = "Mostrar todas"
 CK_SHOW_PENDING = "Mostrar só as pendentes"
 CK_NO_CHECKS = "Nenhuma verificação pendente."
 CK_STATUS = {"queued": "Na fila", "running": "Verificando", "done": "Verificada", "needs_admin": "Aguardando você", "resolved": "Resolvida"}
-CK_VERDICTS = {"true": "Verdadeiro", "partial": "Parcial", "false": "Falso", "unverifiable": "Não verificável"}
+CK_VERDICTS = {"true": "Verdadeira", "partial": "Parcial", "false": "Falsa", "unverifiable": "Não verificável"}
 CK_CONFIDENCE = {"low": "confiança baixa", "medium": "confiança média", "high": "confiança alta"}
 CK_AI = "IA"
 CK_GUESSES = "Palpites"
@@ -376,7 +375,6 @@ CK_ERROR = "Erro"
 CK_SCORE_LABEL = "Nota"
 CK_SET_SCORE = "Definir nota"
 CK_DISMISS = "Ninguém pontua"
-CK_ADMIN_SCORE = "Nota do apresentador"
 CK_DISMISSED = "Descartada pelo apresentador"
 CK_FINISH_CONFIRM = "Encerrar a partida agora? Depois disso não dá mais para dar notas."
 CK_COL_EXACT = "Na mosca"
@@ -393,3 +391,62 @@ ADMIN_SUB_GAME = "Jogo"
 ADMIN_SUB_CONTENT = "Conteúdo"
 SESSION_NONE_HINT = "Nenhuma partida em andamento. Use “Iniciar sessão”, no alto da página, para começar os três jogos de uma vez."
 SESSION_DIALOG_HELP = "Um só vídeo vale para os três jogos. Live horizontal: acompanha a live. Vídeo já encerrado: o replay é coletado e guardado; quando ficar pronto, escolha-o na lista."
+
+# ---- Aponte o mentiroso!: the player's game page (FC4)
+CK_JOIN_HEADING = "Entrar na partida"
+CK_HOW_TO = ("Clique numa frase do chat ou da transcrição (ou escreva uma). Escolha a sua nota, de -5 (💩 mentira feia) a +5 (⭐ verdade "
+             "de ponta a ponta), e envie. A IA confere na internet e quem chegar mais perto da nota certa ganha mais pontos.")
+CK_AUTO_LABEL = "Verificação automática, pode conter erros"
+CK_PANEL_BAR = "Enviar uma frase"
+CK_GUESS_LABEL = "Sua nota"
+CK_NOTE_LABEL = "Frase"
+CK_NOTE_PLACEHOLDER = ("Clique no chat ou na transcrição para trazer a frase até aqui. Você pode editar o texto, ou escrever o que foi "
+                       "dito (se o chat ou a transcrição falhou).")
+CK_SEND = "Enviar"
+CK_SENT = "Frase enviada! Já estamos conferindo."
+CK_MINE = "Minhas frases"
+CK_NO_CLAIMS = "Você ainda não enviou nenhuma frase."
+CK_STATE_WAITING = "Verificando…"
+CK_STATE_ADMIN = "Aguardando o apresentador"
+CK_STATE_DISMISSED = "Descartada pelo apresentador"
+CK_YOUR_GUESS = "Seu palpite"
+CK_FINAL = "Nota final"
+CK_POINTS = "{n} pts"
+CK_GAME_OVER = "Fim da partida!"
+CK_WINNER = "Vencedor(a): {name} com {pts} pontos"
+CK_COL_PLAYER = "Jogador"
+CK_ERRORS = {
+    "bad_guess": "Escolha a sua nota, de -5 a +5.",
+    "bad_selection": "Seleção inválida. Selecione o trecho de novo.",
+    "selection_too_long": "Trecho grande demais. Selecione um trecho menor.",
+    "spoken_too_long": "Frase longa demais (máximo 300 caracteres).",
+    "note_too_long": "Frase longa demais (máximo 280 caracteres).",
+    "rate_limited": "Calma! Aguarde {n} s entre frases.",
+    "claim_limit_reached": "Você já enviou o máximo de {max} frases nesta partida.",
+    "duplicate_claim": "Você já enviou essa frase.",
+    "empty": "Selecione um trecho ou escreva uma frase.",
+    "feed_down": FAL_ERRORS["feed_down"],
+    "generic": "Algo deu errado. Tente de novo.",
+}
+
+# ---- score line + modal (both video games)
+SCORE_NOW = "Placar atual"
+SCORE_CLOSE = "Fechar"
+POINTS_N = "{n} pontos"
+
+# ---- /admin/checker table
+CK_TH_CLAIM = "Alegação"
+CK_TH_POINTS = "Pontos"
+CK_LINE_GUESS = "Palpite"
+CK_LINE_AI = "IA"
+CK_LINE_HOST = "Host"
+CK_EDIT = "Editar"
+CK_RECHECK = "Verificar"
+CK_HOST_EDIT = "Clique para definir o score do host"
+CK_TH_HOST_SCORE = "Score do host"
+CK_TH_AI_CHECK = "Verificação da IA"
+CK_TH_ACTIONS = "Ações"
+CK_SEARCH_LABEL = "Buscar nas verificações"
+CK_SEARCH_PLACEHOLDER = "Buscar por jogador, alegação, verificação…"
+CK_SEARCH_BTN = "Buscar"
+CK_NO_MATCH = "Nenhuma verificação encontrada para essa busca."

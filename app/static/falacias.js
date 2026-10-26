@@ -127,12 +127,13 @@
     clearSelection();
     picker.hidden = true;
     picker.querySelectorAll('input[type=radio]').forEach(function (r) { r.checked = false; });
-    field('filter').value = '';
+    if (field('filter')) field('filter').value = '';
     field('note').value = '';
     filter();
   }
   document.getElementById('pk-clear').addEventListener('click', closeAll);
   document.body.addEventListener('fal:sent', closeAll);            // sent by the server (HX-Trigger) after anything was stored
+  document.body.addEventListener('ck:sent', closeAll);             // the same for Aponte o mentiroso!
 
   // ---------------------------------------------------------------- click a line = select / deselect it
   // Faster than dragging. Lines of one pane stay contiguous: a click next to the current selection extends it, a click on its first or
@@ -181,6 +182,7 @@
   // ---------------------------------------------------------------- fallacy filter (accent/case-insensitive)
   function fold(s) { return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
   function filter() {
+    if (!field('filter')) return;                    // Aponte o mentiroso! has no fallacy list
     var q = fold(field('filter').value.trim());
     picker.querySelectorAll('.grp').forEach(function (g) {
       var any = false;
@@ -192,7 +194,7 @@
       g.hidden = !any;
     });
   }
-  field('filter').addEventListener('input', filter);
+  if (field('filter')) field('filter').addEventListener('input', filter);
 })();
 
 // ---------------------------------------------------------------- hide / show the video panel (live games)

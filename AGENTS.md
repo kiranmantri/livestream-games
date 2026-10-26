@@ -995,6 +995,47 @@ Also state what the agent itself already ran and its real output; never claim su
     #   A selection without a fallacy is still refused. Tests: tests/test_unified_panel.py (+5). Full suite 1768 passed, 1 skipped.
     #   NOT checked in a browser (box filling on click, extending a selection, phones). Aponte o mentiroso! gets the same panel with FC4 (claim form).
 
+### Validation for FC4 (player side of Aponte o mentiroso!: app/checker_web.py, feed mirror in app/feed.py)
+    uv run pytest tests/test_checker_play.py -q        # expect: 43 passed (the first 38 were written before the code but not run red; the 5 card tests were run red first). Full suite: uv run pytest -q -> 1811 passed, 1 skipped
+    # /checker: no game = "Nenhuma partida agora"; a game running = status + "Entrar na partida" (POST /checker/join, cookie lg_token_checker, same name as the other games).
+    #   A player NEVER starts a game here (the admin's session does). Joined: video | chat | transcript (live; replay = transcript | chat, no video), the slide panel of
+    #   Falacioso (same falacias.js: a click writes the passage into ONE text box) + a rating -5..+5 (radio buttons), "Minhas frases" and the leaderboard (polled every 5 s).
+    #   POST /checker/mark: rating required; text box untouched/empty with a selection = anchored claim (kind chat|transcript); edited or no selection = typed claim (kind spoken,
+    #   <= 280 chars). Errors in pt-BR (T.CK_ERRORS). After a claim checkworker.wake() runs. "My claims": Verificando... / Aguardando o apresentador / Descartada, then the verdict,
+    #   explanation, sources (http/https only, rel=noopener noreferrer), my guess, the final score (admin's replaces the AI's) and points. End screen: winner, table, my claims.
+    # Claim cards: "Minhas frases" (and the end screen) draw each claim as a small <details class="ckcard" data-id=claim id>. COLLAPSED: the phrase (2 lines max),
+    #   state/verdict badge, my guess icons -> final icons, points. EXPANDED: guess/final with numbers, explanation, sources. app/static/checker.js (~15 lines) keeps cards
+    #   open across the 5 s poll and after a send (htmx:beforeSwap/afterSwap). Tests: 5 new (red first). Real Chrome: a card opened by hand stayed open after a poll. Not checked on a phone.
+    # Score line + modal (BOTH video games, app/scorebar.py, board.js): the "Placar" panel is gone from the player page. Under the title: "Kiran (você) · 5 pontos · Placar atual"
+    #   (re-read every 5 s from /<game>/score). The link opens a modal (<dialog id=scoredlg>) whose body is loaded from /<game>/board (always fresh; the dialog lives outside the polled
+    #   element, so the redraw never closes it); without JS the link opens /<game>/board as a page. Falacioso shows points as "5,0 pontos", Aponte o mentiroso! as "7 pontos".
+    #   The end screens keep their ranking table. "My pairs" / "My claims" are now small cards in a 3-column grid (2 under 1000 px, 1 under 760 px) in BOTH games (ol.pairs in app.css).
+    #   Tests: tests/test_scorebar.py (11, red first); 4 old tests that read the leaderboard from /<game>/side now read /<game>/board. Full suite 1822 passed, 1 skipped.
+    #   Real Chrome (throwaway DB, checker): bar, modal with 2 players, 3-column cards, an expanded card does not stretch its neighbours. NOT checked: the Falacioso page in a browser, phones.
+    # SHARED FEED (important): a LIVE checker session has no chat/STT worker of its own. feed.tick mirrors the new lines of the active Falácias session with the SAME video
+    #   (feed._mirror_live, same source_key) and starts the workers on THAT session: one chat poll and one Groq bill per live. Chat health = the sibling's. No sibling = nothing
+    #   arrives and the page says the feed is down (the global session always starts both). A replay checker session releases the replay lines on its own clock.
+    #   Also: falacias.js now tolerates a panel without the fallacy filter and closes the panel on the `ck:sent` event.
+    # Real Chrome (throwaway DB, replay session): join, click a chat line -> text appears in the box, rating -4, send -> "Verificando...", then the AI answer (set by a script)
+    #   shows verdict, explanation, 2 sources, 7 pts; phone width 390 px: no sideways scroll. A selected claim is refused while the feed is "down" (no replay rows): correct.
+    #   NOT checked: a real live (video panel + mirrored chat), the real model through the page, the panel on a phone, Safari/Firefox. No mutation check yet.
+
+### Validation for the /admin/checker table (app/checker_admin_web.py, app/static/ckadmin.js)
+    uv run pytest tests/test_checker_admin_table.py tests/test_checker_admin_search.py -q   # expect: 19 + 14 passed (red run first for each feature)
+    uv run pytest -q                                   # expect: all passed
+    uv run uvicorn app.main:app --port 8001            # http://127.0.0.1:8001/admin/checker (user admin, ADMIN_PASSWORD), with a checker game and a claim
+    # Columns: Jogador | Alegacao | Pontos | Verificacao da IA | Acoes. One <tbody> per check, one row per player; claim, AI check and actions span the rows.
+    #   Pontos = 3 one-line rows: "Palpite: / IA: / Host:" as poop (negative) or stars (positive), 0 = neutral face, none = dash. Click "Host" (or the Editar button)
+    #   -> a palette of -5..+5 opens (position: fixed, so the scrolling table never clips it); a click saves via htmx and swaps ONLY that tbody. Esc / outside click closes.
+    #   Alegacao and the AI check are folded to one line (arrow on the same line); the open ones stay open across the 3 s poll.
+    # Search box (right) is outside the polled panel; it filters on the server (case/accent-insensitive: player, claim, explanation, verdict, state). Header links sort
+    #   (player, claim, points = host score else AI score, check); empty values always last. "Mostrar so pendentes" (left) keeps the search text.
+    # "Verificar" (Acoes) shows only when the AI call failed (needs_admin WITH an error): POST /admin/checker/recheck re-queues it (runs reset, error cleared) and wakes the worker.
+    # Verdict labels are feminine: Verdadeira / Falsa / Parcial / Nao verificavel.
+    # Out-of-band pieces of a <tbody> reply sit in a <template>, else the browser pulls the board's own table into the page (seen with the score field).
+    # Real Chrome (throwaway DB): Editar opens the palette (it was clipped by overflow before), a click saved +3 and showed 3 stars. NOT checked: phones, the Verificar button in a browser,
+    #   "Confianca alta" wrapping with a real AI result, Safari/Firefox. No mutation check.
+
 ## Conventions log
 (Append new conventions below as they are agreed.)
 - DB access from services: ALWAYS use an autocommit connection (`app.db.connect()` / pool with

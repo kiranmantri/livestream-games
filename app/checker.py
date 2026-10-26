@@ -385,6 +385,19 @@ def admin_dismiss(conn: psycopg.Connection, session_id: UUID, check_id: UUID) ->
     return _resolve(conn, session_id, check_id, None)
 
 
+def admin_recheck(conn: psycopg.Connection, session_id: UUID, check_id: UUID) -> Check:
+    """"Verificar": the AI call failed and the admin asks for a fresh try (runs counter and error are cleared, the worker picks it up)."""
+    ensure_autocommit(conn)
+    _require_active(conn, session_id)
+    with conn.cursor(row_factory=class_row(Check)) as cur:
+        cur.execute("UPDATE fact_checks SET status = 'queued', attempts = 0, error = NULL, finished_at = NULL "
+                    f"WHERE id = %s AND session_id = %s AND status = 'needs_admin' AND error IS NOT NULL RETURNING {_CHECK_COLS}", (check_id, session_id))
+        row = cur.fetchone()
+    if row is None:
+        raise CheckNotFound("no failed check to retry")
+    return row
+
+
 @dataclass(frozen=True)
 class QueueItem:
     check_id: UUID
