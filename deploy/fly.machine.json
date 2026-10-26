@@ -50,7 +50,8 @@
         "TIMEZONE": "America/Sao_Paulo",
         "XDG_CACHE_HOME": "/tmp/.cache",
         "STT_PROVIDER": "groq",
-        "STT_LANGUAGE": "pt"
+        "STT_LANGUAGE": "pt",
+        "CHECKER_MODEL": "openrouter:openai/gpt-oss-120b"
       },
       "depends_on": [
         {
@@ -90,6 +91,10 @@
         {
           "env_var": "GROQ_API_KEY",
           "name": "GROQ_API_KEY"
+        },
+        {
+          "env_var": "OPENROUTER_API_KEY",
+          "name": "OPENROUTER_API_KEY"
         }
       ]
     }
