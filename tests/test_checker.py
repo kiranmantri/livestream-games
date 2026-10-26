@@ -69,8 +69,7 @@ def test_points_are_zero_while_there_is_no_final_score():
     ("done", "unverifiable", 0, None, None),       # nobody scores on an unverifiable claim
     ("queued", None, None, None, None), ("running", None, None, None, None),
     ("needs_admin", "false", -3, None, None),      # low confidence: the AI result is shown, points wait for the admin
-    ("resolved", "false", -3, 4, 4),               # the admin's score wins
-    ("resolved", "false", -3, None, None),         # dismissed
+    ("needs_admin", "false", -3, 4, 4),            # the admin's score wins (dismissed: tests/test_checker_host_and_ai.py)
     ("done", "false", -3, 2, 2),                   # an override of a confident result also wins
 ])
 def test_final_score(status, verdict, ai_score, admin, expected):
@@ -368,20 +367,21 @@ def test_the_admin_score_resolves_a_check_and_wins(conn):
     s, ana, bia, cl, ck = _running(conn)
     C.complete_check(conn, ck.id, ai(confidence="low"))
     out = C.admin_set_score(conn, s.id, ck.id, 4)
-    assert out.status == "resolved" and out.admin_score == 4 and out.resolved_at is not None
+    assert out.status == "needs_admin" and out.admin_score == 4 and out.resolved_at is not None and out.final == 4   # AI state kept (0014)
 
 
 def test_the_admin_can_dismiss_a_check_so_nobody_scores(conn):
     s, ana, bia, cl, ck = _running(conn)
     C.complete_check(conn, ck.id, ai(verdict="unverifiable", score=0, sources=[]))
     out = C.admin_dismiss(conn, s.id, ck.id)
-    assert out.status == "resolved" and out.admin_score is None
+    assert out.decided and out.admin_score is None and out.final is None
 
 
 def test_the_admin_can_score_a_check_that_failed_or_is_still_queued(conn):
     s, (ana, _) = game(conn)
     cl = typed(conn, ana)
-    assert C.admin_set_score(conn, s.id, cl.check_id, -2).status == "resolved"
+    out = C.admin_set_score(conn, s.id, cl.check_id, -2)
+    assert (out.status, out.decided, out.final) == ("queued", True, -2)    # the AI still runs (0014)
 
 
 @pytest.mark.parametrize("bad", [-6, 6, 1.5, "2", None, True])

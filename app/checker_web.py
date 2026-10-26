@@ -137,16 +137,16 @@ def feedback_view(code: str | None = None, ok: bool = False):
 def claim_view(v: C.ClaimView):
     """One of my claims: the phrase, my guess, the state or the answer (verdict, explanation, sources) and my points."""
     answered = v.status in ("done", "needs_admin") and v.verdict is not None
-    if v.status in ("queued", "running"):
-        state = Span(T.CK_STATE_WAITING, cls="badge pending")
-    elif v.status == "needs_admin":
-        state = Span(T.CK_STATE_ADMIN, cls="badge pending")
-    elif v.status == "resolved" and v.admin_score is None:
+    if v.decided and v.admin_score is None:
         state = Span(T.CK_STATE_DISMISSED, cls="badge spam")
+    elif v.status in ("queued", "running"):            # also with a host score: the AI's explanation is still coming
+        state = Span(T.CK_STATE_WAITING, cls="badge pending")
+    elif v.status == "needs_admin" and not v.decided:
+        state = Span(T.CK_STATE_ADMIN, cls="badge pending")
     else:
         state = Span(T.CK_VERDICTS.get(v.verdict or "", ""), cls=f"badge {v.verdict}") if v.verdict else None
     result = None
-    if answered or (v.status == "resolved" and v.admin_score is not None):
+    if answered or (v.decided and v.admin_score is not None):
         sources = [Li(A(s.get("title") or s["url"], href=s["url"], target="_blank", rel="noopener noreferrer")) for s in (v.sources or [])
                    if isinstance(s, dict) and str(s.get("url", "")).startswith(("http://", "https://"))]
         result = Div(P(v.explanation, cls="why") if v.explanation else None,

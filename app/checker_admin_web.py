@@ -124,16 +124,15 @@ def item_view(it: C.AdminCheck, token: str, session_id: uuid.UUID, active: bool,
                  for v in range(C.SCORE_MIN, C.SCORE_MAX + 1)]
         picker = Form(*ids, Div(*picks, cls="picks"), method="post", action="/admin/checker/score", cls="hostscore",
                       hx_post="/admin/checker/score", **target)
-        actions = Form(*ids, Button(T.CK_DISMISS, type="submit", cls="danger", disabled=it.status == "resolved" and it.admin_score is None),
+        actions = Form(*ids, Button(T.CK_DISMISS, type="submit", cls="danger", disabled=it.decided and it.admin_score is None),
                        method="post", action="/admin/checker/dismiss", hx_post="/admin/checker/dismiss", cls="dismissform", **target)
-        redo = {"hx_confirm": T.CK_RECHECK_CONFIRM.format(score=fmt_score(it.admin_score))} if it.status == "resolved" else {}
         recheck = Form(*ids, Button(T.CK_RECHECK, type="submit", cls="recheck"), method="post", action="/admin/checker/recheck",
-                       hx_post="/admin/checker/recheck", **redo, **target) if it.status != "done" and it.error else None
+                       hx_post="/admin/checker/recheck", **target) if it.status != "done" and it.error else None
         actions = Div(recheck, Button(T.CK_EDIT, type="button", cls="edit", data_ckedit="1", title=T.CK_HOST_EDIT), actions, cls="acts")
     else:
         picker = None
         actions = None
-    dismissed = Span(T.CK_DISMISSED, cls="ckdecided") if it.status == "resolved" and it.admin_score is None else None
+    dismissed = Span(T.CK_DISMISSED, cls="ckdecided") if it.decided and it.admin_score is None else None
 
     def points(guess: int | None, first: bool):
         """The three lines of the Pontos cell; the editable host score sits in the first row of the check."""
@@ -144,7 +143,9 @@ def item_view(it: C.AdminCheck, token: str, session_id: uuid.UUID, active: bool,
                    Div(Span(f"{T.CK_LINE_AI}: ", cls="who"), icons(it.ai_score), title=fmt_score(it.ai_score), cls="ptline"),
                    Div(host_cell, dismissed if first else None, cls="ptline host"))
 
-    state = Span(T.CK_STATUS.get(it.status, it.status), cls="pill on" if it.status == "needs_admin" else "pill")
+    # the AI's own state; "Aguardando você" only while the host has not decided (a decided check may still be queued/running for the AI)
+    shown = "resolved" if it.decided and it.status == "needs_admin" else it.status
+    state = Span(T.CK_STATUS.get(shown, shown), cls="pill on" if it.pending and it.status == "needs_admin" else "pill")
     err = Div(f"{T.CK_ERROR}: {it.error}", cls="muted small", role="alert") if it.error and it.status != "done" else None
     if it.verdict:
         head = [Span(T.CK_VERDICTS.get(it.verdict, it.verdict), cls="pill"), " ", state, " ",

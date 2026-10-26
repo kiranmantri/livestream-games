@@ -212,7 +212,7 @@ def test_the_admin_sets_a_score_and_only_that_item_comes_back(admin, conn):
     r = score(admin, conn, cl.check_id, "-5")
     assert r.status_code == 200
     ck = C.get_check(conn, cl.check_id)
-    assert (ck.status, ck.admin_score) == ("resolved", -5)
+    assert (ck.status, ck.decided, ck.admin_score) == ("needs_admin", True, -5)
     assert f'id="ck-{cl.check_id}"' in r.text and "Nota do apresentador" not in r.text and 'id="pendingcount"' in r.text
     assert "<html" not in r.text
 
@@ -240,8 +240,10 @@ def test_the_admin_can_override_a_confident_ai_result_and_the_board_follows(admi
 def test_the_admin_can_score_a_check_the_ai_never_ran(admin, conn):
     s, (ana, _) = game(conn)
     cl = C.submit_typed_claim(conn, ana, "ninguém verificou", 2)
-    score(admin, conn, cl.check_id, "2")
-    assert C.get_check(conn, cl.check_id).status == "resolved"
+    r = score(admin, conn, cl.check_id, "2")
+    ck = C.get_check(conn, cl.check_id)
+    assert (ck.status, ck.admin_score) == ("queued", 2) and T.CK_STATUS["queued"] in r.text   # the AI still runs (0014)
+    assert C.claim_next_check(conn).id == cl.check_id
 
 
 def test_dismissing_means_nobody_scores(admin, conn):
@@ -249,7 +251,7 @@ def test_dismissing_means_nobody_scores(admin, conn):
     cl = needs_admin(conn, ana, "x y", 1)
     r = dismiss(admin, conn, cl.check_id)
     ck = C.get_check(conn, cl.check_id)
-    assert (ck.status, ck.admin_score) == ("resolved", None) and T.CK_DISMISSED in r.text
+    assert (ck.decided, ck.admin_score) == (True, None) and T.CK_DISMISSED in r.text
     assert C.user_claims(conn, ana)[0].points == 0
 
 

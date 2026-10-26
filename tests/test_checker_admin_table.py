@@ -264,17 +264,18 @@ def test_verificar_alegacao_also_shows_for_a_failed_run_still_waiting_for_a_retr
     assert recheck(admin, conn, cl.check_id).status_code == 200 and C.get_check(conn, cl.check_id).error is None
 
 
-def test_a_check_the_host_scored_after_an_ai_error_can_be_verified_again_after_a_confirmation(admin, conn):
-    """The case seen in dev: 'erro inesperado (RuntimeError)', the host typed a score by hand, and the AI never answered."""
+def test_a_check_the_host_scored_after_an_ai_error_can_be_verified_again_and_keeps_the_host_score(admin, conn):
+    """The case seen in dev: 'erro inesperado (RuntimeError)', the host typed a score by hand, and the AI never answered.
+    Since 0014 the host score is independent of the AI: Verificar needs no confirmation and keeps it."""
     s, (ana, _) = game(conn)
     cl = failed_check(conn, ana)
     score(admin, conn, cl.check_id, "-1")
     body = tbody_of(page(admin, "/admin/checker?all=1"), cl.check_id)
     form = re.search(r"<form[^>]*recheck[^>]*>|<form[^>]*/admin/checker/recheck[^>]*>", body).group(0)
-    assert C.get_check(conn, cl.check_id).status == "resolved" and T.CK_RECHECK in body and "hx-confirm" in form and "-1" in form
+    assert C.get_check(conn, cl.check_id).decided and T.CK_RECHECK in body and "hx-confirm" not in form
     assert recheck(admin, conn, cl.check_id).status_code == 200
     ck = C.get_check(conn, cl.check_id)
-    assert (ck.status, ck.error, ck.admin_score, ck.attempts) == ("queued", None, None, 0)
+    assert (ck.status, ck.error, ck.admin_score, ck.attempts) == ("queued", None, -1, 0)
     assert C.claim_next_check(conn).id == cl.check_id                                    # the worker takes it again
 
 

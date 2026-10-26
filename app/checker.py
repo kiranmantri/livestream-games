@@ -3,7 +3,8 @@
 Rules (decided with the user, see AGENTS.md / docs/fact-checker-plan.md):
   * a player picks a passage (or types it) and GUESSES a score from -5 (horrible lie) to +5 (great truthful sentence);
   * one CHECK per distinct claim text inside a session (casefolded); many players' claims point at it;
-  * a check is queued -> running -> done (confident AI result) | needs_admin (low confidence, unverifiable, attempts exhausted) -> resolved (admin acted);
+  * a check's status is the AI pipeline only: queued -> running -> done (confident) | needs_admin (low confidence, unverifiable, attempts exhausted);
+    the host's decision is separate (resolved_at + admin_score; no score = dismissed) and never stops the AI (migration 0014);
   * final score = the admin's score if there is one, else the AI's score of a `done` check; none while pending/dismissed/unverifiable => 0 points;
   * points = max(0, 5 - |guess - final|) + 2 for the right sign (a guess of 0 has no sign); a guess of 0 earns nothing when |final| >= 3;
   * points are computed ON DEMAND from the current final score, so an admin override re-scores everybody;
@@ -96,10 +97,13 @@ def points(guess: int, final: int | None) -> int:
     return max(0, 5 - abs(guess - final)) + (SIGN_BONUS if guess * final > 0 else 0)
 
 
-def final_score(status: str, verdict: str | None, ai_score: int | None, admin_score: int | None) -> int | None:
-    """The score the players are compared with, or None while there is none (pending, dismissed, unverifiable)."""
+def final_score(status: str, verdict: str | None, ai_score: int | None, admin_score: int | None, decided: bool = False) -> int | None:
+    """The score the players are compared with, or None while there is none (pending, dismissed, unverifiable).
+    `status` is the AI pipeline only; `decided` = the host acted (resolved_at). The host's score wins; a dismissal (decided, no score) means nobody scores."""
     if admin_score is not None:
         return admin_score
+    if decided:
+        return None
     if status == "done" and verdict != "unverifiable":
         return ai_score
     return None
@@ -157,8 +161,13 @@ class Check:
     resolved_at: datetime | None
 
     @property
+    def decided(self) -> bool:
+        """The host scored or dismissed it (independent of the AI's own status)."""
+        return self.resolved_at is not None
+
+    @property
     def final(self) -> int | None:
-        return final_score(self.status, self.verdict, self.ai_score, self.admin_score)
+        return final_score(self.status, self.verdict, self.ai_score, self.admin_score, self.decided)
 
 
 _CLAIM_COLS = "id, session_id, user_id, check_id, kind, start_event_id, start_offset, end_event_id, end_offset, quote, guess, note, created_at"
@@ -365,7 +374,8 @@ def _resolve(conn: psycopg.Connection, session_id: UUID, check_id: UUID, score: 
         raise BadScore(f"the score must be an integer from {SCORE_MIN} to {SCORE_MAX}")
     _require_active(conn, session_id)
     with conn.cursor(row_factory=class_row(Check)) as cur:
-        cur.execute("UPDATE fact_checks SET status = 'resolved', admin_score = %s, resolved_at = now() "
+        # the AI's status is NOT touched: a queued / running check is still checked by the AI (the host's score wins for the points)
+        cur.execute("UPDATE fact_checks SET admin_score = %s, resolved_at = now() "
                     f"WHERE id = %s AND session_id = %s RETURNING {_CHECK_COLS}", (score, check_id, session_id))
         row = cur.fetchone()
     if row is None:
@@ -386,13 +396,13 @@ def admin_dismiss(conn: psycopg.Connection, session_id: UUID, check_id: UUID) ->
 
 
 def admin_recheck(conn: psycopg.Connection, session_id: UUID, check_id: UUID) -> Check:
-    """"Verificar": the AI call failed and the admin asks for a fresh try (runs counter and error are cleared, the worker picks it up)."""
+    """"Verificar": the AI call failed and the admin asks for a fresh try (runs counter and error are cleared, the worker picks it up).
+    A host score / dismissal is KEPT: it is independent of the AI check."""
     ensure_autocommit(conn)
     _require_active(conn, session_id)
     with conn.cursor(row_factory=class_row(Check)) as cur:
-        # a check the host already scored (resolved) goes back too: the DB only allows an admin score on a resolved check, so that score is cleared
-        cur.execute("UPDATE fact_checks SET status = 'queued', attempts = 0, error = NULL, finished_at = NULL, admin_score = NULL, resolved_at = NULL "
-                    f"WHERE id = %s AND session_id = %s AND status IN ('needs_admin', 'queued', 'running', 'resolved') AND error IS NOT NULL RETURNING {_CHECK_COLS}",
+        cur.execute("UPDATE fact_checks SET status = 'queued', attempts = 0, error = NULL, finished_at = NULL "
+                    f"WHERE id = %s AND session_id = %s AND status IN ('needs_admin', 'queued', 'running') AND error IS NOT NULL RETURNING {_CHECK_COLS}",
                     (check_id, session_id))
         row = cur.fetchone()
     if row is None:
@@ -420,15 +430,21 @@ def admin_queue(conn: psycopg.Connection, session_id: UUID) -> list[QueueItem]:
     rows = conn.execute(
         "SELECT c.id, c.claim_text, c.status, c.verdict, c.ai_score, c.confidence, c.explanation, c.sources, c.error, "
         "       (SELECT count(*) FROM fact_claims k WHERE k.check_id = c.id), c.created_at "
-        "FROM fact_checks c WHERE c.session_id = %s AND c.status = 'needs_admin' ORDER BY c.created_at, c.id", (session_id,)).fetchall()
+        "FROM fact_checks c WHERE c.session_id = %s AND c.status = 'needs_admin' AND c.resolved_at IS NULL ORDER BY c.created_at, c.id",
+        (session_id,)).fetchall()
     return [QueueItem(*r) for r in rows]
 
 
 def admin_queue_count(conn: psycopg.Connection, session_id: UUID) -> int:
-    return conn.execute("SELECT count(*) FROM fact_checks WHERE session_id = %s AND status = 'needs_admin'", (session_id,)).fetchone()[0]
+    return conn.execute("SELECT count(*) FROM fact_checks WHERE session_id = %s AND status = 'needs_admin' AND resolved_at IS NULL",
+                        (session_id,)).fetchone()[0]
 
 
-PENDING_STATES = ("queued", "running", "needs_admin")
+PENDING_STATES = ("queued", "running", "needs_admin")   # AI states that still need the host... unless the host already decided (see is_pending)
+
+
+def is_pending(status: str, decided: bool) -> bool:
+    return status in PENDING_STATES and not decided
 
 
 @dataclass(frozen=True)
@@ -444,17 +460,22 @@ class AdminCheck:
     sources: list
     error: str | None
     admin_score: int | None
+    decided: bool        # the host scored or dismissed it
     created_at: datetime
     guesses: list        # [(player name, guess)] in the order they were sent
+
+    @property
+    def pending(self) -> bool:
+        return is_pending(self.status, self.decided)
 
 
 def admin_checks(conn: psycopg.Connection, session_id: UUID, pending_only: bool = True) -> list[AdminCheck]:
     """Every check of the session (or only queued / running / waiting for the admin), oldest first, with the guesses."""
-    where = " AND c.status = ANY(%s)" if pending_only else ""
+    where = " AND c.status = ANY(%s) AND c.resolved_at IS NULL" if pending_only else ""
     args = (session_id, list(PENDING_STATES)) if pending_only else (session_id,)
     rows = conn.execute(
         "SELECT c.id, c.claim_text, c.status, c.verdict, c.ai_score, c.confidence, c.explanation, c.sources, c.error, c.admin_score, "
-        f"c.created_at FROM fact_checks c WHERE c.session_id = %s{where} ORDER BY c.created_at, c.id", args).fetchall()
+        f"c.resolved_at IS NOT NULL, c.created_at FROM fact_checks c WHERE c.session_id = %s{where} ORDER BY c.created_at, c.id", args).fetchall()
     guesses: dict = {}
     for check_id, name, guess in conn.execute(
             "SELECT k.check_id, u.name, k.guess FROM fact_claims k JOIN users u ON u.id = k.user_id "
@@ -468,7 +489,7 @@ def admin_check(conn: psycopg.Connection, session_id: UUID, check_id: UUID) -> A
 
 
 def pending_count(conn: psycopg.Connection, session_id: UUID) -> int:
-    return conn.execute("SELECT count(*) FROM fact_checks WHERE session_id = %s AND status = ANY(%s)",
+    return conn.execute("SELECT count(*) FROM fact_checks WHERE session_id = %s AND status = ANY(%s) AND resolved_at IS NULL",
                         (session_id, list(PENDING_STATES))).fetchone()[0]
 
 
@@ -489,6 +510,7 @@ class ClaimView:
     explanation: str
     sources: list
     admin_score: int | None
+    decided: bool
     final: int | None
     points: int
 
@@ -496,11 +518,11 @@ class ClaimView:
 def user_claims(conn: psycopg.Connection, user_id: UUID) -> list[ClaimView]:
     rows = conn.execute(
         "SELECT k.id, k.check_id, k.kind, k.quote, k.guess, k.note, k.created_at, c.status, c.verdict, c.ai_score, c.confidence, "
-        "       c.explanation, c.sources, c.admin_score FROM fact_claims k JOIN fact_checks c ON c.id = k.check_id "
+        "       c.explanation, c.sources, c.admin_score, c.resolved_at IS NOT NULL FROM fact_claims k JOIN fact_checks c ON c.id = k.check_id "
         "WHERE k.user_id = %s ORDER BY k.created_at, k.id", (user_id,)).fetchall()
     out = []
     for r in rows:
-        final = final_score(r[7], r[8], r[9], r[13])
+        final = final_score(r[7], r[8], r[9], r[13], r[14])
         out.append(ClaimView(*r, final=final, points=points(r[4], final)))
     return out
 
@@ -522,15 +544,15 @@ def leaderboard(conn: psycopg.Connection, session_id: UUID) -> list[LeaderRow]:
     users = conn.execute("SELECT u.id, u.name FROM users u JOIN game_sessions g ON g.id = u.session_id "
                          "WHERE u.session_id = %s AND g.game_type = 'checker' ORDER BY u.created_at, u.id", (session_id,)).fetchall()
     stats = {u: {"points": 0, "claims": 0, "exact": 0, "pending": 0, "last": None} for u, _ in users}
-    for uid, guess, created, status, verdict, ai_score, admin_score in conn.execute(
-            "SELECT k.user_id, k.guess, k.created_at, c.status, c.verdict, c.ai_score, c.admin_score "
+    for uid, guess, created, status, verdict, ai_score, admin_score, decided in conn.execute(
+            "SELECT k.user_id, k.guess, k.created_at, c.status, c.verdict, c.ai_score, c.admin_score, c.resolved_at IS NOT NULL "
             "FROM fact_claims k JOIN fact_checks c ON c.id = k.check_id WHERE k.session_id = %s", (session_id,)):
         st = stats[uid]
-        final = final_score(status, verdict, ai_score, admin_score)
+        final = final_score(status, verdict, ai_score, admin_score, decided)
         st["claims"] += 1
         st["points"] += points(guess, final)
         st["exact"] += 1 if final is not None and guess == final else 0
-        st["pending"] += 1 if final is None and status != "resolved" else 0
+        st["pending"] += 1 if final is None and not decided else 0
         st["last"] = created if st["last"] is None or created > st["last"] else st["last"]
 
     def key(i: int):

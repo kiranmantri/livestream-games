@@ -187,3 +187,20 @@ later blocks supersede earlier ones where they disagree. Expected test counts ar
     # WEAK LINK: the free DuckDuckGo search (ddgs) throttles bursts; a failed check is retried by the worker (3 runs, then the admin queue).
     #   Backlog: a paid search API if this shows up in real games. NOT checked: the new prompts on Fly (deploy needed).
 
+### Validation for "the host's score never stops the AI" (migration 0014, app/checker.py, admin + player views) - user report 2026-10-26
+    # Bug: admin_set_score / admin_dismiss set status='resolved'. The worker only takes 'queued' checks and complete_check only stores on 'running',
+    #   so a host score on a queued check meant the AI NEVER ran, and a score during a run threw the AI answer away (CheckNotRunning).
+    # Fix: status = the AI pipeline only (queued -> running -> done | needs_admin); the host's decision = resolved_at (+ admin_score; NULL = dismissed).
+    #   The host's score still wins for the points; a dismissal still means nobody scores. A decided check leaves the admin queue and "pendentes".
+    #   "Verificar Alegacao" keeps the host score (the old confirmation "a nota do host sera apagada" is gone).
+    #   0014 drops 'resolved' from the CHECK and gives old resolved rows their real AI state (answer -> done/needs_admin; none -> queued, so the AI runs).
+    uv run pytest -q tests/test_checker_host_and_ai.py     # expect: 14 passed (red first: 13 failed)
+    uv run pytest -q                                       # expect: 1895 passed, 1 skipped
+    uv run migrate                                         # expect: applied: 0014_host_and_ai_independent.sql
+    docker compose exec db psql -U livegames -c "select status, count(*) from fact_checks group by 1"   # expect: no 'resolved' row
+    # Done by me: migration on a pg_dump copy of the dev DB with 2 rows rewritten to "never answered" and "failed 3x": -> queued / needs_admin,
+    #   others -> done / needs_admin, all 7 host scores kept. Real end to end (OpenRouter gpt-oss-120b, worker.step()): claim queued, host -5 FIRST
+    #   (status stays queued, admin queue 0, pending 0) -> worker ran 52 s -> done/false, ai -5, 3 sources, final -5 (host), player sees the
+    #   explanation and 6 points. By hand in the browser: /admin/checker, score a claim at once (pill stays "Na fila"/"Verificando");
+    #   ~1 min later the IA line and sources appear and the host score is unchanged. NOT checked: Fly (needs deploy + a backup: it is a migration).
+
