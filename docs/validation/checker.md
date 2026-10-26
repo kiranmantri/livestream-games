@@ -163,8 +163,7 @@ later blocks supersede earlier ones where they disagree. Expected test counts ar
     #   (applied 0001..0013, seeds, healthy); DuckDuckGo from the container: 6 results. Real model via the worker (OpenRouter gpt-oss-120b, keys from .env):
     #   "A Terra tem 6 mil anos" false -5 (3 sources), "O Brasil tem 26 estados e o DF" true +5 (2), "A Grande Muralha ... visivel da Lua" false -3 (3);
     #   45-106 s each, 11-16k input tokens; no failures. Reset: COMPOSE_PROJECT_NAME=lgsmoke docker compose -f docker-compose.yml down -v
-    # OPEN (product decision): "os Annunakis existem" -> unverifiable / 0 in 3 of 3 runs (once without searching at all). The prompts treat beliefs as
-    #   uncheckable ("Deus existe"); the model files mythological beings there. FC0 expected false. Tune RESEARCH/ANSWER_INSTRUCTIONS only if you want that.
+    # (The Anunnaki "unverifiable" answers seen here were fixed by the critical stance below.)
     # DEPLOYED 2026-10-26 (checklist in deploy.md; backup data/backup/cloud_full_20261026_021258.sql, 3.9 MB, 14 COPY): logs "applied: 0013_checker.sql",
     #   seeds skipped (284 phrases kept), "INFO app.checkworker: fact-checker on: openrouter:openai/gpt-oss-120b, 2 worker(s)"; /healthz 200, /admin 401.
     #   A stale Falacias game (1 player, idle since 01:29) was active during the deploy and survived it (still active).
@@ -172,3 +171,19 @@ later blocks supersede earlier ones where they disagree. Expected test counts ar
     #   "Grande Muralha visivel da Lua" false -3 (3 sources, 84 s), "agua ferve a 100 graus ao nivel do mar" true +5 (2 sources, 61 s), back to back in one process.
     #   How: base64 a script into /tmp in the app container and run it with PYTHONPATH=/app (a script outside /app cannot import `app`).
     # NOT checked: a whole game in the cloud (players sending claims from the page), cost of a real 3 h game, phones.
+
+### Validation for the critical stance of the checker (app/factcheck.py prompts + search retry) - decided with the user 2026-10-26
+    uv run pytest tests/test_factcheck_stance.py -q     # expect: 7 passed (red run first: 4 failed, then 4 failed again for the second round)
+    uv run pytest -q                                    # expect: 1882 passed, 1 skipped
+    # Rules: pseudo-history, conspiracies, extraordinary claims, beliefs and strong opinions STATED AS FACT are judged on the evidence; without strong
+    #   evidence => "false" and the explanation says it is false for lack of evidence. "unverifiable" (score 0) ONLY for taste ("pizza e melhor que
+    #   hamburguer"), jokes, predictions of the future, personal faith phrased as such ("eu acredito em Deus"), or when the search brought nothing
+    #   useful (confidence low -> the admin queue). "Deus existe" stated as a fact => searched and judged (false, no empirical evidence).
+    # Search: an empty DuckDuckGo answer is retried once after 1.5 s with the worldwide region (SEARCH_RETRY_PAUSE_S): parallel checks get "no results".
+    # Real evaluation (me, OpenRouter gpt-oss-120b from this Mac, ~US$0.05 in total; script: 10 claims, 3 in parallel):
+    #   false: Anunnakis -3, Terra plana -4, vacinas/autismo -4, homem nunca foi a Lua -4 (unverifiable before the search retry), piramides/ETs -4,
+    #   Deus existe -3 (Stanford Encyclopedia of Philosophy sources; unverifiable with the first wording, then 2 runs died on DuckDuckGo errors after
+    #   ~40 searches in a few minutes); unverifiable: eu acredito em Deus, pizza, proxima Copa; true: 26 estados + DF +3/+5. 2-3 sources per verdict.
+    # WEAK LINK: the free DuckDuckGo search (ddgs) throttles bursts; a failed check is retried by the worker (3 runs, then the admin queue).
+    #   Backlog: a paid search API if this shows up in real games. NOT checked: the new prompts on Fly (deploy needed).
+
