@@ -4,6 +4,7 @@ session (start / end, shared video URL) in the header that starts and ends all t
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import pytest
 
@@ -91,6 +92,23 @@ def test_the_sub_menu_marks_game_or_content(admin):
 
 def test_the_checker_has_no_content_entry(admin):
     assert "Conteúdo" not in sub_nav(admin.get("/admin/checker", headers=basic()).text)
+
+
+# Jogo | Conteúdo start under the SELECTED game: row 1 is a grid (brand = column 1, the games = columns 2..4); the sub menu is row 2 of the same
+# grid and its links start at the active game's column (--sub-col), so the left edges line up without any JavaScript.
+@pytest.mark.parametrize(("path", "col"), [("/admin", 2), ("/admin/phrases", 2), ("/admin/falacias", 3), ("/admin/fallacies", 3), ("/admin/checker", 4)])
+def test_the_sub_menu_starts_under_the_selected_game(admin, path, col):
+    h = header(admin.get(path, headers=basic()).text)
+    # the sub menu is the LAST child of the adminrow grid: right after "Ver o site", then the row closes
+    assert re.search(r'class="viewsite"[^>]*>.*?</a>\s*<nav[^>]*class="subnav".*?</nav>\s*</div>', h, re.DOTALL), "sub menu inside the adminrow grid"
+    assert re.search(rf'<nav[^>]*class="subnav"[^>]*style="--sub-col: {col}"', h)
+    assert re.search(r'<nav[^>]*class="subnav".*?<div class="subtabs">', h, re.DOTALL)
+
+
+def test_the_sub_menu_grid_rules_exist():
+    css = (Path(__file__).resolve().parent.parent / "app" / "static" / "app.css").read_text()
+    assert "grid-template-columns: subgrid" in css
+    assert re.search(r"\.subtabs\s*\{[^}]*grid-column:\s*var\(--sub-col", css)
 
 
 # ---------------------------------------------------------------- the header session controls

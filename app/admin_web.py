@@ -246,6 +246,8 @@ def admin_tabs(active: str, dialog: bool = True):
              for key, label, href, icon in GAME_TABS]
     subs = [A(Span(label, cls="lbl"), href=href, cls="active" if key == active else None, aria_current="page" if key == active else None)
             for key, label, href in SUB_TABS.get(game, ())]
+    # grid column of the selected game in row 1 (column 1 = brand): the sub menu starts there (app.css "admin shell v2")
+    sub_col = 2 + next((i for i, t in enumerate(GAME_TABS) if t[0] == game), 0)
     conn_ctx = _pool.connection() if _pool is not None else None
     if conn_ctx is None:
         controls, dlg = Div(cls="sessionctl"), None
@@ -255,8 +257,10 @@ def admin_tabs(active: str, dialog: bool = True):
             dlg = session_dialog(conn, pw) if dialog and not globalsession.active_games(conn) else None
     return Header(Div(A(Span("🛠", cls="mark", aria_hidden="true"), Span(T.ADMIN_BRAND, cls="name"), href="/admin", cls="brand"),
                       Nav(*games, cls="menu admintabs gamenav", aria_label="admin"), controls,
-                      A(T.ADMIN_VIEW_SITE, " ↗", href="/", cls="viewsite", target="_blank", rel="noopener"), cls="adminrow"),
-                  Nav(*subs, cls="subnav", aria_label="admin submenu") if subs else None, dlg,
+                      A(T.ADMIN_VIEW_SITE, " ↗", href="/", cls="viewsite", target="_blank", rel="noopener"),
+                      Nav(Div(*subs, cls="subtabs"), cls="subnav", style=f"--sub-col: {sub_col}", aria_label="admin submenu") if subs else None,
+                      cls="adminrow"),
+                  dlg,
                   Script(src="/startdlg.js", defer=True) if dlg is not None else None,
                   cls="appbar admin")
 

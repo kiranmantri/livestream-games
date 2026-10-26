@@ -130,3 +130,17 @@ later blocks supersede earlier ones where they disagree. Expected test counts ar
     #   equal or empty = anchored pair (context + speed bonus); EDITED = typed text (kind 'spoken', no context, <= 280 chars); no fallacy + no selection = message to the host.
     #   A selection without a fallacy is still refused. Tests: tests/test_unified_panel.py (+5). Full suite 1768 passed, 1 skipped.
     #   NOT checked in a browser (box filling on click, extending a selection, phones). Aponte o mentiroso! gets the same panel with FC4 (claim form).
+
+### Validation for "Jogo | Conteúdo start under the selected game" (app/admin_web.py admin_tabs, app/static/app.css "admin shell v2")
+    uv run pytest tests/test_admin_shell.py -q          # expect: 49 passed (red run first: the 6 new tests failed, 42 old passed)
+    uv run pytest -q                                    # expect: 1873 passed, 1 skipped
+    # Desktop (> 760 px): the header row is a CSS grid (1 brand | 2-4 the three games | 5 spacer | 6 session | 7 "Ver o site"); the games nav is a subgrid.
+    #   The sub menu is row 2 of the same grid; its links start at the selected game's column, written by the server as style="--sub-col: 2|3|4".
+    #   No JavaScript, so no jump on load. Both subgrids use column-gap: normal (a different gap shifts subgrid items by half the difference: 1 px).
+    #   Three games are hard-coded in the CSS (repeat(3, auto), 2 / 5): a 4th game must change both.
+    # Phones (<= 760 px): unchanged; the games are in the bottom bar and Jogo | Conteúdo is a full-width line at the top.
+    ADMIN_PASSWORD=qa-admin-1 REPLAY_COLLECTOR=off uv run uvicorn app.main:app --port 8001     # then /admin, /admin/phrases, /admin/falacias, /admin/fallacies, /admin/checker
+    # expect: the left edge of "Jogo" = the left edge of the highlighted game tab; the game tabs do not move between pages.
+    # Real Chrome (me, dev DB, read-only pages): left edges equal (sub-pixel) on all 5 pages at 1280 and 900 px (1 px off before the gap fix; also checked 1000/800),
+    #   no sideways scroll; 390 px phone layout as before. NOT checked: the header WITH a running session (video link + "Finalizar sessão" in column 6), Safari/Firefox.
+
