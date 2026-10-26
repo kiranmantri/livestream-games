@@ -147,7 +147,7 @@ later blocks supersede earlier ones where they disagree. Expected test counts ar
     # Real Chrome (throwaway DB): Editar opens the palette (it was clipped by overflow before), a click saved +3 and showed 3 stars. NOT checked: phones, the Verificar button in a browser,
     #   "Confianca alta" wrapping with a real AI result, Safari/Firefox. No mutation check.
 
-### Validation for FC7 prep (image, compose, two worker bugs found by a real smoke run) - deploy itself NOT done yet
+### Validation for FC7 (image, compose, two worker bugs found by a real smoke run, Fly deploy)
     uv run pytest tests/test_factcheck_loops.py tests/test_app_logging.py -q   # expect: 6 passed (red run first: 3 failed / 1 passed, then 2 failed)
     uv run pytest -q                                    # expect: 1867 passed, 1 skipped
     # Bug 1 (blocker): the worker builds the checker ONCE and runs each check in a NEW event loop (asyncio.run). The model's HTTP client stayed bound to
@@ -165,4 +165,10 @@ later blocks supersede earlier ones where they disagree. Expected test counts ar
     #   45-106 s each, 11-16k input tokens; no failures. Reset: COMPOSE_PROJECT_NAME=lgsmoke docker compose -f docker-compose.yml down -v
     # OPEN (product decision): "os Annunakis existem" -> unverifiable / 0 in 3 of 3 runs (once without searching at all). The prompts treat beliefs as
     #   uncheckable ("Deus existe"); the model files mythological beings there. FC0 expected false. Tune RESEARCH/ANSWER_INSTRUCTIONS only if you want that.
-    # NOT checked: the cloud deploy (blocked: an active Falacias game, OPENROUTER_API_KEY not set on Fly, migration 0013 => backup first), DuckDuckGo from Fly's IP.
+    # DEPLOYED 2026-10-26 (checklist in deploy.md; backup data/backup/cloud_full_20261026_021258.sql, 3.9 MB, 14 COPY): logs "applied: 0013_checker.sql",
+    #   seeds skipped (284 phrases kept), "INFO app.checkworker: fact-checker on: openrouter:openai/gpt-oss-120b, 2 worker(s)"; /healthz 200, /admin 401.
+    #   A stale Falacias game (1 player, idle since 01:29) was active during the deploy and survived it (still active).
+    # Real claims FROM the Fly app container (checker called directly, no DB rows): DuckDuckGo 6 results per search from Fly's IP;
+    #   "Grande Muralha visivel da Lua" false -3 (3 sources, 84 s), "agua ferve a 100 graus ao nivel do mar" true +5 (2 sources, 61 s), back to back in one process.
+    #   How: base64 a script into /tmp in the app container and run it with PYTHONPATH=/app (a script outside /app cannot import `app`).
+    # NOT checked: a whole game in the cloud (players sending claims from the page), cost of a real 3 h game, phones.
