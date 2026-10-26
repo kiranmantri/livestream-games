@@ -24,7 +24,6 @@ Phone layout (Bingo)
 
 Admin (left over after group 3)
 - (on hold) Phrases and fallacies lists still scroll sideways on phones (the users, leaderboard and replay tables are cards now); sort links are hidden on phones.
-- The open player cards on the Bingo admin are not auto-refreshed (only the users table and the count are): an open card would collapse.
 - Keyboard shortcuts ignore extra key presses while a verdict is still on its way (on purpose: never double-send).
 - Not checked: touch devices, Safari, Firefox; the "Encerrar partida" confirm dialog.
 

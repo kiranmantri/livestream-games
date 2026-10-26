@@ -164,3 +164,25 @@ later blocks supersede earlier ones where they disagree. Expected test counts ar
     # /admin Desmarcar/Liberar use htmx: only that player's card + the users table (out of band) are swapped; no reload,
     #   no scroll jump (without JS it falls back to POST + redirect to /admin?open=<user>).
     # Corpus seed: `deploy/seed/phrases_seed.sql` (loaded only into an EMPTY phrases table); `suggest --write` inserts inactive rows.
+
+### Validation for the Bingo admin auto-refresh (task 8, user 2026-10-26): app/admin_web.py (cards_panel, watcher, /admin/cards, /admin/watch), admin.js
+    # What updates by itself on /admin (no click, no full reload):
+    #   - users table + player count: every 5 s (as before);
+    #   - player cards (#cards-panel): polled every 5 s with a signature (marks, admin blocks, players); 204 while nothing changed.
+    #     New players' cards appear, "Ana - 1/16" follows the marks, OPEN cards stay open (admin.js reads them before the swap and reopens
+    #     them after); a redraw that would land while an unmark/unblock is on its way is skipped (next poll brings it). last_seen_at is NOT
+    #     in the signature (it changes on every player poll and is not shown on the cards).
+    #   - the game ended or another one started: the page reloads (HX-Refresh) and shows the final result;
+    #   - no game running (none yet, or the last one ended): #bingo-watch polls /admin/watch every 5 s and reloads when a new Bingo game starts
+    #     (a player can start Bingo as the first visitor, without the admin).
+    uv run pytest -q tests/test_admin_bingo_autorefresh.py     # expect: 11 passed (red first: 8 failed)
+    uv run pytest -q                                           # expect: 1906 passed, 1 skipped
+    # Mutation check (scratch copy): 6 mutants (signature without marks, always 204, cards poll ignores the session id, watcher ignores a new
+    #   ended game, no watcher on the ended page, JS swaps during an action) -> every one fails the file (2 tests added for the 2 that survived).
+    # Real browser (me, throwaway DB lg_qa, Chrome, Basic auth login): admin page with no game -> Ana started Bingo from her phone page ->
+    #   admin reloaded by itself; opened Ana's card; Bia joined + Ana marked -> ~5 s later "Ana - 1/16 [open]", Bia's card added, no reload;
+    #   game ended -> page showed "Partida encerrada / Vencedor(a): Ana" by itself; Caio started a new one -> page reloaded to it; admin
+    #   unmarked a cell in Caio's open card -> "Caio - 1/16", card still open, cell blocked, later polls 204.
+    # By hand: open /admin in one window, join from a private window, mark cells; open a card on /admin and watch it stay open while marks arrive.
+    # Load: one extra GET every 5 s per open admin tab (players + revoked marks query); same order as the users table poll.
+

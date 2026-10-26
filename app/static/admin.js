@@ -75,6 +75,25 @@
   });
 })();
 
+// Bingo admin: the cards panel is re-drawn by its 5 s poll. Cards that were open stay open; a re-draw that would land while an
+// unmark / unblock is on its way (or its confirm dialog was just answered) is skipped: the next poll brings it.
+(function () {
+  var open = null, CARDS = 'details[id^="card-"]';
+  document.body.addEventListener('htmx:beforeSwap', function (e) {
+    var t = e.detail.target;
+    if (!t || t.id !== 'cards-panel') return;
+    if (t.querySelector('.htmx-request')) { e.detail.shouldSwap = false; return; }
+    open = {};
+    t.querySelectorAll(CARDS).forEach(function (d) { if (d.open) open[d.id] = 1; });
+  });
+  document.body.addEventListener('htmx:afterSwap', function (e) {
+    var p = document.getElementById('cards-panel');
+    if (!open || !p || (e.detail.target && e.detail.target.id !== 'cards-panel' && !p.contains(e.detail.target))) return;
+    p.querySelectorAll(CARDS).forEach(function (d) { if (open[d.id]) d.open = true; });
+    open = null;
+  });
+})();
+
 // Browser tab title shows how many pairs wait for a verdict, e.g. "(3) Encontre as Falácias - admin": visible from another window.
 (function () {
   var base = document.title.replace(/^\(\d+\)\s*/, '');

@@ -1,6 +1,7 @@
 """Admin page: GET /admin (users + cards of the current session), POST /admin/finish."""
 from __future__ import annotations
 
+import hashlib
 import uuid
 from datetime import datetime
 from urllib.parse import parse_qs, urlparse
@@ -34,6 +35,7 @@ from fasthtml.common import (
     Time,
     Title,
     Tr,
+    to_xml,
 )
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, RedirectResponse, Response
@@ -170,6 +172,30 @@ def card_panel(r: A_.PlayerRow, session_id: uuid.UUID, token: str, active: bool,
                    mini_card(r, session_id, token, active), cls="panel", open=open_ or None, id=f"card-{r.user_id}")
 
 
+LIVE_POLL = "every 5s"
+
+
+def cards_signature(session: S.GameSession, rows: list[A_.PlayerRow]) -> str:
+    """Changes when anything shown on the cards changes (a mark, an admin block, a new player); NOT on last_seen_at."""
+    raw = repr((session.id, session.status, [(r.user_id, r.name, sorted(r.marked), sorted(r.revoked)) for r in rows]))
+    return hashlib.sha1(raw.encode()).hexdigest()[:16]
+
+
+def cards_panel(session: S.GameSession, rows: list[A_.PlayerRow], token: str, open_uid: str = ""):
+    """The players' cards. While the game is active it re-reads itself every 5 s: 204 while the signature is the same;
+    admin.js keeps the open cards open across the swap (and skips a swap while an unmark/unblock is on its way)."""
+    active = session.status == "active"
+    poll = {"hx_get": f"/admin/cards?sid={session.id}&sig={cards_signature(session, rows)}", "hx_trigger": LIVE_POLL,
+            "hx_swap": "outerHTML"} if active else {}
+    return Div(H2(T.ADMIN_CARDS), *[card_panel(r, session.id, token, active, str(r.user_id) == open_uid) for r in rows],
+               id="cards-panel", **poll)
+
+
+def watcher(session: S.GameSession | None):
+    """No game running (none yet, or the last one ended): reload the page as soon as a new Bingo game starts (a player can start it)."""
+    return Div(id="bingo-watch", hx_get=f"/admin/watch?sid={session.id if session else ''}", hx_trigger=LIVE_POLL, hx_swap="none")
+
+
 def admin_page(session: S.GameSession, rows: list[A_.PlayerRow], standings: list[G.Standing],
                token: str, start_token: str, sort: str = "rank", direction: str = "asc", open_uid: str = "",
                settings=None):
@@ -177,11 +203,11 @@ def admin_page(session: S.GameSession, rows: list[A_.PlayerRow], standings: list
     active = session.status == "active"
     winner = next((r for r in rows if r.user_id == session.winner_user_id), None)
     bar = status_bar(session, len(rows), None, winner.name if winner else None)
-    cards = [card_panel(r, session.id, token, active, str(r.user_id) == open_uid) for r in rows]
     return (Title(f"{T.TITLE} - admin"), admin_tabs("bingo"),
             Main(title_row(f"{T.TITLE} - admin"), bar,
                  users_panel(rows, rank, sort, direction, poll=active),
-                 H2(T.ADMIN_CARDS), *cards, settings, Script(src="/admin.js", defer=True), cls="wide"))
+                 cards_panel(session, rows, token, open_uid), None if active else watcher(session),
+                 settings, Script(src="/admin.js", defer=True), cls="wide"))
 
 
 GAME_OF = {"bingo": "bingo", "phrases": "bingo", "falacias": "falacias", "fallacies": "falacias", "checker": "checker"}
@@ -322,7 +348,7 @@ def register(rt, pool, live: livestream.LiveStream | None = None):
                         Main(title_row(f"{T.TITLE} - admin"), P(T.ADMIN_NO_SESSION, cls="muted"), P(T.SESSION_NONE_HINT, cls="muted"),
                             settings,
                             Div(A(T.ADMIN_PHRASES_LINK, href="/admin/phrases", cls="btn"),
-                                A(T.ADMIN_REFRESH, href="/admin", cls="btn"), cls="adminbar"), cls="wide"))
+                                A(T.ADMIN_REFRESH, href="/admin", cls="btn"), cls="adminbar"), watcher(None), cls="wide"))
             return admin_page(session, A_.players(conn, session.id), G.leaderboard(conn, session.id),
                               A_.csrf_token(pw, session.id), A_.start_token(pw), sort, dir, open, settings)
 
@@ -339,6 +365,32 @@ def register(rt, pool, live: livestream.LiveStream | None = None):
             rows = A_.players(conn, session.id)
             rank = {s.user_id: s.rank for s in G.leaderboard(conn, session.id)}
             return (users_panel(rows, rank, sort, dir, poll=True), player_count(len(rows), oob=True))
+
+    @rt("/admin/cards")
+    def admin_cards(request: Request, sid: str = "", sig: str = ""):
+        """Polled every 5 s by the cards panel: 204 while nothing on the cards changed, else the panel again.
+        The game ended or another one started: reload the page."""
+        if (d := denied(request)) is not None:
+            return d
+        with pool.connection() as conn:
+            session = A_.current_session(conn)
+            if session is None or session.status != "active" or str(session.id) != sid:
+                return Response(status_code=200, headers={"HX-Refresh": "true"})
+            rows = A_.players(conn, session.id)
+            if sig and sig == cards_signature(session, rows):
+                return Response(status_code=204)
+            return Response(to_xml(cards_panel(session, rows, A_.csrf_token(A_.admin_password() or "", session.id))), media_type="text/html")
+
+    @rt("/admin/watch")
+    def admin_watch(request: Request, sid: str = ""):
+        """Polled by a page with no running game: reload when the current Bingo game is another one, or became active."""
+        if (d := denied(request)) is not None:
+            return d
+        with pool.connection() as conn:
+            session = A_.current_session(conn)
+        if session is not None and (str(session.id) != sid or session.status == "active"):
+            return Response(status_code=200, headers={"HX-Refresh": "true"})
+        return Response(status_code=204)
 
     @rt("/admin/settings/ip-limit", methods=["POST"])
     def admin_ip_limit(request: Request, limit: str = "", csrf: str = ""):
