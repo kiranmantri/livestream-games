@@ -126,8 +126,9 @@ def item_view(it: C.AdminCheck, token: str, session_id: uuid.UUID, active: bool,
                       hx_post="/admin/checker/score", **target)
         actions = Form(*ids, Button(T.CK_DISMISS, type="submit", cls="danger", disabled=it.status == "resolved" and it.admin_score is None),
                        method="post", action="/admin/checker/dismiss", hx_post="/admin/checker/dismiss", cls="dismissform", **target)
+        redo = {"hx_confirm": T.CK_RECHECK_CONFIRM.format(score=fmt_score(it.admin_score))} if it.status == "resolved" else {}
         recheck = Form(*ids, Button(T.CK_RECHECK, type="submit", cls="recheck"), method="post", action="/admin/checker/recheck",
-                       hx_post="/admin/checker/recheck", **target) if it.status == "needs_admin" and it.error else None
+                       hx_post="/admin/checker/recheck", **redo, **target) if it.status != "done" and it.error else None
         actions = Div(recheck, Button(T.CK_EDIT, type="button", cls="edit", data_ckedit="1", title=T.CK_HOST_EDIT), actions, cls="acts")
     else:
         picker = None

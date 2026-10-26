@@ -212,6 +212,14 @@
     panes.classList.toggle('novideo', hidden);       // the two text panels take the free space, 50/50
     if (frame) frame.setAttribute('src', hidden ? 'about:blank' : src);   // unload: the sound must stop too
   }
-  hide.addEventListener('click', function () { set(true); });
-  show.addEventListener('click', function () { set(false); });
+  // the video starts HIDDEN (the text panels are what you play with); the choice is remembered in this browser
+  var KEY = 'lg_prefs', prefs = {};
+  try { prefs = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { prefs = {}; }
+  function remember(hidden) {
+    prefs.hideVideo = hidden;
+    try { localStorage.setItem(KEY, JSON.stringify(prefs)); } catch (e) { /* private mode: works for this visit */ }
+  }
+  hide.addEventListener('click', function () { set(true); remember(true); });
+  show.addEventListener('click', function () { set(false); remember(false); });
+  set(prefs.hideVideo !== false);
 })();

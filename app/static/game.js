@@ -5,8 +5,8 @@
   if (!root) return;
   var KEY = 'lg_prefs', prefs = {};
   try { prefs = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { prefs = {}; }
-  // phones: video and chat start hidden (the board comes first); a saved choice always wins
-  if (prefs.hideLive === undefined && window.matchMedia && window.matchMedia('(max-width: 760px)').matches) prefs.hideLive = true;
+  // video and chat start hidden on every screen (the board comes first); a saved choice always wins
+  if (prefs.hideLive === undefined) prefs.hideLive = true;
 
   function apply() {
     root.classList.toggle('hide-live', !!prefs.hideLive);

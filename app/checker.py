@@ -390,8 +390,10 @@ def admin_recheck(conn: psycopg.Connection, session_id: UUID, check_id: UUID) ->
     ensure_autocommit(conn)
     _require_active(conn, session_id)
     with conn.cursor(row_factory=class_row(Check)) as cur:
-        cur.execute("UPDATE fact_checks SET status = 'queued', attempts = 0, error = NULL, finished_at = NULL "
-                    f"WHERE id = %s AND session_id = %s AND status = 'needs_admin' AND error IS NOT NULL RETURNING {_CHECK_COLS}", (check_id, session_id))
+        # a check the host already scored (resolved) goes back too: the DB only allows an admin score on a resolved check, so that score is cleared
+        cur.execute("UPDATE fact_checks SET status = 'queued', attempts = 0, error = NULL, finished_at = NULL, admin_score = NULL, resolved_at = NULL "
+                    f"WHERE id = %s AND session_id = %s AND status IN ('needs_admin', 'queued', 'running', 'resolved') AND error IS NOT NULL RETURNING {_CHECK_COLS}",
+                    (check_id, session_id))
         row = cur.fetchone()
     if row is None:
         raise CheckNotFound("no failed check to retry")

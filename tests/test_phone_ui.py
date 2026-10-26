@@ -126,7 +126,7 @@ def test_phone_css_rules_exist():
 
 
 def test_game_js_hides_video_and_chat_by_default_on_phones_and_flips_on_tap():
-    assert "matchMedia" in JS and "hideLive === undefined" in JS
+    assert "hideLive === undefined" in JS and "matchMedia" not in JS
     assert "closest('.cardbox.mine button.cell')" in JS and "htmx:sendError" in JS
 
 

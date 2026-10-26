@@ -252,3 +252,47 @@ def test_the_domain_function_requires_an_error_and_an_active_session(conn):
 def test_choosing_a_score_closes_the_picker():
     js = (ROOT / "app" / "static" / "ckadmin.js").read_text()
     assert "button.pick" in js and "delete open[d.dataset.id]" in js and "d.open = false" in js
+
+
+def test_verificar_alegacao_also_shows_for_a_failed_run_still_waiting_for_a_retry(admin, conn):
+    s, (ana, _) = game(conn)
+    cl = C.submit_typed_claim(conn, ana, "A Lua é de queijo", -4)
+    ck = C.claim_next_check(conn)
+    C.fail_check(conn, ck.id, "o modelo não respondeu a tempo")                      # attempt 1 of 3: back in the queue WITH an error
+    body = tbody_of(page(admin), cl.check_id)
+    assert C.get_check(conn, cl.check_id).status == "queued" and "Verificar Alegação" in body
+    assert recheck(admin, conn, cl.check_id).status_code == 200 and C.get_check(conn, cl.check_id).error is None
+
+
+def test_a_check_the_host_scored_after_an_ai_error_can_be_verified_again_after_a_confirmation(admin, conn):
+    """The case seen in dev: 'erro inesperado (RuntimeError)', the host typed a score by hand, and the AI never answered."""
+    s, (ana, _) = game(conn)
+    cl = failed_check(conn, ana)
+    score(admin, conn, cl.check_id, "-1")
+    body = tbody_of(page(admin, "/admin/checker?all=1"), cl.check_id)
+    form = re.search(r"<form[^>]*recheck[^>]*>|<form[^>]*/admin/checker/recheck[^>]*>", body).group(0)
+    assert C.get_check(conn, cl.check_id).status == "resolved" and T.CK_RECHECK in body and "hx-confirm" in form and "-1" in form
+    assert recheck(admin, conn, cl.check_id).status_code == 200
+    ck = C.get_check(conn, cl.check_id)
+    assert (ck.status, ck.error, ck.admin_score, ck.attempts) == ("queued", None, None, 0)
+    assert C.claim_next_check(conn).id == cl.check_id                                    # the worker takes it again
+
+
+def test_a_resolved_check_without_an_error_has_no_verificar_button(admin, conn):
+    s, (ana, _) = game(conn)
+    cl = needs_admin(conn, ana, "baixa confiança", -1)
+    score(admin, conn, cl.check_id, "2")
+    assert T.CK_RECHECK not in tbody_of(page(admin, "/admin/checker?all=1"), cl.check_id)
+    assert recheck(admin, conn, cl.check_id).status_code == 404
+
+
+def test_a_running_retry_that_still_shows_the_last_error_has_the_button_too(admin, conn):
+    """A slow retry sits in `running` with the previous error on screen; the admin must not have to wait for it."""
+    s, (ana, _) = game(conn)
+    cl = C.submit_typed_claim(conn, ana, "A Lua é de queijo", -4)
+    C.fail_check(conn, C.claim_next_check(conn).id, "erro inesperado (RuntimeError)")
+    C.claim_next_check(conn)                                                            # attempt 2 is running; the error of attempt 1 is still stored
+    body = tbody_of(page(admin), cl.check_id)
+    assert C.get_check(conn, cl.check_id).status == "running" and "RuntimeError" in body and T.CK_RECHECK in body
+    assert recheck(admin, conn, cl.check_id).status_code == 200
+    assert C.get_check(conn, cl.check_id).status == "queued" and C.get_check(conn, cl.check_id).error is None

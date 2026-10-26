@@ -62,3 +62,10 @@ def test_css_three_columns_then_fifty_fifty_when_hidden():
     assert re.search(r"\.panes\.three\.novideo\s*\{[^}]*grid-template-columns:\s*1fr 1fr", css)
     assert re.search(r"\.pane\[hidden\]\s*\{[^}]*display:\s*none", css)
     assert re.search(r"@media \(max-width: 760px\)[^{]*\{[^}]*\.panes\.three[^}]*1fr\s*;", css), "one column on phones"
+
+
+def test_the_video_starts_hidden_and_the_choice_is_remembered():
+    js = (ROOT / "app" / "static" / "falacias.js").read_text()
+    assert "prefs.hideVideo !== false" in js and "localStorage" in js and "set(prefs.hideVideo !== false)" in js
+    game = (ROOT / "app" / "static" / "game.js").read_text()
+    assert "hideLive === undefined) prefs.hideLive = true" in game and "matchMedia" not in game
