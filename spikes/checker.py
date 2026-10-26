@@ -10,7 +10,7 @@ Standalone: no database, no web app. One pydantic-ai Agent with
     uv run python -m spikes.checker --models groq:openai/gpt-oss-120b,openrouter:openai/gpt-oss-120b      # hosted; keys from .env (GROQ_API_KEY, OPENROUTER_API_KEY); per-claim cost in the summary
     uv run python -m spikes.checker --models gemma4:e4b --claim "A Terra tem 6 mil anos"        # one claim
 
-Results are appended to data/spike/results.jsonl as they come. Needs `ollama serve` with OLLAMA_CONTEXT_LENGTH=32768 (see AGENTS.md).
+Results are appended to data/spike/results.jsonl as they come. Needs `ollama serve` with OLLAMA_CONTEXT_LENGTH=32768 (see docs/validation/checker.md, FC0).
 """
 from __future__ import annotations
 

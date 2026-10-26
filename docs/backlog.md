@@ -8,7 +8,7 @@ Open items, newest first. Remove an item when done.
   stored in a password manager (rotate it any time with `fly secrets set ADMIN_PASSWORD=...`).
 
 ## UX / bugs found by the adversarial test (2026-10-22, local dev; not browser-verified on touch, Safari, Firefox)
-Fixed already (see AGENTS.md "Validation for the adversarial-test fixes"): non-Latin-1 names gave HTTP 500; rapid taps could leave the
+Fixed already (see docs/validation/ui-admin.md "Validation for the adversarial-test fixes"): non-Latin-1 names gave HTTP 500; rapid taps could leave the
 board out of sync with the server; a lost cookie locked the player out of their own name (now: personal recovery link).
 
 Bugs

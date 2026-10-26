@@ -2,7 +2,7 @@
 `checker.AiResult`, or raises `CheckFailed` with a short pt-BR reason. The worker (FC3) stores the result or the failure.
 
 Hosted models only (`CHECKER_MODEL=groq:<id>` or `openrouter:<id>`; keys GROQ_API_KEY / OPENROUTER_API_KEY). Two steps, because every single-request way
-of mixing tools and a structured answer failed on the real APIs (see AGENTS.md, FC0): step 1 researches WITH tools (web_search, fetch_page) and ends in
+of mixing tools and a structured answer failed on the real APIs (see docs/validation/checker.md, FC0): step 1 researches WITH tools (web_search, fetch_page) and ends in
 plain-text notes; step 2 has NO tools and answers with a JSON schema. Output validators matter more than the prompt: sources must be URLs the search
 returned, the sign of the score must agree with the verdict, unverifiable means score 0.
 

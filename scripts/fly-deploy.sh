@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One safe release to Fly: (1) look for an ACTIVE game, (2) warn about uncommitted/unpushed work, (3) stage the API keys of .env, (4) fly deploy --ha=false.
-# Does NOT take a backup and does NOT run migrations by hand: a release with a migration needs the backup step of the AGENTS.md checklist first.
+# Does NOT take a backup and does NOT run migrations by hand: a release with a migration needs the backup step of the checklist in docs/validation/deploy.md first.
 # Usage: scripts/fly-deploy.sh      (YES=1: no questions; DRY_RUN=1: print the fly commands only; APP=<fly app>; ENV_FILE=<path>)
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
