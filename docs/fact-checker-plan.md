@@ -1,6 +1,7 @@
 # "Quem tá metendo o loco?" — fact-checking game (plan v2, not built yet)
 
-Status: PLAN for review. Nothing below is implemented. v2 (2026-10-24) replaces the OpenAI + Jev pipeline with ONE local model (Gemma 4) driven by a
+Status (2026-10-26): BUILT as "Aponte o mentiroso!" (FC0-FC7, docs/validation/checker.md); this file is the historical plan.
+Original status: PLAN for review. Nothing below is implemented. v2 (2026-10-24) replaces the OpenAI + Jev pipeline with ONE local model (Gemma 4) driven by a
 pydantic-ai Agent. OpenAI and Jev are ignored for now (v1 was: OpenAI search brief -> Jev score; Jev is TypeSafe's judge model that cannot browse; it could come back later
 as a second opinion).
 
@@ -89,11 +90,14 @@ Fly performance-CPU Machine for an hour. Decide the hosting from numbers. The co
 - FC6 End screen, pt-BR texts, menu entry.
 - FC7 Hosting + deploy (depends on FC0): where Ollama runs, env, backup (migration), cost check on a real game.
 
-## 9. Open questions
-1. Hosting of the model (section 6): OK to do the FC0 spike on your Mac first and decide from the numbers?
-2. Page fetch (top 3 pages) in addition to search snippets: yes (better evidence, slower) or snippets only for the first version?
-3. Scoring formula (section 4: hedging bonus/penalty and the `unverifiable` outcome).
-4. Which Gemma 4 tag is the target (e4b / 12b / 26b / 31b)? I would test all and recommend from the spike.
+## 9. Open questions (all answered; kept for history)
+1. Model hosting: after the FC0 spike a hosted API was chosen; local Ollama was dropped for cost (hosting a model on Fly CPU, a Mac
+   plus tunnel or a rented GPU; see docs/validation/checker.md). Running now: `CHECKER_MODEL=openrouter:openai/gpt-oss-120b`, 2 workers, about 50-100 s and US$0.003 per claim.
+2. Page fetch: yes. The research step has `web_search` and `fetch_page` tools, with caps (`MAX_SEARCHES`, `MAX_FETCHES` in `app/factcheck.py`).
+3. Scoring: as built, `app/checker.py:points`: max(0, 5 - |guess - final|) + a bonus when the sign is right; a 0 guess on a clear
+   claim scores 0; "unverifiable" or dismissed means 0 points for everyone. The host's score always wins (migration 0014).
+4. Gemma tag: moot (see 1).
+Current architecture: `docs/architecture.md`.
 
 ## Probe: Google Fact Check Explorer (2026-10-24)
 - `factcheckexplorer` (GitHub GONZOsint) scrapes the undocumented `toolbox.google.com/factcheck/api/search`. 8 live queries, ~1 s each, no key.

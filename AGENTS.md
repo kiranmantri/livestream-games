@@ -22,7 +22,7 @@ https://www.youtube.com/@O_Poligrafo/streams (Portuguese, pt-BR). Design: `docs/
     corpus/       yt-dlp ingestion + phrase extraction
     migrations/   numbered SQL files (0001_*.sql ...)
     data/corpus/  raw downloads (gitignored)
-    docs/         design docs
+    docs/         architecture, operations, validation/, diagrams/ (drawio + PNG), backlog
     tests/        pytest
 
 ## Working agreements
@@ -93,6 +93,7 @@ create a new area file only for a genuinely new area and add it to this list):
     docs/validation/checker.md    Aponte o mentiroso!: FC0 spike .. FC5, /admin/checker table (plan: docs/fact-checker-plan.md)
     docs/validation/ui-admin.md   shared UI: adversarial fixes, backlog groups 1-3, visual refresh, personal link, admin shell v2
 
+Architecture (diagram, workers, tables, env): docs/architecture.md. Operations (backup, restore, deploy): docs/operations.md.
 Open work: docs/backlog.md. Plans: docs/fact-checker-plan.md, .hermes/plans/.
 
 ## Conventions log

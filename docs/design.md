@@ -1,5 +1,9 @@
 # Live Games — Design (v2, after review)
 
+> Historical document: the original plan for Bingo (tasks 1-n). Several decisions changed later (4x4 cards, 1-10 word phrases,
+> three games under one admin session, Fly.io deploy). Current state: `docs/architecture.md` (what runs where),
+> AGENTS.md (domain rules), `docs/operations.md` (backup / restore / deploy).
+
 ## Decisions
 - Phrase length 3-5 words, no greetings. Phrase sources: transcript | chat | transcript+chat | manual.
 - Corpus work first (tasks 2-3), then app.

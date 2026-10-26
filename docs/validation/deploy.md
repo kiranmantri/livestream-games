@@ -12,8 +12,8 @@ later blocks supersede earlier ones where they disagree. Expected test counts ar
     fly ssh console --app livebingo --container db -C "psql -U livegames -d livegames -h 127.0.0.1 -At -c \"select status, count(*) from game_sessions group by 1\""
     #    expect: no "active|N" line. If there is one: finish the game in /admin first (or agree on the interruption).
     # 2. Backup (plain SQL; tested: restores cleanly into a scratch DB). Mandatory when the release has a migration, esp. DROP/ALTER.
-    fly ssh console --app livebingo --container db -C "pg_dump -U livegames -d livegames -h 127.0.0.1 --no-owner" 2>/dev/null | grep -v '^Connecting' > data/backup/cloud_full_$(date +%Y%m%d_%H%M%S).sql
-    #    expect: ~100+ KB file, 7+ "COPY" lines (grep -c '^COPY'). Files in data/backup/ are gitignored; delete when no longer needed.
+    scripts/fly-db-backup.sh                                   # -> data/backup/cloud_full_<ts>.sql (docs/operations.md)
+    #    expect: "ok: 4.3M | tables with data: 16 | newest migration: ..."; it refuses to keep an incomplete dump. Gitignored; delete old ones.
     # 3. Deploy (ALWAYS --ha=false):
     fly deploy --ha=false                                      # expect: "Machine ... is now in a good state"
     # 4. Verify:
@@ -24,7 +24,7 @@ later blocks supersede earlier ones where they disagree. Expected test counts ar
     #    expect: the newest migration file name; the phrase count unchanged. Then play/open /admin once in a browser.
     # Rollback (code only; NOT tested): `fly releases --app livebingo` -> `fly deploy --ha=false --image <registry.fly.io/livebingo:deployment-...>`
     #   of the previous release. Migrations are NOT undone (0006 dropped ingested_videos for good): for a bad migration restore the
-    #   step-2 backup into an empty DB instead (psql -f <file>), after stopping writes. Never TRUNCATE the cloud DB.
+    #   step-2 backup with scripts/fly-db-restore.sh <file> (side DB + rename swap; docs/operations.md). Never TRUNCATE the cloud DB.
     # Phrases are edited in the cloud (/admin/phrases); the seed file only fills an EMPTY table. To bring the cloud phrases to
     #   local: dump `COPY (SELECT * FROM phrases ORDER BY 1) TO STDOUT WITH (FORMAT csv, HEADER, NULL '\N')` via fly ssh into
     #   data/backup/cloud_phrases.csv, then `uv run python -m deploy.make_seed --from-dump data/backup` (see the Fly section above).
@@ -105,3 +105,34 @@ later blocks supersede earlier ones where they disagree. Expected test counts ar
     #   uvicorn (--reload watches .py only) and start a NEW game (the message is rendered at page load).
     # Real checks done (me): the scripts against a STUB fly (order, stdin, no value printed, active-game refusal), DRY_RUN against the real .env (names only), compose rendered with a throwaway env file.
     #   NOT run: a real `fly secrets import` / `fly deploy` with these scripts.
+
+### Validation for the cloud DB backup / restore scripts (task 6, user 2026-10-26): scripts/fly-db-backup.sh, scripts/fly-db-restore.sh, scripts/_flydb.sh
+    # Guide: docs/operations.md, "Backup and restore of the cloud database".
+    bash -n scripts/fly-db-backup.sh scripts/fly-db-restore.sh scripts/_flydb.sh             # syntax
+    scripts/fly-db-backup.sh                                     # expect: "ok: <size> | tables with data: 16 | newest migration: 0014_..."
+    VERIFY_ONLY=1 scripts/fly-db-restore.sh data/backup/<that file>   # expect: a table of "current -> restored" counts, then
+    #   "VERIFY_ONLY: the backup restores cleanly ... livegames was not touched"; afterwards the cloud database list is only
+    #   postgres livegames template0 template1 (the side database is gone).
+    # Done by me:
+    #   - errors propagate: `printf 'select 1/0;' | psql_in livegames` exits non-zero over fly ssh (1) and locally (3).
+    #   - cloud VERIFY_ONLY with the 16:49 backup: 19.5 s; counts differ only by play since the backup (+5 users, +11 marks) and the
+    #     0014 row in schema_migrations; side database dropped (checked with pg_database).
+    #   - full rehearsal on the LOCAL docker Postgres (TARGET=local DB_NAME=lgr): dev copy as "live", the cloud backup as the file.
+    #     Swap done, lgr = cloud data (200 users), lgr_before_<ts> = the old data (58 users), safety backup written.
+    #   - swap under load: one connection held in pg_sleep(30) + a client reconnecting every 0.3 s -> 2 connections closed, swap OK.
+    #   - truncated file -> "REFUSED", exit 1; complete file with a bad COPY -> load error, "FAILED to load ... side database dropped",
+    #     live data unchanged (200 users), exit 1; the printed rollback SQL (rename back) works.
+    # NOT done: a real swap on Fly (it replaces the live data; run it only when you need it). The Machine-restart + healthz part of
+    #   step 6 is therefore only exercised by the deploys, not by this script.
+
+### Validation for the docs refresh + physical architecture diagram (task 10, user 2026-10-26)
+    python3 docs/diagrams/make_physical.py          # expect: prints the .drawio path (the diagram is generated, edit the script, not the XML)
+    python3 ~/.hermes/skills/drawio-skill/scripts/validate.py docs/diagrams/physical-architecture.drawio   # expect: 0 error(s), 0 warning(s)
+    open docs/diagrams/physical-architecture.drawio.png    # one Machine (app + db containers), volume, secrets, registry, Fly proxy, people, 5 external services
+    open -a draw.io docs/diagrams/physical-architecture.drawio   # editable; the PNG also embeds the diagram
+    # Read docs/architecture.md: workers table, code map, 16 tables, env table, known limits. Linked from README.md, AGENTS.md,
+    #   docs/operations.md; docs/design.md and docs/fact-checker-plan.md are marked historical (plan "Open questions" answered).
+    # Agent ran: generate + validate (0/0); PNG 3285x2039 with a valid IEND; zoomed visual QA per region (no line through a box,
+    #   no label on a line/border, no clipped text) after 3 fix rounds; every module, table (dev DB: 16 incl. schema_migrations),
+    #   env var, poll interval, Fly size/region and volume (3GB, encrypted, gru) in the doc was checked against code / fly CLI.
+    # NOT done: logical / sequence diagrams (one physical diagram only); docs/design.md body not rewritten (kept as history).
