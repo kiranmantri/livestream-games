@@ -146,3 +146,23 @@ later blocks supersede earlier ones where they disagree. Expected test counts ar
     # Out-of-band pieces of a <tbody> reply sit in a <template>, else the browser pulls the board's own table into the page (seen with the score field).
     # Real Chrome (throwaway DB): Editar opens the palette (it was clipped by overflow before), a click saved +3 and showed 3 stars. NOT checked: phones, the Verificar button in a browser,
     #   "Confianca alta" wrapping with a real AI result, Safari/Firefox. No mutation check.
+
+### Validation for FC7 prep (image, compose, two worker bugs found by a real smoke run) - deploy itself NOT done yet
+    uv run pytest tests/test_factcheck_loops.py tests/test_app_logging.py -q   # expect: 6 passed (red run first: 3 failed / 1 passed, then 2 failed)
+    uv run pytest -q                                    # expect: 1867 passed, 1 skipped
+    # Bug 1 (blocker): the worker builds the checker ONCE and runs each check in a NEW event loop (asyncio.run). The model's HTTP client stayed bound to
+    #   the first loop: check 2 of the same checker failed "erro inesperado (RuntimeError)" = "Event loop is closed" (3 runs -> admin queue). Fix: from_env
+    #   gives PydanticChecker a model_factory; every check builds its own model + AsyncOpenAI client and closes it in that loop. Groq now also gets its own
+    #   AsyncOpenAI client (pydantic-ai's OpenAIProvider(base_url=...) shares one cached httpx client per process). Tests: a local OpenAI-compatible server
+    #   with keep-alive, 3 checks in a row and 2 threads x 3 checks, for groq and openrouter.
+    # Bug 2: nothing configured logging, so under uvicorn only WARNING+ reached the log ("fact-checker on", "stt recovered", "requeued" never showed).
+    #   app/main.py gives the "app" logger an INFO stderr handler. Expect now at boot: "INFO app.checkworker: fact-checker on: <model>, 2 worker(s)".
+    # docker-compose.yml passes CHECKER_MODEL and OPENROUTER_API_KEY to the app (runtime only). tests/test_phone_ui.py tag test: the phrase gets score 99
+    #   (it is a rendering test; a low-scored phrase could miss all 40 dealt cards and failed 2 of 2 full runs).
+    # Real checks (me): `docker build` OK (python 3.14.9, pydantic-ai 2.61.0, image 265 MB; imports fine with --read-only); compose smoke in project lgsmoke
+    #   (applied 0001..0013, seeds, healthy); DuckDuckGo from the container: 6 results. Real model via the worker (OpenRouter gpt-oss-120b, keys from .env):
+    #   "A Terra tem 6 mil anos" false -5 (3 sources), "O Brasil tem 26 estados e o DF" true +5 (2), "A Grande Muralha ... visivel da Lua" false -3 (3);
+    #   45-106 s each, 11-16k input tokens; no failures. Reset: COMPOSE_PROJECT_NAME=lgsmoke docker compose -f docker-compose.yml down -v
+    # OPEN (product decision): "os Annunakis existem" -> unverifiable / 0 in 3 of 3 runs (once without searching at all). The prompts treat beliefs as
+    #   uncheckable ("Deus existe"); the model files mythological beings there. FC0 expected false. Tune RESEARCH/ANSWER_INSTRUCTIONS only if you want that.
+    # NOT checked: the cloud deploy (blocked: an active Falacias game, OPENROUTER_API_KEY not set on Fly, migration 0013 => backup first), DuckDuckGo from Fly's IP.

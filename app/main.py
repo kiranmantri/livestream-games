@@ -5,6 +5,7 @@ Run:  uv run uvicorn app.main:app --reload      (health: GET /healthz)
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import re
 from datetime import UTC, datetime
@@ -68,6 +69,15 @@ from app.ui import (
     token_of,
     url_error,
 )
+
+# The app's own log lines (workers: "fact-checker on: ...", "stt recovered", failures) go to stderr at INFO. Without this, nothing configured
+# logging and under uvicorn only WARNING+ came out (Python's last-resort handler). Records still propagate (pytest's caplog reads them at the root).
+_app_log = logging.getLogger("app")
+if not _app_log.handlers:
+    _h = logging.StreamHandler()
+    _h.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+    _app_log.addHandler(_h)
+    _app_log.setLevel(logging.INFO)
 
 STATIC_DIR = ROOT / "app" / "static"
 LEADERBOARD_TOP = 10

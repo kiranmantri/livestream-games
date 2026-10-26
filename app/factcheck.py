@@ -304,8 +304,12 @@ def explain_error(e: BaseException) -> str:
 # ---------------------------------------------------------------- the checker
 class PydanticChecker:
     def __init__(self, model, name: str, *, search: SearchFn = default_search, fetch: FetchFn = default_fetch,
-                 timeout_s: float = TOTAL_TIMEOUT_S, final_mode: Literal["native", "tool"] = "native"):
+                 timeout_s: float = TOTAL_TIMEOUT_S, final_mode: Literal["native", "tool"] = "native",
+                 model_factory: Callable[[], OpenAIChatModel] | None = None):
+        # The worker builds the checker ONCE and runs every check in a NEW event loop (asyncio.run, one thread per worker). An HTTP client stays
+        # bound to the loop it first ran in ("Event loop is closed" on the next check), so with a factory every check gets its own model + client.
         self.model, self.name, self.search, self.fetch, self.timeout_s = model, name, search, fetch, timeout_s
+        self.model_factory = model_factory
         self.research: Agent[Deps, str] = Agent(
             model, output_type=str, deps_type=Deps, retries=2, instructions=_fmt(RESEARCH_INSTRUCTIONS),
             capabilities=[WebSearch(native=False, local=Tool(web_search, takes_ctx=True, name="web_search"))],
@@ -318,12 +322,17 @@ class PydanticChecker:
             return validate(ctx.deps, o)
 
     async def _run(self, prompt: str, deps: Deps) -> tuple[Answer, int, int]:
-        settings = ModelSettings(temperature=0.0, timeout=REQUEST_TIMEOUT_S)
-        limits = UsageLimits(request_limit=20, tool_calls_limit=12)
-        one = await self.research.run(prompt, deps=deps, usage_limits=limits, model_settings=settings)
-        sources = "\n".join(f"- {title}: {url}" for url, title in deps.seen.items()) or "(nenhuma)"
-        two = await self.answer.run(f"{prompt}\n\nNotas da pesquisa:\n{one.output}\n\nFontes disponíveis (use SOMENTE estas URLs):\n{sources}",
-                                    deps=deps, usage_limits=limits, model_settings=settings)
+        model = self.model_factory() if self.model_factory else self.model
+        try:
+            settings = ModelSettings(temperature=0.0, timeout=REQUEST_TIMEOUT_S)
+            limits = UsageLimits(request_limit=20, tool_calls_limit=12)
+            one = await self.research.run(prompt, deps=deps, model=model, usage_limits=limits, model_settings=settings)
+            sources = "\n".join(f"- {title}: {url}" for url, title in deps.seen.items()) or "(nenhuma)"
+            two = await self.answer.run(f"{prompt}\n\nNotas da pesquisa:\n{one.output}\n\nFontes disponíveis (use SOMENTE estas URLs):\n{sources}",
+                                        deps=deps, model=model, usage_limits=limits, model_settings=settings)
+        finally:
+            if self.model_factory:
+                await model.client.close()            # in THIS loop, before asyncio.run closes it
         usage = one.usage + two.usage
         return two.output, usage.input_tokens or 0, usage.output_tokens or 0
 
@@ -374,8 +383,9 @@ def off_reason(env: Mapping[str, str] | None = None) -> str | None:
 
 def model_for(spec: str, env: Mapping[str, str]) -> OpenAIChatModel:
     if spec.startswith(GROQ_PREFIX):
-        provider = OpenAIProvider(base_url=env.get("GROQ_BASE_URL") or GROQ_URL, api_key=env["GROQ_API_KEY"])
-        return OpenAIChatModel(spec[len(GROQ_PREFIX):], provider=provider)
+        # Own AsyncOpenAI client (not pydantic-ai's process-wide cached httpx client): it must not outlive one check's event loop.
+        client = AsyncOpenAI(base_url=env.get("GROQ_BASE_URL") or GROQ_URL, api_key=env["GROQ_API_KEY"])
+        return OpenAIChatModel(spec[len(GROQ_PREFIX):], provider=OpenAIProvider(openai_client=client))
     client = AsyncOpenAI(base_url=env.get("OPENROUTER_BASE_URL") or OPENROUTER_URL, api_key=env["OPENROUTER_API_KEY"])
     return OpenAIChatModel(spec[len(OPENROUTER_PREFIX):], provider=OpenRouterProvider(openai_client=client))
 
@@ -385,4 +395,5 @@ def from_env(env: Mapping[str, str] | None = None) -> PydanticChecker | None:
     if off_reason(env):
         return None
     spec = env["CHECKER_MODEL"].strip()
-    return PydanticChecker(model_for(spec, env), spec)
+    env = dict(env)
+    return PydanticChecker(model_for(spec, env), spec, model_factory=lambda: model_for(spec, env))

@@ -95,7 +95,9 @@ def test_split_kind(text, main, tag):
 
 
 def test_a_falacia_phrase_is_drawn_with_a_small_tag(conn, test_db_url):
-    conn.execute("UPDATE phrases SET text = 'ad populum (falácia)' WHERE id = (SELECT min(id) FROM phrases)")
+    # score 99 (the maximum) = the largest sampling weight: the test is about RENDERING the tag, not about sampling luck (a low-scored phrase
+    # could miss all 40 cards; it failed that way in full runs).
+    conn.execute("UPDATE phrases SET text = 'ad populum (falácia)', score = 99, enabled = true WHERE id = (SELECT min(id) FROM phrases)")
     app = create_app(test_db_url)
     with TestClient(app):
         seen = False

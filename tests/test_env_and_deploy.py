@@ -48,7 +48,7 @@ def test_every_variable_compose_interpolates_is_documented_in_the_example():
 # ---------------------------------------------------------------- compose / Dockerfile: secrets only at runtime
 def test_compose_passes_the_stt_settings_and_keys_to_the_app_at_runtime():
     text = (ROOT / "docker-compose.yml").read_text()
-    for k in ("STT_PROVIDER", "STT_LANGUAGE", "GROQ_API_KEY", "XAI_API_KEY"):
+    for k in ("STT_PROVIDER", "STT_LANGUAGE", "GROQ_API_KEY", "XAI_API_KEY", "CHECKER_MODEL", "OPENROUTER_API_KEY"):
         assert f"{k}: ${{{k}" in text, k
     assert "args:" not in text                                      # nothing from .env becomes a build argument (it would stay in the image layers)
 
