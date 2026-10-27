@@ -12,3 +12,6 @@ __pycache__/
 .ruff_cache/
 docker-compose*.yml
 Dockerfile
+# local-only caches/models: never needed in the image (Dockerfile COPYs named dirs), only bloat the build upload
+mlx_models/
+.mypy_cache/
