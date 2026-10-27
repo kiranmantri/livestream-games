@@ -43,3 +43,36 @@ document.addEventListener('scroll', function () { closePicks(null); }, true);
   }, true);
   document.body.addEventListener('htmx:afterSwap', function () { document.querySelectorAll(sel).forEach(function (d) { if (open[d.dataset.id]) { d.open = true; placePick(d); } }); });
 })();
+
+// Board rows filter the claim cards below them: a click (or Enter / Space on a focused row) toggles that player; several players at once;
+// none selected = every card. The selection lives in sessionStorage per session, so the 3 s poll (which re-draws board and cards) and a reload keep it.
+(function () {
+  function box() { return document.getElementById('ckcards'); }
+  function key() { var b = box(); return 'ckpick:' + ((b && b.dataset.session) || ''); }
+  function load() { try { return JSON.parse(sessionStorage.getItem(key()) || '[]'); } catch (e) { return []; } }
+  function save(sel) { try { sessionStorage.setItem(key(), JSON.stringify(sel)); } catch (e) { /* private mode: the filter just resets */ } }
+  function apply() {
+    var sel = load(), any = sel.length > 0, shown = 0;
+    document.querySelectorAll('tr.ckpick').forEach(function (tr) { tr.setAttribute('aria-selected', sel.indexOf(tr.dataset.user) >= 0 ? 'true' : 'false'); });
+    var cards = document.querySelectorAll('#ckcards li[data-user]');
+    cards.forEach(function (li) { var on = !any || sel.indexOf(li.dataset.user) >= 0; li.hidden = !on; if (on) shown++; });
+    var none = document.getElementById('ckcards-none'); if (none) none.hidden = !(any && shown === 0);
+    var all = document.querySelector('#ckcards button[data-ckshowall]'); if (all) all.hidden = !any;
+  }
+  function toggle(uid) {
+    var sel = load(), i = sel.indexOf(uid);
+    if (i >= 0) sel.splice(i, 1); else sel.push(uid);
+    save(sel); apply();
+  }
+  document.addEventListener('click', function (e) {
+    var tr = e.target.closest && e.target.closest('tr.ckpick');
+    if (tr) { toggle(tr.dataset.user); return; }
+    if (e.target.closest && e.target.closest('button[data-ckshowall]')) { save([]); apply(); }
+  });
+  document.addEventListener('keydown', function (e) {
+    var tr = e.target.closest && e.target.closest('tr.ckpick');
+    if (tr && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggle(tr.dataset.user); }
+  });
+  document.body.addEventListener('htmx:afterSettle', apply);
+  apply();
+})();

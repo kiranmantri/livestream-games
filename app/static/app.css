@@ -758,6 +758,14 @@ details.ckcard > summary::after { content: "▾"; position: absolute; right: 12p
 details.ckcard { position: relative; }
 details.ckcard[open] > summary::after { content: "▴"; }
 details.ckcard .detail { padding: 0 12px 12px; display: grid; gap: 4px; }
+/* /admin/checker: every player's cards under the board; a board row toggles its player in the filter (ckadmin.js) */
+#ckcards [hidden] { display: none !important; }
+#ckcards details.ckcard > summary .ckwho { font-weight: 700; color: var(--accent); }
+#ckcards button[data-ckshowall] { margin: 0 0 8px; }
+tr.ckpick { cursor: pointer; }
+tr.ckpick:hover td { background: rgba(255,255,255,.05); }
+tr.ckpick:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+tr.ckpick[aria-selected="true"] td { background: color-mix(in srgb, var(--accent) 22%, transparent); font-weight: 700; }
 
 /* score line at the top + modal */
 .scorebar { display: flex; flex-wrap: wrap; gap: 4px; align-items: baseline; }

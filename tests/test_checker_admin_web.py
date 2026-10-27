@@ -186,9 +186,9 @@ def test_pending_hides_finished_checks_and_show_all_brings_them_back(admin, conn
     C.submit_typed_claim(conn, bia, "ja resolvida", 1)
     done = C.claim_next_check(conn)
     C.complete_check(conn, done.id, result(confidence="high"))
-    html = admin.get("/admin/checker", headers=basic()).text
+    html = admin.get("/admin/checker", headers=basic()).text.split('id="ckcards"', 1)[0]      # the table only: the cards list every claim
     assert "pendente aqui" in html and "ja resolvida" not in html and T.CK_SHOW_ALL in html
-    html = admin.get("/admin/checker?all=1", headers=basic()).text
+    html = admin.get("/admin/checker?all=1", headers=basic()).text.split('id="ckcards"', 1)[0]
     assert "pendente aqui" in html and "ja resolvida" in html and T.CK_SHOW_PENDING in html
 
 

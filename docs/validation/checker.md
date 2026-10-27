@@ -204,3 +204,32 @@ later blocks supersede earlier ones where they disagree. Expected test counts ar
     #   explanation and 6 points. By hand in the browser: /admin/checker, score a claim at once (pill stays "Na fila"/"Verificando");
     #   ~1 min later the IA line and sources appear and the host score is unchanged. NOT checked: Fly (needs deploy + a backup: it is a migration).
 
+### Validation for the players' card grid on /admin/checker (user 2026-10-26)
+Below the board ("Placar"): "Frases dos jogadores" = every claim of every player, newest first, as the same cards and 3-column grid as
+/checker (ol.pairs.claims: 3 columns > 1000 px, 2 up to 1000 px, 1 up to 760 px). Each card names its player and says "Palpite"
+(not "Seu palpite"). A click (or Enter / Space) on a board row toggles that player; several at once; none selected = every card;
+"Mostrar todos" clears. The search box and the pending/all toggle filter the checks TABLE only, never the cards.
+Code: C.session_claims (app/checker.py), cards_view + board rows (app/checker_admin_web.py), claim_view(who=, user_id=) (app/checker_web.py),
+filter in app/static/ckadmin.js (sessionStorage per session id, re-applied on htmx:afterSettle), CSS `#ckcards [hidden]` (ol.pairs li
+sets display: grid, which would otherwise beat the hidden attribute) + tr.ckpick highlight.
+    uv run pytest -q tests/test_checker_admin_cards.py    # expect: 15 passed (14 red first; 1 added after the mutation run)
+    uv run pytest -q && uv run ruff check .               # agent ran: 1921 passed, 1 skipped; All checks passed!
+    # By hand (throwaway DB, never the dev DB if a game runs there):
+    docker compose exec -T db psql -U livegames -d livegames -qc "CREATE DATABASE lg_qa"
+    (set -a; . ./.env; set +a; export DATABASE_URL="${DATABASE_URL%/*}/lg_qa"; uv run migrate; \
+     ADMIN_PASSWORD=qa REPLAY_COLLECTOR=off CHECKER_MODEL= STT_PROVIDER= uv run uvicorn app.main:app --port 8001)
+    # start the session on /admin, join /checker from 2-3 browsers, send claims; open http://127.0.0.1:8001/admin/checker
+    # expect: cards under the board, newest first; click a player row -> highlighted, only their cards; click another -> both;
+    #   click again -> off; a player with no claims alone -> "Os jogadores escolhidos ainda não enviaram frases."; reload keeps the filter.
+    # reset: kill uvicorn; docker compose exec -T db psql -U livegames -d livegames -qc "DROP DATABASE lg_qa"
+    # Mutation check ($TMPDIR/mutate_ckcards.py, copy of the repo): 12 mutants (order, session filter, `decided` dropped, cards missing
+    #   from panel / score reply, "Seu palpite", data-user on card / row, name, hidden CSS, afterSettle, hidden "no match"):
+    #   11 killed at first; M3 (`decided` dropped from final_score) survived -> test for a dismissed check added -> 12/12 killed.
+    # Agent's Chrome QA (lg_qa, 3-4 players, 6 claims incl. AI answers, a host score, a dismissal, one queued):
+    #   5 cards newest first; board above cards; 1280 px: 3 columns, no horizontal scroll; 756 px: 1 column (same CSS as /checker);
+    #   Ana -> 2 Ana cards + "Mostrar todos"; +Caio -> 3; new player + claim from another process -> the 3 s poll REDREW board and cards
+    #   and the selection stayed (Ana, Caio); only Davi (no claims) -> the "no match" line; reload -> selection kept; Enter on Bia /
+    #   Space on Davi toggled; host score -5 on Bia's queued claim while filtered -> the card showed -> 💩x5, 7 pts, filter kept;
+    #   "Mostrar todos" -> all 6; 390 px: 1 column, no horizontal scroll, a tap on a stacked row toggles. Unchanged polls answered 204.
+    # NOT checked: Safari / Firefox, a real phone, screen readers (rows use role=grid + aria-selected), very many claims (no paging:
+    #   every card is rendered on every poll that changes something).

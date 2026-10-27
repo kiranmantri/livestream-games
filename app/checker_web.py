@@ -134,8 +134,10 @@ def feedback_view(code: str | None = None, ok: bool = False):
     return Div(msg.format(n=C.RATE_LIMIT_S, max=C.MAX_CLAIMS_PER_PLAYER), id="feedback", cls="error", role="alert", hx_swap_oob="true")
 
 
-def claim_view(v: C.ClaimView):
-    """One of my claims: the phrase, my guess, the state or the answer (verdict, explanation, sources) and my points."""
+def claim_view(v: C.ClaimView, who: str | None = None, user_id=None):
+    """One of my claims: the phrase, my guess, the state or the answer (verdict, explanation, sources) and my points.
+    `who` (the admin's grid of every player's cards): the card names its player, says "Palpite" and carries data-user for the filter."""
+    guess_label = T.CK_LINE_GUESS if who else T.CK_YOUR_GUESS
     answered = v.status in ("done", "needs_admin") and v.verdict is not None
     if v.decided and v.admin_score is None:
         state = Span(T.CK_STATE_DISMISSED, cls="badge spam")
@@ -151,14 +153,14 @@ def claim_view(v: C.ClaimView):
                    if isinstance(s, dict) and str(s.get("url", "")).startswith(("http://", "https://"))]
         result = Div(P(v.explanation, cls="why") if v.explanation else None,
                      Div(Span(T.CK_SOURCES + ":", cls="who"), Ol(*sources, cls="srcs")) if sources else None, cls="answer")
-    icons = Span(Span(rating(v.guess), cls="gs", title=T.CK_YOUR_GUESS),
+    icons = Span(Span(rating(v.guess), cls="gs", title=guess_label),
                  Span("→", cls="arrow", aria_hidden="true") if v.final is not None else None,
                  Span(rating(v.final), cls="fs", title=T.CK_FINAL) if v.final is not None else None, cls="icons")
-    head = Summary(Span(f"“{v.quote}”", cls="q"),
+    head = Summary(Span(who, cls="who ckwho") if who else None, Span(f"“{v.quote}”", cls="q"),
                    Span(state, icons, Span(T.CK_POINTS.format(n=v.points), cls="pts") if v.final is not None else None, cls="meta"))
-    detail = Div(Span(f"{T.CK_YOUR_GUESS}: {rating(v.guess)} ({v.guess:+d})", cls="gs"),
+    detail = Div(Span(f"{guess_label}: {rating(v.guess)} ({v.guess:+d})", cls="gs"),
                  Span(f"{T.CK_FINAL}: {rating(v.final)} ({v.final:+d})", cls="fs") if v.final is not None else None, result, cls="detail")
-    return Li(Details(head, detail, cls="ckcard", data_id=str(v.claim_id)))
+    return Li(Details(head, detail, cls="ckcard", data_id=str(v.claim_id)), data_user=str(user_id) if user_id else None)
 
 
 def points_text(n: int) -> str:

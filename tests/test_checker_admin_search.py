@@ -22,7 +22,8 @@ from tests.test_checker_admin_web import (  # noqa: F401
 
 
 def page(admin, qs=""):
-    return admin.get("/admin/checker" + qs, headers=basic()).text
+    """The page up to the players' card grid: the search and the pending toggle filter the checks table only (the cards list every claim)."""
+    return admin.get("/admin/checker" + qs, headers=basic()).text.split('id="ckcards"', 1)[0]
 
 
 def order(html, *texts):
@@ -72,7 +73,8 @@ def test_the_query_is_kept_in_the_box_escaped_and_in_the_poll_url(admin, three):
 
 def test_the_search_also_applies_to_the_panel_fragment(admin, three):
     r = admin.get("/admin/checker/panel?q=acao", headers=basic())
-    assert r.status_code == 200 and "Ação do Sol" in r.text and "Zebras" not in r.text and "<html" not in r.text
+    table = r.text.split('id="ckcards"', 1)[0]                            # the cards below list every claim
+    assert r.status_code == 200 and "Ação do Sol" in table and "Zebras" not in table and "<html" not in r.text
 
 
 def test_the_live_search_returns_the_panel_even_when_the_signature_matches(admin, three):

@@ -21,6 +21,7 @@ from fasthtml.common import (
     Form,
     Input,
     Main,
+    Ol,
     P,
     Script,
     Span,
@@ -44,7 +45,7 @@ from app import checkworker, feed, livestream
 from app import sessions as S
 from app import texts as T
 from app.admin_web import admin_tabs, denied, status_bar, title_row
-from app.checker_web import rating
+from app.checker_web import claim_view, rating
 
 POLL = "every 3s"
 SORTS = ("player", "claim", "points", "check")      # sortable columns (the actions column is not)
@@ -198,11 +199,23 @@ def search_form(q: str, sort: str, dir_: str, all_: bool, live: bool):
 
 
 def board_view(rows: list[C.LeaderRow], oob: bool = False):
+    """The board. Each row toggles its player in the card filter below (ckadmin.js; the selection is kept in the browser)."""
     table = Table(Thead(Tr(Th("#"), Th(T.ADMIN_PLAYERS), Th(T.CK_COL_POINTS), Th(T.CK_COL_EXACT), Th(T.CK_COL_CLAIMS))),
                   Tbody(*[Tr(Td(str(r.rank), data_label="#"), Td(r.name, data_label=T.ADMIN_PLAYERS), Td(str(r.points), data_label=T.CK_COL_POINTS),
-                             Td(str(r.exact), data_label=T.CK_COL_EXACT), Td(str(r.claims), data_label=T.CK_COL_CLAIMS)) for r in rows]),
-                  cls="users stack") if rows else P(T.ADMIN_NO_USERS, cls="muted")
+                             Td(str(r.exact), data_label=T.CK_COL_EXACT), Td(str(r.claims), data_label=T.CK_COL_CLAIMS),
+                             data_user=str(r.user_id), tabindex="0", aria_selected="false", cls="ckpick", title=T.CK_CARDS_ROW_TITLE) for r in rows]),
+                  cls="users stack", role="grid", aria_multiselectable="true") if rows else P(T.ADMIN_NO_USERS, cls="muted")
     return Div(H2(T.AF_BOARD), table, id="ckboard", cls="panel", hx_swap_oob="outerHTML" if oob else None)
+
+
+def cards_view(conn, session_id: uuid.UUID, oob: bool = False):
+    """Every player's claim cards, newest first, in the grid of /checker (ol.pairs.claims). Filtered in the browser by the board rows."""
+    items = [claim_view(r.claim, who=r.name, user_id=r.user_id) for r in C.session_claims(conn, session_id)]
+    body = [P(T.CK_CARDS_HINT, cls="muted small"),
+            Button(T.CK_CARDS_ALL, type="button", data_ckshowall="1", hidden=True, cls="link"),
+            Ol(*items, cls="pairs claims"),
+            P(T.CK_CARDS_NONE, id="ckcards-none", hidden=True, cls="muted")] if items else [P(T.CK_CARDS_EMPTY, cls="muted empty")]
+    return Div(H2(T.CK_CARDS_TITLE), *body, id="ckcards", cls="panel", data_session=str(session_id), hx_swap_oob="outerHTML" if oob else None)
 
 
 def signature(session: S.GameSession, checks: list[C.AdminCheck], board: list[C.LeaderRow], all_: bool) -> str:
@@ -225,7 +238,7 @@ def panel_view(conn, session: S.GameSession, pw: str, all_: bool = False, q: str
             checks_table(shown, token, session.id, active, q, sort if sort in SORTS else "", dir_, all_) if shown
             else P(T.CK_NO_MATCH if q.strip() else T.CK_NO_CHECKS, cls="muted empty"),
             cls="panel"),
-        board_view(board), id="ckpanel", **poll)
+        board_view(board), cards_view(conn, session.id), id="ckpanel", **poll)
 
 
 def source_line(conn, session: S.GameSession):
@@ -326,7 +339,8 @@ def register(rt, pool, live: livestream.LiveStream | None = None):
             # the reply starts with a <tbody>, so htmx parses it inside a <table>: out-of-band pieces must sit in a <template>
             # or the browser pulls them into that table (a stray table showed up inside the page)
             return fragment(item_view(item, token, sid, True),
-                            Template(pending_span(C.pending_count(conn, sid)), board_view(C.leaderboard(conn, sid), oob=True)))
+                            Template(pending_span(C.pending_count(conn, sid)), board_view(C.leaderboard(conn, sid), oob=True),
+                                     cards_view(conn, sid, oob=True)))
 
     @rt("/admin/checker/score", methods=["POST"])
     def ck_score(request: Request, session_id: str = "", check_id: str = "", score: str = "", csrf: str = ""):

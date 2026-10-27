@@ -528,6 +528,27 @@ def user_claims(conn: psycopg.Connection, user_id: UUID) -> list[ClaimView]:
 
 
 @dataclass(frozen=True)
+class SessionClaim:
+    user_id: UUID
+    name: str
+    claim: ClaimView
+
+
+def session_claims(conn: psycopg.Connection, session_id: UUID) -> list[SessionClaim]:
+    """Every claim of every player of the session, newest first (the admin's card grid); scored exactly like user_claims."""
+    rows = conn.execute(
+        "SELECT u.id, u.name, k.id, k.check_id, k.kind, k.quote, k.guess, k.note, k.created_at, c.status, c.verdict, c.ai_score, c.confidence, "
+        "       c.explanation, c.sources, c.admin_score, c.resolved_at IS NOT NULL FROM fact_claims k JOIN fact_checks c ON c.id = k.check_id "
+        "JOIN users u ON u.id = k.user_id WHERE k.session_id = %s ORDER BY k.created_at DESC, k.id DESC", (session_id,)).fetchall()
+    out = []
+    for r in rows:
+        v = r[2:]
+        final = final_score(v[7], v[8], v[9], v[13], v[14])
+        out.append(SessionClaim(r[0], r[1], ClaimView(*v, final=final, points=points(v[4], final))))
+    return out
+
+
+@dataclass(frozen=True)
 class LeaderRow:
     rank: int
     user_id: UUID
