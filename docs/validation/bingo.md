@@ -186,3 +186,20 @@ later blocks supersede earlier ones where they disagree. Expected test counts ar
     # By hand: open /admin in one window, join from a private window, mark cells; open a card on /admin and watch it stay open while marks arrive.
     # Load: one extra GET every 5 s per open admin tab (players + revoked marks query); same order as the users table poll.
 
+### Validation for the 2x hover zoom of the others' cards (user 2026-10-28): app/main.py (#cardzoom), game.js, app.css
+    # Player page: with a mouse/trackpad, resting ~120 ms on another player's card shows a copy 2x as WIDE (fonts lifted to ~2x too)
+    #   over a dimmed page, centred on the card and kept inside the window; it closes when the mouse leaves the card, on scroll or
+    #   when the window loses focus. The overlay is click-through (pointer-events: none) and aria-hidden (a visual copy).
+    #   Not on touch (pointerType !== 'mouse': phones keep the long-press tooltip) and not in the list view (no grid there).
+    #   The 5 s /cards poll redraws the cards: the copy is rebuilt from the new card still under the mouse (fresh marks), or closed.
+    #   Started at 1.5x, changed to 2x on request (ZOOM constant in game.js).
+    uv run pytest -q tests/test_card_zoom.py      # expect: 6 passed (red first: 5 failed)
+    uv run pytest -q                              # expect: 1927 passed, 1 skipped
+    # Mutation check (scratch copy): 12 mutants (factor, width not scaled, touch allowed, list view zooms, no poll follow, overlay not
+    #   click-through / not fixed / [hidden] rule dropped, font caps kept, overlay missing / visible / inside the polled #others) -> 12/12 killed.
+    # Real browser (me, throwaway DB lg_qa, Chrome): 4 other players, Bia with marks. 1280 px: card 224.8 px -> copy 449.6 px (ratio 2.0),
+    #   cell font 5.3 -> 10.9 px, 0 overflowing cells; first card clamped to x=8; 900 px: 213.5 -> 427 px, last card ends 8 px from the edge.
+    #   Bia marked a cell while hovered (1.5x run) -> after the poll the copy showed the new count; mouse out -> closed; list view -> no copy.
+    #   NOT checked: Safari/Firefox, a real touch device (CDP only sends mouse events), very short windows (copy taller than the window).
+    # By hand: uv run uvicorn app.main:app --port 8001 against a throwaway DB, join from two browsers, mark cells in one,
+    #   hover that player's card in the other: a 2x copy appears and follows the marks; move away -> it disappears. Drop the DB after.

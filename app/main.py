@@ -250,6 +250,7 @@ def game_page(card: C.Card, marked: dict[int, datetime], me: S.Player, others: l
                    title=T.VIEW_LIST, aria_label=T.VIEW_LIST),
             cls="gamebar others"),
         Div(others_view(others, boards_version(others)), cls="cardgrid small"),
+        Div(id="cardzoom", cls="cardzoom", hidden=True, aria_hidden="true"),   # game.js: hovered card at 2x
         Script(src="/game.js", defer=True),
         cls="game", who=me.name)
 

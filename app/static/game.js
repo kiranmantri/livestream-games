@@ -49,5 +49,47 @@
     }).catch(function () { location.reload(); });
   }, true);
   document.body.addEventListener('htmx:sendError', function () { location.reload(); });   // offline: resync with the server
+
+  // Others' cards: while the mouse is over one, a copy 2x as WIDE floats above it (the box is a size container, so the
+  // container-query fonts grow too and phrases hidden on tiny cards appear). Click-through (pointer-events: none), so the
+  // mouse never leaves the real card because of it. Mouse/trackpad only (pointerType): touch keeps the long-press tooltip.
+  var ZOOM = 2, zoom = document.getElementById('cardzoom'), shown = null, timer = null;
+  function hideZoom() {
+    clearTimeout(timer); shown = null;
+    if (zoom) { zoom.hidden = true; zoom.textContent = ''; }
+  }
+  function showZoom(card) {
+    if (!zoom || root.classList.contains('view-list')) return hideZoom();   // the list view has no grid to enlarge
+    var rect = card.getBoundingClientRect(), copy = card.cloneNode(true);
+    var w = Math.min(rect.width * ZOOM, window.innerWidth - 16);
+    copy.removeAttribute('style');                                          // drop the grid `order` vars
+    copy.style.width = w + 'px';
+    zoom.textContent = ''; zoom.appendChild(copy); zoom.hidden = false; shown = card;
+    var h = copy.getBoundingClientRect().height;                            // centred on the card, kept inside the window
+    var left = Math.max(8, Math.min(rect.left + rect.width / 2 - w / 2, window.innerWidth - w - 8));
+    var top = Math.max(8, Math.min(rect.top + rect.height / 2 - h / 2, window.innerHeight - h - 8));
+    copy.style.left = left + 'px'; copy.style.top = top + 'px';
+  }
+  if (zoom) {
+    root.addEventListener('pointerover', function (e) {
+      if (e.pointerType !== 'mouse') return;
+      var card = e.target.closest('.cardbox.other');
+      if (!card || card === shown) return;
+      clearTimeout(timer);
+      timer = setTimeout(function () { showZoom(card); }, 120);            // no flashing while the mouse just crosses the grid
+    });
+    root.addEventListener('pointerout', function (e) {
+      var card = e.target.closest('.cardbox.other');
+      if (card && !card.contains(e.relatedTarget)) hideZoom();
+    });
+    // the 5 s poll replaces the cards (outerHTML): redraw the copy from the new card still under the mouse, or close it
+    document.body.addEventListener('htmx:afterSettle', function () {
+      if (!shown || document.contains(shown)) return;
+      var card = root.querySelector('.cardbox.other:hover');
+      if (card) showZoom(card); else hideZoom();
+    });
+    window.addEventListener('scroll', hideZoom, { passive: true });
+    window.addEventListener('blur', hideZoom);
+  }
   apply();
 })();

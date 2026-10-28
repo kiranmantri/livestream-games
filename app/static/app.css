@@ -160,6 +160,17 @@ main.game { max-width: 1180px; }
 /* too small to read a phrase (phone, 2 per row): show only the marks; the phrase is in the title (long-press/hover) */
 @container (max-width: 190px) { .cardbox.other .cell.ro { font-size: 0; } .cardbox.other .cell.on::after { content: none; } }
 @media (max-width: 520px) { .cardgrid.small { grid-template-columns: repeat(2, 1fr); gap: 8px; } }
+/* hover on another player's card: a 2x copy over a dimmed page (game.js); click-through, so hovering is not disturbed */
+.cardzoom { position: fixed; inset: 0; z-index: 50; pointer-events: none; background: rgba(2, 6, 23, .45); }
+.cardzoom[hidden] { display: none !important; }
+.cardzoom .cardbox.other { position: fixed; margin: 0; border-width: 2px; border-color: var(--accent, #60a5fa);
+                           box-shadow: 0 12px 40px rgba(0, 0, 0, .6); }
+@supports (width: 1cqw) {   /* the small cards cap their fonts at 9/8/7 px: lift the caps so the text grows with the copy */
+  .cardzoom .cardbox.other .cell { font-size: clamp(9px, 2.5cqw, 18px); }
+  .cardzoom .cardbox.other .cell.long { font-size: clamp(8px, 2.1cqw, 16px); }
+  .cardzoom .cardbox.other .cell.xlong { font-size: clamp(7px, 1.7cqw, 14px); }
+}
+.cardzoom .cardbox.other .bar .who { font-size: 1.1rem; } .cardzoom .cardbox.other .bar .count { font-size: 1rem; }
 
 .cell.ro { cursor: default; }
 .cell.on { background: var(--ok); color: var(--ok-text); border-color: var(--ok); font-weight: 700; }
