@@ -357,6 +357,7 @@ def test_the_end_screen_shows_the_winner_the_board_and_my_claims(app, conn):
     html = c.get("/checker").text
     assert T.CK_GAME_OVER in html and "Ana" in html and "uma mentira" in html and 'id="picker"' not in html
     assert T.CK_WINNER.format(name="Ana", pts=7) in html
+    assert '<main class="fal ck">' in html            # the wide page (1180 px): the default 560 px main squeezed the 3-column cards into each other
 
 
 def test_the_end_screen_with_no_points_names_no_winner(app, conn):

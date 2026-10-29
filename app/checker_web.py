@@ -223,7 +223,7 @@ def ended_view(conn, session: S.GameSession, me: S.Player, rows: list[C.LeaderRo
     return ck_page(H1(T.CK_GAME_OVER), head, Div(H2(T.LEADERBOARD), table, cls="panel"),
                    result_tabs(Ol(*mine, cls="pairs claims") if mine else P(T.CK_NO_CLAIMS, cls="muted"),
                                Ol(*others, cls="pairs claims") if others else P(T.CK_NO_OTHERS, cls="muted")),
-                   Script(src="/checker.js", defer=True), Script(src="/tabs.js", defer=True), who=me.name)
+                   Script(src="/checker.js", defer=True), Script(src="/tabs.js", defer=True), cls="fal ck", who=me.name)
 
 
 # ------------------------------------------------------------------ routes

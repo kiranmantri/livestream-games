@@ -286,7 +286,7 @@ def ended_view(conn, session: S.GameSession, me: S.Player, rows: list[F.LeaderRo
                     Div(H2(T.LEADERBOARD), table, P(T.FAL_UNREVIEWED_NOTE, cls="muted") if mine and mine.pending else None,
                         cls="panel"),
                     pair_tabs(conn, session.id, me.id),
-                    Script(src="/tabs.js", defer=True), who=me.name)
+                    Script(src="/tabs.js", defer=True), cls="fal", who=me.name)
 
 
 # ------------------------------------------------------------------ routes

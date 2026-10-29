@@ -156,6 +156,7 @@ def test_admin_finish_records_the_winner_and_the_players_see_the_ranking(web, co
     pts = F.fmt_points(F.points_of(F.get_mark(conn, m)))
     assert T.FAL_GAME_OVER in html and T.FAL_WINNER.format(name="Bia", pts=pts) in html
     assert T.FAL_COL_CORRECT in html and T.FAL_COL_WRONG in html and T.FAL_COL_SPAM in html
+    assert '<main class="fal">' in html                    # wide page: the 3-column cards need it (default main is 560 px)
     assert 'class="winner"' in html and T.CK_MINE in html and T.CK_OTHERS in html and T.FAL_VERDICTS["correct"] in html
 
 
