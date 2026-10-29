@@ -44,7 +44,7 @@ def test_falacias_page_has_no_scoreboard_panel_and_a_bar_with_the_link(web, conn
 
 def test_falacias_side_no_longer_carries_the_leaderboard(web, conn, fal, game):
     side = game["ana"].get("/falacias/side").text
-    assert T.LEADERBOARD not in side and 'class="lb"' not in side and T.FAL_MINE in side
+    assert T.LEADERBOARD not in side and 'class="lb"' not in side and T.CK_MINE in side
 
 
 def test_falacias_score_fragment_and_board_list_everybody(web, conn, fal, game):

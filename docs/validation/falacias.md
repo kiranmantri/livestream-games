@@ -326,3 +326,10 @@ later blocks supersede earlier ones where they disagree. Expected test counts ar
     # Mutation check (repo COPY): 35/35 killed (mutate_L4.py). NOT checked: any of this in a real browser (htmx swaps, box clearing via the
     #   fal:spoken-sent event in falacias.js, mobile layout), nor against the real live end to end. Do that before the deploy.
     # reset: TRUNCATE game_sessions, users CASCADE.
+
+## /falacias: tabs "Minhas frases | Outros participantes" during the game
+
+`#side` (polled every 5 s, also returned after a send) now holds the tablist (`ui.result_tabs`, `tabs.js`): my pairs, and every other player's pairs
+with the player's name (`F.session_marks`, `falacias_web.pair_tabs`; the end screen uses the same function). "Meus envios" (FAL_MINE) is gone.
+`uv run pytest -q` -> 1930 passed, 1 skipped. By hand: two browsers join /falacias, each sends a pair; "Outros participantes" shows the other's pair
+with its name; the tab survives the 5 s poll. Not checked in a real browser.

@@ -224,7 +224,7 @@ def test_leaderboard_lists_everybody_ranked_and_marks_me(web, conn, fal):
     html = b.get("/falacias/board", headers={"hx-request": "true"}).text
     assert html.index("Ana") < html.index("Bia")                                   # Ana has points, Bia none
     assert re.search(r'<li class="me"[^>]*>.*?Bia', html, re.DOTALL) and "Espantalho" not in html   # Ana's pair is not mine
-    assert "Espantalho" not in b.get("/falacias/side").text
+    assert "Espantalho" not in b.get("/falacias/side").text.split('data-ckpanel="others"')[0]      # not in MY tab
 
 
 def test_side_is_per_player_and_needs_identity(web, conn, fal):
@@ -233,7 +233,7 @@ def test_side_is_per_player_and_needs_identity(web, conn, fal):
     assert web(IP_B).get("/falacias/side").headers.get("hx-refresh") == "true"
     c = named(web(IP_B), "Caio")
     c.post("/falacias/join")
-    assert "fala um" not in c.get("/falacias/side").text
+    assert "fala um" not in c.get("/falacias/side").text.split('data-ckpanel="others"')[0]         # Ana's pair is in "others" only
 
 
 def test_game_page_embeds_my_pairs_so_a_reload_keeps_them(web, conn, fal):
@@ -285,3 +285,23 @@ def test_a_session_that_ends_between_the_checks_refreshes_the_page(web, conn, fa
         raise F.SessionNotActive("ended meanwhile")
     monkeypatch.setattr(F, "submit_mark", boom)
     assert a.post("/falacias/mark", data=body(conn, fal)).headers.get("hx-refresh") == "true"
+
+
+# ================================================================ other participants
+def test_game_page_has_the_two_tabs_and_others_pairs_stay_out_of_mine(web, conn, fal):
+    a = playing(web, conn, "Ana", IP_A)
+    b = web(IP_B)
+    assert b.post("/falacias/join", data={"name": "Bia"}).status_code == 303
+    a.post("/falacias/mark", data=body(conn, fal, "fala um"))
+    b.post("/falacias/mark", data=body(conn, fal, "fala dois <b>x</b>", fallacy="Apelo à autoridade"))
+    html = b.get("/falacias").text
+    assert T.CK_MINE in html and T.CK_OTHERS in html and "/tabs.js" in html and 'data-ckpanel="others"' in html
+    mine, others = b.get("/falacias/side").text.split('data-ckpanel="others"', 1)
+    assert "Apelo à autoridade" in mine and "fala um" not in mine
+    assert "fala um" in others and 'class="pwho">Ana<' in others and "Apelo à autoridade" not in others
+    assert T.FAL_NO_OTHERS in playing_alone(web, conn)
+
+
+def playing_alone(web, conn):
+    conn.execute("TRUNCATE game_sessions, users CASCADE")
+    return playing(web, conn, "Solo", IP_A).get("/falacias/side").text

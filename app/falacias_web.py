@@ -164,12 +164,25 @@ def status_badge(m: F.Mark):
     return Span(label, cls=f"badge {m.status}")
 
 
-def side_view(conn, me: S.Player, oob: bool = False):
-    """My pairs + the leaderboard. Polled every 5 s (the admin reviews in between) and returned after each submit."""
+def pair_view(m: F.Mark, names: dict[int, str], who: str | None = None):
+    """One submitted pair as a card; `who` (other participants) puts the player's name on top."""
+    return Li(Span(who, cls="pwho") if who else None, Span(status_badge(m), Span(F.fmt_points(F.points_of(m)), cls="pts"), cls="meta"),
+              Span(f"“{m.quote}”", cls="q"), Span(names.get(m.fallacy_id, "?"), cls="fl"))
+
+
+def pair_tabs(conn, session_id, me_id):
+    """"Minhas frases | Outros participantes" (shared by the game page and the end screen)."""
     names = {f.id: f.name for f in F.list_fallacies(conn, enabled_only=False)}
-    mine = [Li(Span(status_badge(m), Span(F.fmt_points(F.points_of(m)), cls="pts"), cls="meta"),
-               Span(f"“{m.quote}”", cls="q"), Span(names.get(m.fallacy_id, "?"), cls="fl")) for m in F.user_marks(conn, me.id)]
-    return Div(Div(H2(T.FAL_MINE), Ol(*mine, cls="pairs") if mine else P(T.FAL_NO_PAIRS, cls="muted"), cls="panel"),
+    marks = F.session_marks(conn, session_id)
+    mine = [pair_view(m, names) for uid, _, m in marks if uid == me_id]
+    others = [pair_view(m, names, name) for uid, name, m in marks if uid != me_id]
+    return result_tabs(Ol(*mine, cls="pairs") if mine else P(T.FAL_NO_PAIRS, cls="muted"),
+                       Ol(*others, cls="pairs") if others else P(T.FAL_NO_OTHERS, cls="muted"))
+
+
+def side_view(conn, me: S.Player, oob: bool = False):
+    """My pairs and the other participants' (tabs). Polled every 5 s (the admin reviews in between) and returned after each submit."""
+    return Div(pair_tabs(conn, me.session_id, me.id),
                id="side", cls="side", hx_get="/falacias/side", hx_trigger="every 5s", hx_swap="outerHTML",
                **({"hx_swap_oob": "true"} if oob else {}))
 
@@ -254,6 +267,7 @@ def game_view(me: S.Player, events: list[feed.Event], last_id: int, st: str, fal
         side,
         SB.board_dialog(),
         Script(src="/falacias.js", defer=True),
+        Script(src="/tabs.js", defer=True),
         cls="fal", who=me.name)
 
 
@@ -268,20 +282,10 @@ def ended_view(conn, session: S.GameSession, me: S.Player, rows: list[F.LeaderRo
                              Td(str(r.spam)), Td(str(r.pending)), cls="me" if r.user_id == me.id else None) for r in rows]),
                   cls="users final")
     mine = next((r for r in rows if r.user_id == me.id), None)
-    names = {f.id: f.name for f in F.list_fallacies(conn, enabled_only=False)}
-
-    def pair(m: F.Mark, who: str | None = None):
-        return Li(Span(who, cls="pwho") if who else None, Span(status_badge(m), Span(F.fmt_points(F.points_of(m)), cls="pts"), cls="meta"),
-                  Span(f"“{m.quote}”", cls="q"), Span(names.get(m.fallacy_id, "?"), cls="fl"))
-
-    marks = F.session_marks(conn, session.id)
-    pairs = [pair(m) for uid, _, m in marks if uid == me.id]
-    others = [pair(m, name) for uid, name, m in marks if uid != me.id]
     return fal_page(H1(T.FAL_GAME_OVER), head,
                     Div(H2(T.LEADERBOARD), table, P(T.FAL_UNREVIEWED_NOTE, cls="muted") if mine and mine.pending else None,
                         cls="panel"),
-                    result_tabs(Ol(*pairs, cls="pairs") if pairs else P(T.FAL_NO_PAIRS, cls="muted"),
-                                Ol(*others, cls="pairs") if others else P(T.FAL_NO_OTHERS, cls="muted")),
+                    pair_tabs(conn, session.id, me.id),
                     Script(src="/tabs.js", defer=True), who=me.name)
 
 
