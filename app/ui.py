@@ -104,6 +104,15 @@ def page(*content, title: str = T.TITLE, cls: str | None = None, current: str = 
     return Title(title), appbar(current, who) if tabs else None, Main(*content, cls=cls)
 
 
+def result_tabs(mine, others):
+    """"Minhas frases | Outros participantes": two panels under one tablist (tabs.js switches them and keeps the choice across
+    htmx redraws). `mine` / `others` are the already built panel bodies."""
+    tabs = Div(*[Button(label, type="button", role="tab", data_cktab=key, aria_selected="true" if key == "mine" else "false", cls="cktab")
+                 for key, label in (("mine", T.CK_MINE), ("others", T.CK_OTHERS))], role="tablist", cls="cktabs")
+    return Div(tabs, Div(mine, role="tabpanel", data_ckpanel="mine"), Div(others, role="tabpanel", data_ckpanel="others", hidden=True),
+               cls="panel cktabbed")
+
+
 _pool = None
 
 

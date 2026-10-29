@@ -233,3 +233,14 @@ sets display: grid, which would otherwise beat the hidden attribute) + tr.ckpick
     #   "Mostrar todos" -> all 6; 390 px: 1 column, no horizontal scroll, a tap on a stacked row toggles. Unchanged polls answered 204.
     # NOT checked: Safari / Firefox, a real phone, screen readers (rows use role=grid + aria-selected), very many claims (no paging:
     #   every card is rendered on every poll that changes something).
+
+## /checker: tabs "Minhas frases" | "Outros participantes"
+
+The block under the game page is now a tablist. "Minhas frases" = my claims (unchanged); "Outros participantes" = every other
+player's claims of the session, newest first, same 3-column foldable cards (`ol.pairs.claims`), each card naming its player.
+Both panels are in the polled `#side` block; the chosen tab and the open cards are kept by `app/static/checker.js` across the 5 s poll.
+
+How to test: `uv run ruff check . && uv run pytest -q` -> 1928 passed, 1 skipped (tests: `test_other_players_claims_are_in_their_own_tab_and_never_in_mine`,
+`test_others_tab_says_so_when_nobody_else_sent_anything`). By hand: admin starts a session, two browsers join /checker, each sends a phrase;
+click "Outros participantes" in one: the other's card appears with the name; wait > 5 s: the tab and any opened card stay.
+Not checked in a real browser by the agent: tab switching, layout at 390/900/1280 px.

@@ -266,15 +266,33 @@ def test_the_admin_score_replaces_the_ai_one_on_the_players_page(app, conn):
     assert "⭐⭐⭐⭐⭐" in c.get("/checker/side").text
 
 
-def test_players_only_see_their_own_claims_but_everyone_is_on_the_board(app, conn):
+def test_other_players_claims_are_in_their_own_tab_and_never_in_mine(app, conn):
     a = play(app, conn, "Ana", ip="10.1.1.1")
     b = visitor(app, "Bia")
     b.headers["x-forwarded-for"] = "10.1.1.2"
     b.post("/checker/join")
-    send(a, guess=1, note="segredo da Ana")
-    side = b.get("/checker/side").text
+    send(a, guess=1, note="frase da Ana")
+    send(b, guess=-2, note="frase da Bia")
     board = b.get("/checker/board", headers={"hx-request": "true"}).text
-    assert "segredo da Ana" not in side and "Ana" in board and "Bia" in board
+    assert "Ana" in board and "Bia" in board
+
+    def panels(html):
+        mine, others = re.split(r'data-ckpanel="others"', html.split('data-ckpanel="mine"', 1)[1], maxsplit=1) if 'data-ckpanel="mine"' in html else ("", "")
+        return mine, others
+
+    mine, others = panels(b.get("/checker/side").text)
+    assert "frase da Bia" in mine and "frase da Ana" not in mine
+    assert "frase da Ana" in others and "frase da Bia" not in others
+    assert 'class="who ckwho"' in others and ">Ana<" in others and 'class="pairs claims"' in others
+    assert T.CK_MINE in b.get("/checker/side").text and T.CK_OTHERS in b.get("/checker/side").text
+    mine, others = panels(a.get("/checker/side").text)
+    assert "frase da Ana" in mine and "frase da Bia" in others and "frase da Ana" not in others
+
+
+def test_others_tab_says_so_when_nobody_else_sent_anything(app, conn):
+    a = play(app, conn, "Ana", ip="10.1.1.1")
+    send(a, guess=1, note="so eu")
+    assert T.CK_NO_OTHERS in a.get("/checker/side").text
 
 
 def test_side_of_a_stranger_refreshes(app, conn):

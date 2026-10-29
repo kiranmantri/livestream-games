@@ -60,6 +60,7 @@ from app.ui import (
     page,
     play_form,
     remember_name,
+    result_tabs,
     set_token_cookie,
     token_of,
     url_error,
@@ -268,13 +269,20 @@ def ended_view(conn, session: S.GameSession, me: S.Player, rows: list[F.LeaderRo
                   cls="users final")
     mine = next((r for r in rows if r.user_id == me.id), None)
     names = {f.id: f.name for f in F.list_fallacies(conn, enabled_only=False)}
-    pairs = [Li(Span(status_badge(m), Span(F.fmt_points(F.points_of(m)), cls="pts"), cls="meta"),
-                Span(f"“{m.quote}”", cls="q"), Span(names.get(m.fallacy_id, "?"), cls="fl")) for m in F.user_marks(conn, me.id)]
+
+    def pair(m: F.Mark, who: str | None = None):
+        return Li(Span(who, cls="pwho") if who else None, Span(status_badge(m), Span(F.fmt_points(F.points_of(m)), cls="pts"), cls="meta"),
+                  Span(f"“{m.quote}”", cls="q"), Span(names.get(m.fallacy_id, "?"), cls="fl"))
+
+    marks = F.session_marks(conn, session.id)
+    pairs = [pair(m) for uid, _, m in marks if uid == me.id]
+    others = [pair(m, name) for uid, name, m in marks if uid != me.id]
     return fal_page(H1(T.FAL_GAME_OVER), head,
                     Div(H2(T.LEADERBOARD), table, P(T.FAL_UNREVIEWED_NOTE, cls="muted") if mine and mine.pending else None,
                         cls="panel"),
-                    Div(H2(T.FAL_MINE), Ol(*pairs, cls="pairs") if pairs else P(T.FAL_NO_PAIRS, cls="muted"), cls="panel"),
-                    who=me.name)
+                    result_tabs(Ol(*pairs, cls="pairs") if pairs else P(T.FAL_NO_PAIRS, cls="muted"),
+                                Ol(*others, cls="pairs") if others else P(T.FAL_NO_OTHERS, cls="muted")),
+                    Script(src="/tabs.js", defer=True), who=me.name)
 
 
 # ------------------------------------------------------------------ routes

@@ -70,6 +70,7 @@ from app.ui import (
     page,
     play_form,
     remember_name,
+    result_tabs,
     set_token_cookie,
     token_of,
     url_error,
@@ -177,8 +178,12 @@ def board_view(conn, me: S.Player):
 
 
 def side_view(conn, me: S.Player, oob: bool = False):
+    """Two tabs in one polled block: my claims, and the claims of the other players (same 3-column foldable cards, newest first).
+    The chosen tab lives in the browser (tabs.js re-applies it after every redraw); the server always draws "mine" visible."""
     mine = [claim_view(v) for v in reversed(C.user_claims(conn, me.id))]
-    return Div(Div(H2(T.CK_MINE), Ol(*mine, cls="pairs claims") if mine else P(T.CK_NO_CLAIMS, cls="muted"), cls="panel"),
+    others = [claim_view(r.claim, who=r.name) for r in C.session_claims(conn, me.session_id) if r.user_id != me.id]
+    return Div(result_tabs(Ol(*mine, cls="pairs claims") if mine else P(T.CK_NO_CLAIMS, cls="muted"),
+                           Ol(*others, cls="pairs claims") if others else P(T.CK_NO_OTHERS, cls="muted")),
                id="side", cls="side", hx_get="/checker/side", hx_trigger="every 5s", hx_swap="outerHTML",
                **({"hx_swap_oob": "true"} if oob else {}))
 
@@ -203,6 +208,7 @@ def game_view(me: S.Player, events, last_id: int, st: str, side, live: bool, vid
         SB.board_dialog(),
         Script(src="/falacias.js", defer=True),
         Script(src="/checker.js", defer=True),
+        Script(src="/tabs.js", defer=True),
         cls="fal ck", who=me.name)
 
 
@@ -213,9 +219,11 @@ def ended_view(conn, session: S.GameSession, me: S.Player, rows: list[C.LeaderRo
                   Tbody(*[Tr(Td(str(r.rank)), Td(r.name), Td(str(r.points)), Td(str(r.exact)), Td(str(r.claims)), cls="me" if r.user_id == me.id else None)
                           for r in rows]), cls="users final")
     mine = [claim_view(v) for v in reversed(C.user_claims(conn, me.id))]
+    others = [claim_view(r.claim, who=r.name) for r in C.session_claims(conn, session.id) if r.user_id != me.id]
     return ck_page(H1(T.CK_GAME_OVER), head, Div(H2(T.LEADERBOARD), table, cls="panel"),
-                   Div(H2(T.CK_MINE), Ol(*mine, cls="pairs claims") if mine else P(T.CK_NO_CLAIMS, cls="muted"), cls="panel"),
-                   Script(src="/checker.js", defer=True), who=me.name)
+                   result_tabs(Ol(*mine, cls="pairs claims") if mine else P(T.CK_NO_CLAIMS, cls="muted"),
+                               Ol(*others, cls="pairs claims") if others else P(T.CK_NO_OTHERS, cls="muted")),
+                   Script(src="/checker.js", defer=True), Script(src="/tabs.js", defer=True), who=me.name)
 
 
 # ------------------------------------------------------------------ routes

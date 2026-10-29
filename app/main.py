@@ -154,6 +154,23 @@ def board(card: C.Card, marked: dict[int, datetime], player_name: str, revoked: 
         id="game-board")
 
 
+def final_board(card: C.Card, marked: dict[int, datetime], player_name: str):
+    """My card on the end screen: the game's board (same classes, marked times, blue lines) with no buttons and no ids,
+    so game.js's tap handler and htmx have nothing to send."""
+    cells = []
+    for i, cell in enumerate(card.cells):
+        if "phrase_id" not in cell:
+            cells.append(Div(Img(src="/center.jpg", alt=T.AVATAR_ALT, width=160, height=160), cls="cell free", aria_label=T.AVATAR_ALT))
+        else:
+            on = i in marked
+            text, kind = split_kind(cell["text"])
+            cells.append(Div(text, Small(kind, cls="kind") if kind else None, Small(timefmt.hms(marked[i]), cls="at") if on else None,
+                             cls=" ".join(x for x in ("cell", "ro", cell_size_cls(text)) if x), aria_pressed="true" if on else "false"))
+    return Div(Div(Span(f"{player_name} ({T.YOU})", cls="who"), count_view(marked, card), cls="bar"),
+               Div(*cells, lines_view(card, marked), cls="board", lang="pt-BR", style=f"--cols: {card.size}"),
+               id="game-board")
+
+
 def readonly_card(pb: M.PlayerBoard, join_pos: int = 0, win_pos: int = 0):
     """Another player's card: same grid, no buttons. Marked cells are green; no times."""
     cells = []
@@ -179,7 +196,7 @@ def boards_version(boards: list[M.PlayerBoard]) -> str:
     return h.hexdigest()[:12]
 
 
-def others_view(boards: list[M.PlayerBoard], version: str):
+def others_view(boards: list[M.PlayerBoard], version: str, poll: bool = True):
     # display: contents (CSS): the heading and the cards become direct items of the .cardgrid around this div
     # same ranking rule as scoring: most marks, then whoever reached that count first, then who joined first
     by_win = sorted(range(len(boards)), key=lambda i: (-len(boards[i].marked),
@@ -188,7 +205,7 @@ def others_view(boards: list[M.PlayerBoard], version: str):
     return Div(H2(T.OTHERS_HEADING, cls="othershead") if boards else None,
                *[readonly_card(b, i, win_pos[i]) for i, b in enumerate(boards)],
                id="others",
-               hx_get=f"/cards?v={version}", hx_trigger=POLL_CARDS, hx_swap="outerHTML")
+               **({"hx_get": f"/cards?v={version}", "hx_trigger": POLL_CARDS, "hx_swap": "outerHTML"} if poll else {}))   # the end screen is static
 
 
 HOST_RE = re.compile(r"^[A-Za-z0-9.-]{1,253}$")
@@ -255,18 +272,28 @@ def game_page(card: C.Card, marked: dict[int, datetime], me: S.Player, others: l
         cls="game", who=me.name)
 
 
-def results_page(session: S.GameSession, me: S.Player, standings: list[G.Standing]):
+def results_page(session: S.GameSession, me: S.Player, standings: list[G.Standing], card: C.Card | None = None,
+                 marked: dict[int, datetime] | None = None, others: list[M.PlayerBoard] = ()):
+    """The game screen after the end: the result message, MY card, then everybody else's cards (grid / list toggle and
+    the 2x hover zoom of game.js). Nothing can be clicked: no marks, no polling, no stream and chat."""
     winner = next((s for s in standings if s.user_id == session.winner_user_id), None)
     mine = next((s for s in standings if s.user_id == me.id), None)
+    others = list(others)
     return page(
         H1(T.GAME_OVER),
         Div(T.WINNER.format(name=winner.name, n=winner.marked) if winner else T.NO_WINNER,
             cls="winner"),
         P(T.YOUR_RESULT.format(n=mine.marked, rank=mine.rank), cls="muted") if mine else None,
-        Div(H2(T.LEADERBOARD),
-            Ol(*[Li(Span(f"{s.rank}.", cls="pos"), Span(s.name, cls="nm"),
-                    Span(str(s.marked), cls="pts"), cls="me" if s.user_id == me.id else None)
-                 for s in standings], cls="lb"), cls="panel"), who=me.name)
+        Div(Div(final_board(card, marked or {}, me.name), cls="cardbox mine"), cls="toprow") if card is not None else None,
+        Div(Button("▦", type="button", cls="pref icon", data_pref="view:grid", aria_pressed="true",
+                   title=T.VIEW_GRID, aria_label=T.VIEW_GRID),
+            Button("☰", type="button", cls="pref icon", data_pref="view:list", aria_pressed="false",
+                   title=T.VIEW_LIST, aria_label=T.VIEW_LIST),
+            cls="gamebar others") if others else None,
+        Div(others_view(others, "", poll=False), cls="cardgrid small") if others else None,
+        Div(id="cardzoom", cls="cardzoom", hidden=True, aria_hidden="true"),
+        Script(src="/game.js", defer=True),
+        cls="game ended", who=me.name)
 
 
 # ------------------------------------------------------------------ app
@@ -336,7 +363,10 @@ def create_app(db_url: str | None = None, live: livestream.LiveStream | None = N
             found = S.find_player(conn, token_of(request))
             if active is None and found and found[1].status == "ended":
                 player, session = found
-                return results_page(session, player, G.leaderboard(conn, session.id))
+                card = C.get_card(conn, session.id, player.id)
+                return results_page(session, player, G.leaderboard(conn, session.id), card,
+                                    M.marked_times(conn, card.id) if card else {},
+                                    [b for b in M.session_boards(conn, session.id) if b.user_id != player.id])
             name = name_of(request)
             if name is None:
                 return name_gate("/")

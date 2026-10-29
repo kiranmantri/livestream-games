@@ -244,6 +244,7 @@ ol.pairs { list-style: none; padding: 0; margin: 0; display: grid; grid-template
 ol.pairs li { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.03); }
 ol.pairs .meta { display: flex; justify-content: space-between; gap: 8px; }
 ol.pairs .q { font-style: italic; overflow-wrap: anywhere; } ol.pairs .fl { color: var(--accent); font-weight: 600; }
+ol.pairs .pwho { font-weight: 700; color: var(--accent); }
 ol.pairs .pts { font-variant-numeric: tabular-nums; color: var(--accent); }
 .badge { padding: 1px 8px; border-radius: 999px; font-size: .75rem; font-weight: 700; background: var(--line); color: var(--text); }
 .badge.correct { background: var(--ok); color: var(--ok-text); } .badge.wrong { background: #b45309; } .badge.spam { background: #7f1d1d; }
@@ -769,6 +770,13 @@ details.ckcard > summary::after { content: "▾"; position: absolute; right: 12p
 details.ckcard { position: relative; }
 details.ckcard[open] > summary::after { content: "▴"; }
 details.ckcard .detail { padding: 0 12px 12px; display: grid; gap: 4px; }
+/* /checker: "Minhas frases | Outros participantes" tabs (tabs.js) */
+.cktabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; border-bottom: 1px solid var(--line, rgba(255,255,255,.12)); }
+.cktab { background: none; border: 0; border-bottom: 3px solid transparent; color: inherit; font: inherit; font-weight: 600; cursor: pointer; padding: 8px 12px; min-height: 44px; opacity: .7; }
+.cktab[aria-selected="true"] { border-bottom-color: var(--accent); opacity: 1; }
+.cktabbed [data-ckpanel][hidden] { display: none !important; }
+.cktabbed details.ckcard > summary .ckwho { font-weight: 700; color: var(--accent); }
+
 /* /admin/checker: every player's cards under the board; a board row toggles its player in the filter (ckadmin.js) */
 #ckcards [hidden] { display: none !important; }
 #ckcards details.ckcard > summary .ckwho { font-weight: 700; color: var(--accent); }
@@ -885,3 +893,6 @@ details.ckfold > summary > .clamp { flex: 1 1 100%; }
 details.ckfold:not([open]) > summary > .clamp { white-space: nowrap; }
 table.cktable td.pts details.hostpick > form { position: fixed; top: auto; left: auto; }
 table.cktable .acts button.recheck { background: var(--accent); color: #082f49; border: 0; font-weight: 700; cursor: pointer; }
+
+/* Bingo end screen: same game container, only my card on top (no stream/chat column) */
+.game.ended .toprow { grid-template-columns: minmax(0, 560px); justify-content: center; }

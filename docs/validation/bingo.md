@@ -203,3 +203,17 @@ later blocks supersede earlier ones where they disagree. Expected test counts ar
     #   NOT checked: Safari/Firefox, a real touch device (CDP only sends mouse events), very short windows (copy taller than the window).
     # By hand: uv run uvicorn app.main:app --port 8001 against a throwaway DB, join from two browsers, mark cells in one,
     #   hover that player's card in the other: a 2x copy appears and follows the marks; move away -> it disappears. Drop the DB after.
+
+## Bingo end screen = the game screen without clicks
+
+After the admin ends the session, `/` shows: "Fim de jogo!" + winner + "your result", MY card (same `.toprow > .cardbox.mine`, same size as in the game,
+no buttons, marked times and blue lines kept), the grid/list toggle, and everybody else's cards with the 2x hover zoom (game.js). No stream, chat,
+leaderboard table or polling (`others_view(poll=False)`: a poll would answer HX-Refresh forever once the player is no longer in an active session).
+Measured in Chrome at 756 px: my card 560 x 437 px, cells 131.5 x 88 px, identical to the running game; 3 other cards; hover zoom opens (480 px).
+`uv run pytest -q` -> 1929 passed, 1 skipped. By hand: play with 2-3 browsers, mark cells, end the game from /admin, reload `/`.
+Not checked in a browser: phones, Safari/Firefox.
+
+## Falácias / Aponte o mentiroso end screens
+
+Both end screens: ranking table, then tabs "Minhas frases | Outros participantes" (`ui.result_tabs`, `app/static/tabs.js`); others' cards are
+named by player (`F.session_marks`, `C.session_claims`). Not looked at in a real browser (covered by the pytest suite only).

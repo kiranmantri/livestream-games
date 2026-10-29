@@ -371,3 +371,21 @@ def test_an_invalid_name_cookie_is_ignored_and_the_gate_is_shown(web, bad):
     b.cookies.set("lg_name", bad)
     r = b.get("/")
     assert T.NAME_HEADING in r.text and 'action="/start"' not in r.text
+
+
+def test_bingo_end_screen_is_the_game_screen_without_clicks(web, conn):
+    a, b = web(IP_A), web(IP_B)
+    start(a)
+    b.post("/join", data={"name": "Bia"})
+    a.post("/mark/0")
+    b.post("/mark/1")
+    G.finish_session(conn, S.get_active_session(conn).id)
+    html = a.get("/").text
+    assert T.GAME_OVER in html and 'class="winner"' in html
+    # my card sits in the same .toprow > .cardbox.mine as in the game (same size), read-only
+    assert re.search(r'class="toprow"[^>]*>\s*<div class="cardbox mine"', html)
+    assert 'id="game-board"' in html and "hx-post" not in html and "<button type=\"button\" class=\"cell" not in html
+    # the other player's card is there with the zoom overlay and the view toggle, and nothing polls
+    assert "cardbox other" in html and "Bia" in html and 'id="cardzoom"' in html and 'data-pref="view:list"' in html
+    assert 'hx-get="/cards' not in html and "/game.js" in html
+    assert html.index('class="cardbox mine"') < html.index("cardbox other")

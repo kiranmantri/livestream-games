@@ -175,6 +175,15 @@ def user_marks(conn: psycopg.Connection, user_id: UUID) -> list[Mark]:
         return cur.fetchall()
 
 
+def session_marks(conn: psycopg.Connection, session_id: UUID) -> list[tuple[UUID, str, Mark]]:
+    """Every mark of every player of the session as (user_id, player name, mark), newest first (the end screen's "other participants")."""
+    with conn.cursor(row_factory=class_row(Mark)) as cur:
+        cur.execute(f"SELECT {_MARK_COLS} FROM fallacy_marks WHERE session_id = %s ORDER BY created_at DESC, id", (session_id,))
+        marks = cur.fetchall()
+    names = {r[0]: r[1] for r in conn.execute("SELECT id, name FROM users WHERE session_id = %s", (session_id,))}
+    return [(m.user_id, names.get(m.user_id, "?"), m) for m in marks]
+
+
 # ------------------------------------------------------------------ the fallacy list
 def list_fallacies(conn: psycopg.Connection, enabled_only: bool = True) -> list[Fallacy]:
     where = "WHERE enabled" if enabled_only else ""
