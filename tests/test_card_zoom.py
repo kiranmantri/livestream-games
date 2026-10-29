@@ -24,8 +24,8 @@ def test_game_page_has_one_hidden_zoom_overlay_outside_the_polled_cards(web):  #
     assert 'id="cardzoom"' not in poll
 
 
-def test_zoom_script_clones_the_hovered_card_at_twice_its_width():
-    assert "ZOOM = 2" in JS
+def test_zoom_script_clones_the_hovered_card_at_three_times_its_width():
+    assert "ZOOM = 3" in JS
     assert "'.cardbox.other'" in JS and "cloneNode(true)" in JS
     assert "rect.width * ZOOM" in JS                                                # wider box: container-query fonts grow too
     assert "'pointerover'" in JS and "'pointerout'" in JS

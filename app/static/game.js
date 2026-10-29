@@ -50,10 +50,10 @@
   }, true);
   document.body.addEventListener('htmx:sendError', function () { location.reload(); });   // offline: resync with the server
 
-  // Others' cards: while the mouse is over one, a copy 2x as WIDE floats above it (the box is a size container, so the
+  // Others' cards: while the mouse is over one, a copy 3x as WIDE floats above it (the box is a size container, so the
   // container-query fonts grow too and phrases hidden on tiny cards appear). Click-through (pointer-events: none), so the
   // mouse never leaves the real card because of it. Mouse/trackpad only (pointerType): touch keeps the long-press tooltip.
-  var ZOOM = 2, zoom = document.getElementById('cardzoom'), shown = null, timer = null;
+  var ZOOM = 3, zoom = document.getElementById('cardzoom'), shown = null, timer = null;
   function hideZoom() {
     clearTimeout(timer); shown = null;
     if (zoom) { zoom.hidden = true; zoom.textContent = ''; }
