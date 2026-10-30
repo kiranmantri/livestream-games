@@ -56,10 +56,28 @@ https://www.youtube.com/@O_Poligrafo/streams (Portuguese, pt-BR). Design: `docs/
   limit `MAX_USERS_PER_IP` (.env, currently 3). A valid cookie resumes the player; the IP never grants
   identity. `X-Forwarded-For` is used only when the direct peer is in `TRUSTED_PROXIES`.
   (To be revisited vs. fake users.)
-- A card is generated randomly on join, persisted, and immutable (no re-roll).
+- A card is generated randomly on join, persisted, and immutable (no re-roll). The ONLY exception is a card swap
+  (app/swaps.py, migration 0016): inside `use_swap` (`SET LOCAL livegames.card_swap = 'on'`) two cards exchange their
+  cells; marks, confirmations and blocks move with them. Card rows (ids, owners) stay.
+- Secret keywords (Bingo, migration 0016): the admin picks up to 3 phrases from THIS game's dealt cards (`bingo_keywords`);
+  only the admin sees them (🔑 on /admin). A keyword is frozen (cannot be removed) once a mark of it is confirmed. Every
+  player whose keyword mark gets confirmed earns ONE swap (`swap_rights`, one per player and keyword), usable or declinable
+  until the game ends: they pick another player, who cannot refuse, except players whose CURRENT card has that keyword marked
+  (pending or confirmed). Incorreto on the earning phrase takes an unused swap back; kicking the player holding the earning
+  card removes it too. Players see the offer / the "trocou com você" notice through the 5 s `/myboard` poll
+  (board sig `m=;l=;r=;c=<card version>;s=<open swap id>`).
 - Card: NEW sessions are 4x4 (16 phrases, no free cell; `game_sessions.grid_size`, migration 0006). Sessions created before it stay
   5x5 (centre index 12 = channel avatar, free cell, counts as marked). Max marks 16 / 24. `ingested_videos` and `corpus/phrases.csv` are gone.
-- Marking is honour-based (players mark their own cells; no phrase detection yet).
+- Marking is honour-based (players mark their own cells; no phrase detection yet), reviewed by the admin on /admin ("Marcações",
+  ONE ROW PER PHRASE with everybody who marked it, pending first). Review is per phrase, for all players: Correto stores it in
+  `confirmed_phrases` and sets `bingo_marks.confirmed_at` on every mark of it -> those cells are LOCKED; a LATER mark of a
+  confirmed phrase is confirmed (locked) at once. Incorreto deletes every mark of the phrase and un-confirms it (NOT blocked:
+  players may mark it again later, pending again). Unreviewed marks still count
+  at the end. The older "✕ Desmarcar" on the admin's cards still unmarks AND blocks (revoked_marks). The player's page polls
+  `GET /myboard?v=<board_sig>` every 5 s, so admin changes show up without a reload (migration 0015).
+- The admin can KICK a player of the running Bingo game: the users row is deleted (card, marks cascade; `created_by` cleared
+  if it was the starter), the cookie hash goes to `kicked_players` so `/` shows the join screen with a notice; the player may
+  join again (same name allowed) with a NEW card. Only that game's row: their Falácias / Checker rows are untouched.
   There is NO "declare BINGO". The admin ends the session after some time; the winner is the
   player with the MOST marked phrase cells (centre free cell not counted; max 24). Tie-break: whoever
   reached their final count first (earliest last mark). Nobody marked anything -> no winner.

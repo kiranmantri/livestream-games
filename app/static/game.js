@@ -41,14 +41,45 @@
     var c = e.target.closest('.cardbox.mine button.cell');
     if (!c || !c.id) return;
     e.stopPropagation();                                  // htmx must not also send this tap
+    if (c.classList.contains('locked')) return;           // confirmed by the admin: it cannot be unmarked (title says why)
     var id = c.id;
-    c.setAttribute('aria-pressed', c.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+    var on = c.getAttribute('aria-pressed') !== 'true';
+    c.setAttribute('aria-pressed', on ? 'true' : 'false');
+    // fx.js: sparks in the cell, a bigger burst on my card for a new row/column/diagonal, endless fireworks for a full card;
+    // an unmark stops the fireworks (the card is no longer full)
+    if (window.bingoFx) {
+      if (!on) window.bingoFx.stop();
+      else if (!c.classList.contains('revoked')) window.bingoFx.tap(c, e);
+    }
     c.classList.add('pending');
     chain = chain.then(function () {
       return htmx.ajax('POST', '/mark/' + id.replace('cell-', ''), { target: '#' + id, swap: 'outerHTML' });
     }).catch(function () { location.reload(); });
   }, true);
   document.body.addEventListener('htmx:sendError', function () { location.reload(); });   // offline: resync with the server
+
+  // The admin can confirm (lock), clear or block my marks and kick me, a swap can change my card or give me an offer: every BOARD_POLL_MS ask the server whether my board
+  // still is what my screen shows (`v`, the same format as main.board_sig). 204 = yes; else it sends the board (redrawn
+  // here); game over / kicked -> HX-Refresh (end screen / join screen). Skipped while one of my taps is on its way.
+  var BOARD_POLL_MS = 5000;
+  function idx(sel) {
+    return Array.prototype.map.call(root.querySelectorAll('.cardbox.mine ' + sel), function (b) { return +b.id.replace('cell-', ''); })
+      .sort(function (a, b) { return a - b; }).join(',');
+  }
+  function boardSig() {                                   // + the card version (a swap changes my phrases) and the open swap offer
+    var board = document.getElementById('game-board'), offer = document.getElementById('swapbox');
+    return 'm=' + idx('button.cell[aria-pressed=true]') + ';l=' + idx('button.cell.locked[aria-pressed=true]') +
+      ';r=' + idx('button.cell.revoked') + ';c=' + ((board && board.dataset.cv) || '') + ';s=' + ((offer && offer.dataset.right) || '');
+  }
+  var syncing = false;
+  function syncBoard() {
+    if (syncing || !window.htmx || !root.querySelector('.cardbox.mine button.cell')) return;
+    if (root.querySelector('.cardbox.mine .cell.pending')) return;
+    syncing = true;
+    htmx.ajax('GET', '/myboard?v=' + encodeURIComponent(boardSig()), { target: '#game-board', swap: 'outerHTML' })
+      .then(function () { syncing = false; }, function () { syncing = false; });
+  }
+  setInterval(syncBoard, BOARD_POLL_MS);
 
   // Others' cards: while the mouse is over one, a copy 3x as WIDE floats above it (the box is a size container, so the
   // container-query fonts grow too and phrases hidden on tiny cards appear). Click-through (pointer-events: none), so the

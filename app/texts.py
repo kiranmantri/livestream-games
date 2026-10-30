@@ -44,6 +44,7 @@ ERRORS = {
     "no_source": "Não há partida disponível agora: o canal não está ao vivo na horizontal. Aguarde o administrador iniciar uma partida.",
     "invalid_video": "Link inválido. Use um link do YouTube (youtube.com ou youtu.be).",
     "generic": "Algo deu errado. Tente de novo.",
+    "kicked": "O administrador removeu você desta partida e sua cartela foi anulada. Você pode entrar de novo com uma cartela nova.",
 }
 
 ADMIN_ACTIVE = "Partida em andamento"
@@ -77,6 +78,59 @@ ADMIN_STAR_LINE = "linha completa"        # tooltip of the yellow star: "<n> lin
 ADMIN_STAR_LINES = "linhas completas"
 ADMIN_STAR_FULL = "cartela completa"
 CELL_REVOKED = "O administrador removeu esta marcação: a casa está bloqueada."
+CELL_LOCKED = "Confirmada pelo administrador: esta marcação não pode ser desfeita."
+ADMIN_MARKS = "Marcações"
+ADMIN_MARKS_HELP = ("Confira cada frase: Correto vale para TODOS (trava a casa de quem marcou, e quem marcar depois já fica "
+                    "confirmado); Incorreto limpa a frase de todos (podem marcar de novo depois).")
+ADMIN_MARKS_NONE = "Nenhuma casa marcada ainda."
+ADMIN_MARKS_PENDING = "{n} a conferir"
+ADMIN_MARK_OK = "Correto"
+ADMIN_MARK_WRONG = "Incorreto"
+ADMIN_MARK_PENDING = "a conferir"
+ADMIN_MARK_CONFIRMED = "confirmada"
+ADMIN_COL_PLAYER = "Jogador"
+ADMIN_COL_PLAYERS = "Quem marcou"
+ADMIN_COL_PHRASE = "Frase"
+ADMIN_COL_AT = "Marcada às"
+ADMIN_COL_STATUS = "Situação"
+SWAP_OFFER = "🎁 Você ganhou uma troca de cartela!"
+SWAP_HELP = ("Escolha com quem trocar: você fica com a cartela dele(a), com as marcações, e ele(a) com a sua. "
+             "A outra pessoa não pode recusar. Vale até o fim da partida.")
+SWAP_PICK = "Trocar com"
+SWAP_BUTTON = "Trocar de cartela"
+SWAP_CONFIRM = "Trocar de cartela agora? Não dá para desfazer."
+SWAP_DECLINE = "Não quero trocar"
+SWAP_NOBODY = "Ninguém pode receber a troca agora. Ela continua valendo até o fim da partida."
+SWAP_DONE = "🔄 Você trocou de cartela com {name} às {at}."
+SWAP_RECEIVED = "🔄 {name} trocou de cartela com você às {at}!"
+SWAP_ERRORS = {
+    "not_eligible": "Não dá para trocar com essa pessoa. Escolha outra.",
+    "used": "Essa troca já foi usada.",
+    "not_yours": "Essa troca não é sua.",
+    "not_active": "A partida acabou.",
+}
+ADMIN_KW = "🔑 Palavras-chave (secretas)"
+ADMIN_KW_HELP = ("Só você vê. Escolha até 3 frases das cartelas desta partida. Quando você confirma (Correto) a marcação de uma "
+                 "palavra-chave, o jogador ganha UMA troca de cartela com quem quiser (menos quem também marcou essa palavra).")
+ADMIN_KW_ADD = "Adicionar"
+ADMIN_KW_PICK = "Frase das cartelas"
+ADMIN_KW_REMOVE = "Remover"
+ADMIN_KW_FROZEN = "travada (já tem marcação confirmada)"
+ADMIN_KW_NONE = "Nenhuma palavra-chave escolhida."
+ADMIN_KW_CARDS = "{n} cartela(s)"
+ADMIN_KW_LOG = "Trocas"
+ADMIN_KW_EARNED = "{holder} ganhou uma troca ({text})"
+ADMIN_KW_OPEN = "disponível"
+ADMIN_KW_USED = "trocou com {target} às {at}"
+ADMIN_KW_DECLINED = "recusou"
+ADMIN_KW_ERRORS = {
+    "max": "Já há 3 palavras-chave.",
+    "frozen": "Essa palavra-chave já tem marcação confirmada: não pode mais ser removida.",
+    "not_on_cards": "Essa frase não está em nenhuma cartela desta partida.",
+    "not_active": "A partida acabou.",
+}
+ADMIN_KICK = "Expulsar"
+ADMIN_KICK_CONFIRM = "Expulsar {name}? A cartela dele(a) será anulada; ele(a) poderá entrar de novo com uma cartela nova."
 ADMIN_START_HELP = "Nenhuma partida em andamento. Ao iniciar, os jogadores poderão entrar."
 ADMIN_PHRASES_LINK = "Gerenciar frases"
 ADMIN_IPLIMIT_LABEL = "Jogadores por rede (IP), nos dois jogos"

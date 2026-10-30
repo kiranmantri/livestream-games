@@ -342,6 +342,36 @@ def end_session(conn: psycopg.Connection, session_id: uuid.UUID,
         return cur.rowcount == 1
 
 
+def kick_player(conn: psycopg.Connection, session_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+    """ADMIN: remove a player from a RUNNING session: the user row goes (card, marks, blocks with it, by cascade), so the cookie
+    no longer resumes anything and the name / IP slot is free; the cookie's hash is kept in kicked_players so the join screen
+    can say why. The player may join again with a new card. Returns False if the session is not active or the user is not
+    in it."""
+    ensure_autocommit(conn)
+    with conn.transaction():
+        if conn.execute("SELECT 1 FROM game_sessions WHERE id = %s AND status = 'active' FOR UPDATE",
+                        (session_id,)).fetchone() is None:
+            return False
+        row = conn.execute("SELECT token_hash, name FROM users WHERE id = %s AND session_id = %s",
+                           (user_id, session_id)).fetchone()
+        if row is None:
+            return False
+        conn.execute("UPDATE game_sessions SET created_by = NULL WHERE id = %s AND created_by = %s", (session_id, user_id))
+        conn.execute("INSERT INTO kicked_players (session_id, token_hash, name) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
+                     (session_id, row[0], row[1]))
+        # an unused card swap earned by a mark on this card goes with it (used / declined ones stay in the log)
+        conn.execute("DELETE FROM swap_rights WHERE card_id IN (SELECT id FROM bingo_cards WHERE user_id = %s) "
+                     "AND used_at IS NULL AND declined_at IS NULL", (user_id,))
+        conn.execute("DELETE FROM users WHERE id = %s", (user_id,))
+        return True
+
+
+def was_kicked(conn: psycopg.Connection, session_id: uuid.UUID, raw_token: str | None) -> bool:
+    """This cookie belonged to a player the admin kicked out of that session."""
+    return bool(raw_token) and conn.execute("SELECT 1 FROM kicked_players WHERE session_id = %s AND token_hash = %s",
+                                            (session_id, hash_token(raw_token or ""))).fetchone() is not None
+
+
 def _get_player(conn: psycopg.Connection, user_id: uuid.UUID) -> Player:
     with conn.cursor(row_factory=class_row(Player)) as cur:
         cur.execute(f"SELECT {_PLAYER_COLS} FROM users WHERE id = %s", (user_id,))

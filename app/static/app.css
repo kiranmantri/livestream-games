@@ -133,7 +133,7 @@ main.game { max-width: 1180px; }
 @media (max-width: 760px) { .toprow { grid-template-columns: 1fr; } .chat { flex: none; height: 420px; } }
 
 .cardbox { container-type: inline-size; padding: 8px; border: 2px solid var(--line); border-radius: 12px; background: var(--panel); }
-.cardbox.mine { border: 3px solid #ef4444; box-shadow: 0 0 0 3px #ef444433; }
+.cardbox.mine { position: relative; border: 3px solid #ef4444; box-shadow: 0 0 0 3px #ef444433; }
 .cardbox #game-board { margin: 0; }
 /* font sizes follow the CARD width (container queries), not the viewport */
 @supports (width: 1cqw) {
@@ -896,3 +896,49 @@ table.cktable .acts button.recheck { background: var(--accent); color: #082f49; 
 
 /* Bingo end screen: same game container, only my card on top (no stream/chat column) */
 .game.ended .toprow { grid-template-columns: minmax(0, 560px); justify-content: center; }
+
+/* Bingo effects (fx.js): throwaway canvases, never in the way of a tap. Cell: over the tapped cell inside .board (above the blue
+   lines, below the phone's sticky bar). Card: exactly my card's padding box. Screen: the whole window, above the hover zoom. */
+.fx { position: absolute; pointer-events: none; display: block; }
+.fx.cell-fx { z-index: 4; }
+.fx.card-fx { inset: 0; z-index: 6; border-radius: 9px; }
+.fx.screen-fx { position: fixed; inset: 0; z-index: 60; }
+
+/* Bingo admin review (confirmed = locked for the player) and kick */
+.cell.locked { cursor: not-allowed; box-shadow: inset 0 0 0 2px #facc15; }
+.cell.locked::before { content: "\1F512"; position: absolute; top: 3px; left: 5px; font-size: 1em; line-height: 1; }
+.mc.locked { box-shadow: inset 0 0 0 2px #facc15; }
+#marks-panel h2 { display: flex; align-items: center; gap: 10px; }
+#marks-panel h2 .pill { font-size: .8rem; }
+table.marks td.phrase { font-weight: 600; }
+table.marks th { white-space: nowrap; }
+table.marks tr.mk.ok { opacity: .75; }
+table.marks td.mkacts { white-space: nowrap; text-align: right; }
+.mkwho { list-style: none; margin: 0; padding: 0; font-size: .85rem; }   /* one name per line */
+.mkwho li { margin: 0; }
+.mkform, .kickform { display: inline-block; margin: 0 0 0 6px; }
+.mkform button, .kickform button { font: inherit; font-size: .8rem; padding: 3px 10px; border-radius: 6px; cursor: pointer; margin: 0; }
+.mkform button.okbtn { background: var(--ok); color: var(--ok-text); border: 1px solid var(--ok); }
+.mkform button.wrongbtn { background: transparent; color: var(--warn); border: 1px solid var(--warn); }
+.mkstate { font-size: .8rem; color: var(--muted); }
+.mkstate.ok { color: #facc15; }
+td.kickcell { text-align: right; }
+
+/* Bingo admin: secret keywords + swap log */
+.kwlist, .kwlog { list-style: none; margin: .4rem 0; padding: 0; }
+.kwlist li, .kwlog li { margin: .25rem 0; }
+.kwform { display: inline-flex; gap: .5rem; align-items: end; flex-wrap: wrap; margin: 0; }
+.kwform label { display: grid; gap: .2rem; }
+.kwform select, .swappick select { max-width: 32rem; min-height: 36px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--surface-raised); color: var(--text); font: inherit; }
+.kwform button[type=submit]:not(.link) { min-height: 36px; padding: 4px 14px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--surface-raised); color: var(--text); font: inherit; cursor: pointer; }
+.kwform button[type=submit]:not(.link):hover { border-color: var(--accent); }
+.kwmark { margin-right: .3rem; }
+/* Bingo player: card swap offer */
+.swapbox { border: 1px solid #facc15; border-radius: .6rem; padding: .7rem .9rem; margin: .5rem 0; background: rgba(250,204,21,.08); }
+.swapbox p { margin: .3rem 0; }
+.swappick { display: flex; gap: .5rem; align-items: end; flex-wrap: wrap; }
+.swappick label { display: grid; gap: .2rem; }
+.swapno { margin-top: .3rem; }
+.swapnote { margin: .4rem 0; font-weight: 600; }

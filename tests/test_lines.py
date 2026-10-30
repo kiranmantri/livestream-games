@@ -116,7 +116,7 @@ def test_users_table_sorts_by_column_and_ignores_unknown_columns(web):
     adm = web("203.0.113.99")
 
     def order(q):
-        html = adm.get("/admin" + q, headers=basic()).text
+        html = adm.get("/admin" + q, headers=basic()).text.split('id="marks-panel"', 1)[0]   # the users table only
         return re.findall(r"<td[^>]*>\s*(Zed|Amy|Max)\s*</td>", html)
     assert order("?sort=name&dir=asc") == ["Amy", "Max", "Zed"]
     assert order("?sort=name&dir=desc") == ["Zed", "Max", "Amy"]

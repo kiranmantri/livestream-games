@@ -73,7 +73,7 @@ Migrations in `migrations/` are the truth (`\d <table>` in psql). Summary by are
 | Area | Tables | Notes |
 |---|---|---|
 | Sessions + players | `game_sessions`, `users`, `app_settings` | one ACTIVE session per game (`game_type` bingo / falacias / checker); a player has one `users` row per session; only the sha256 of the cookie token is stored |
-| Bingo | `phrases`, `bingo_cards`, `bingo_marks`, `revoked_marks` | cards are immutable; the host can unmark + block a cell; phrase scores are relearned at each game end |
+| Bingo | `phrases`, `bingo_cards`, `bingo_marks` (+ `confirmed_at`), `revoked_marks`, `kicked_players`, `confirmed_phrases`, `bingo_keywords`, `swap_rights` | cards are immutable except inside a keyword card swap (`app/swaps.py`); the host reviews marks PER PHRASE for all players (Correto = locked, also later marks; Incorreto = cleared everywhere), picks up to 3 secret keywords (a confirmed keyword mark earns one card swap), can unmark + block a cell and kick a player (user + card deleted, cookie hash kept for the notice); phrase scores are relearned at each game end |
 | Feed | `replays`, `replay_events`, `stream_events` | replay = recorded video (captions + chat, text only); stream = live chat + speech-to-text lines |
 | Quem é Falacioso? | `fallacies`, `fallacy_marks`, `host_messages` | a mark = passage + fallacy; points derived from status and latency, never stored |
 | Aponte o mentiroso! | `fact_checks`, `fact_claims` | one check per distinct claim text per session; `status` = the AI pipeline (queued, running, done, needs_admin), the host's decision = `resolved_at` + `admin_score` |

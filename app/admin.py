@@ -124,12 +124,14 @@ class PlayerRow:
     marked: frozenset[int]     # marked cell indexes (never the avatar free cell)
     marked_at: dict[int, datetime]   # cell_index -> time it was marked
     revoked: frozenset[int] = frozenset()   # cells the admin unmarked and blocked
+    confirmed: frozenset[int] = frozenset()  # marks the admin confirmed as correct (locked for the player)
 
 
 _SQL = """
 SELECT u.id, u.name, host(u.ip), u.created_at, u.last_seen_at, c.cells,
        COALESCE(array_agg(m.cell_index ORDER BY m.cell_index) FILTER (WHERE m.cell_index IS NOT NULL), '{}'),
-       COALESCE(array_agg(m.marked_at ORDER BY m.cell_index) FILTER (WHERE m.cell_index IS NOT NULL), '{}')
+       COALESCE(array_agg(m.marked_at ORDER BY m.cell_index) FILTER (WHERE m.cell_index IS NOT NULL), '{}'),
+       COALESCE(array_agg(m.cell_index) FILTER (WHERE m.confirmed_at IS NOT NULL), '{}')
 FROM users u
 LEFT JOIN bingo_cards c ON c.user_id = u.id AND c.session_id = u.session_id
 LEFT JOIN bingo_marks m ON m.card_id = c.id
@@ -157,7 +159,7 @@ def players(conn: psycopg.Connection, session_id: uuid.UUID) -> list[PlayerRow]:
             "WHERE c.session_id = %s", (session_id,)):
         revoked.setdefault(uid, set()).add(idx)
     return [PlayerRow(r[0], r[1], r[2], r[3], r[4], r[5] or [], frozenset(r[6]), dict(zip(r[6], r[7], strict=True)),
-                      frozenset(revoked.get(r[0], ()))) for r in rows]
+                      frozenset(revoked.get(r[0], ())), frozenset(r[8])) for r in rows]
 
 
 def fallacies_token(password: str) -> str:

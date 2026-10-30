@@ -31,7 +31,7 @@ def test_migrations_are_idempotent(conn):
                      "0003_phrase_stats.sql", "0004_phrase_words_1_10.sql",
                      "0005_phrase_words_any_source.sql", "0006_grid4_drop_videos.sql",
                      "0007_sessions_per_game.sql", "0008_falacias.sql", "0009_live_source.sql", "0010_replays.sql", "0011_app_settings.sql", "0012_mark_note.sql", "0013_checker.sql",
-                     "0014_host_and_ai_independent.sql"]
+                     "0014_host_and_ai_independent.sql", "0015_mark_review.sql", "0016_keywords_swaps.sql"]
 
 
 # ---- sessions

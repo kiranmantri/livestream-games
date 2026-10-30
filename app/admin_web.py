@@ -18,6 +18,7 @@ from fasthtml.common import (
     Header,
     Input,
     Label,
+    Li,
     Main,
     Nav,
     Option,
@@ -35,6 +36,7 @@ from fasthtml.common import (
     Time,
     Title,
     Tr,
+    Ul,
     to_xml,
 )
 from starlette.requests import Request
@@ -47,6 +49,7 @@ from app import marks as M
 from app import replays as R
 from app import scoring as G
 from app import sessions as S
+from app import swaps as W
 from app import texts as T
 from app.lines import complete_lines, is_full, line_boxes
 from app.ui import client_ip_of
@@ -94,9 +97,11 @@ def mini_card(row: A_.PlayerRow, session_id: uuid.UUID | None = None, token: str
                                  T.ADMIN_UNMARK_CONFIRM)
             elif blocked:
                 ctl = _cell_form("/admin/unblock", session_id, row.user_id, i, token, T.ADMIN_UNBLOCK)
-        cells.append(Div(cell["text"], Small(timefmt.hms(row.marked_at[i]), cls="at") if on else None,
+        ok = on and i in row.confirmed
+        cells.append(Div(cell["text"], Small(("🔒 " if ok else "") + timefmt.hms(row.marked_at[i]), cls="at",
+                                             title=T.ADMIN_MARK_CONFIRMED if ok else None) if on else None,
                          Small(T.ADMIN_BLOCKED, cls="at") if blocked else None, ctl,
-                         cls="mc" + (" on" if on else "") + (" revoked" if blocked else "")))
+                         cls="mc" + (" on" if on else "") + (" locked" if ok else "") + (" revoked" if blocked else "")))
     return Div(*cells, *line_boxes(row.cells, row.marked), cls="mini", lang="pt-BR",
                style=f"--cols: {C.grid_of(len(row.cells))}")
 
@@ -152,17 +157,32 @@ def ip_limit_form(limit: int, token: str, bad: bool = False):
         method="post", action="/admin/settings/ip-limit", cls="iplimit")
 
 
+def kick_form(r: A_.PlayerRow, session_id: uuid.UUID, token: str):
+    """Kick the player out of the running game (card annulled; they may join again with a new card). A plain post + reload."""
+    return Form(Input(type="hidden", name="session_id", value=str(session_id)),
+                Input(type="hidden", name="user_id", value=str(r.user_id)),
+                Input(type="hidden", name="csrf", value=token),
+                Button(T.ADMIN_KICK, type="submit", cls="danger kickbtn"),
+                method="post", action="/admin/kick", cls="kickform",
+                onsubmit=f"return confirm({T.ADMIN_KICK_CONFIRM.format(name=r.name)!r})")
+
+
 def users_panel(rows: list[A_.PlayerRow], rank: dict, sort: str = "rank", direction: str = "asc", oob: bool = False,
-                poll: bool = False):
-    """The users table. While the game is active it re-reads itself every 5 s (keeping the sort order)."""
+                poll: bool = False, session_id: uuid.UUID | None = None, token: str = ""):
+    """The users table. While the game is active it re-reads itself every 5 s (keeping the sort order) and each row has
+    the kick button."""
     table_rows, sort, direction = sort_rows(rows, rank, sort, direction)
+    kick = poll and session_id is not None
     table = Table(
-        Thead(Tr(*[sort_header(c, sort, direction) for c in SORTS])),
+        Thead(Tr(*[sort_header(c, sort, direction) for c in SORTS], Th("") if kick else None)),
         Tbody(*[Tr(Td(str(rank.get(r.user_id, "-")), data_label=SORTS["rank"][0]), Td(r.name, star(r), data_label=SORTS["name"][0]),
                    Td(str(len(r.marked)), data_label=SORTS["marked"][0]), Td(_ts(r.joined_at), data_label=SORTS["joined"][0]),
-                   Td(_ts(r.last_seen_at), data_label=SORTS["seen"][0])) for r in table_rows]),
+                   Td(_ts(r.last_seen_at), data_label=SORTS["seen"][0]),
+                   Td(kick_form(r, session_id, token), cls="kickcell") if kick and session_id is not None else None)
+                for r in table_rows]),
         cls="users stack")
     poll_attrs = {"hx_get": f"/admin/live?sort={sort}&dir={direction}", "hx_trigger": "every 5s", "hx_swap": "outerHTML"} if poll else {}
+    # (a kick's confirm() blocks the page, so a poll cannot swap the table under the admin's answer)
     return Div(H2(T.ADMIN_USERS), table if rows else P(T.ADMIN_NO_USERS, cls="muted"), cls="panel", id="users-panel",
                hx_swap_oob="outerHTML" if oob else None, **poll_attrs)
 
@@ -191,6 +211,90 @@ def cards_panel(session: S.GameSession, rows: list[A_.PlayerRow], token: str, op
                id="cards-panel", **poll)
 
 
+def _mark_form(action: str, session_id: uuid.UUID, pm: M.PhraseMarks, token: str, label: str, cls: str):
+    """Correto / Incorreto act on the PHRASE (every player's mark of it); the form names one marked cell of it."""
+    m = pm.who[0]
+    return Form(Input(type="hidden", name="session_id", value=str(session_id)),
+                Input(type="hidden", name="user_id", value=str(m.user_id)),
+                Input(type="hidden", name="cell", value=str(m.cell_index)),
+                Input(type="hidden", name="csrf", value=token),
+                Button(label, type="submit", cls=cls),
+                method="post", action=action, cls="mkform", hx_post=action, hx_target="#marks-panel", hx_swap="outerHTML")
+
+
+def marks_signature(session: S.GameSession, marks: list[M.PhraseMarks], keys: frozenset[int] = frozenset()) -> str:
+    raw = repr((session.id, session.status, sorted(keys),
+                [(p.phrase_id, p.confirmed, [(w.user_id, w.marked_at) for w in p.who]) for p in marks]))
+    return hashlib.sha1(raw.encode()).hexdigest()[:16]
+
+
+def marks_panel(session: S.GameSession, marks: list[M.PhraseMarks], token: str, keys: frozenset[int] = frozenset()):
+    """Every marked phrase of the game, one row per phrase with everybody who marked it (pending first, then newest).
+    Correto confirms the phrase for ALL players (their cells lock, later marks of it are confirmed at once); Incorreto clears
+    it for all (they may mark it again later). While the game is active it re-reads itself every 5 s: 204 while nothing changed."""
+    active = session.status == "active"
+    pending = sum(1 for p in marks if not p.confirmed)
+    poll = {"hx_get": f"/admin/marks?sid={session.id}&sig={marks_signature(session, marks, keys)}", "hx_trigger": LIVE_POLL,
+            "hx_swap": "outerHTML"} if active else {}
+    rows = []
+    for p in marks:
+        ok = p.confirmed
+        acts = (None if ok else _mark_form("/admin/confirm", session.id, p, token, "✔ " + T.ADMIN_MARK_OK, "okbtn"),
+                _mark_form("/admin/reject", session.id, p, token, "✕ " + T.ADMIN_MARK_WRONG, "wrongbtn")) if active else ()
+        who = Ul(*[Li(w.name, " ", Small(timefmt.hms(w.marked_at), cls="muted")) for w in p.who], cls="mkwho")
+        key = Span("🔑", title=T.ADMIN_KW, cls="kwmark") if p.phrase_id in keys else None     # only the admin sees it
+        rows.append(Tr(Td(key, p.text, cls="phrase", data_label=T.ADMIN_COL_PHRASE, lang="pt-BR"),
+                       Td(who, data_label=T.ADMIN_COL_PLAYERS),
+                       Td(Span(("🔒 " + T.ADMIN_MARK_CONFIRMED) if ok else T.ADMIN_MARK_PENDING, cls="mkstate" + (" ok" if ok else "")),
+                          data_label=T.ADMIN_COL_STATUS),
+                       Td(*acts, cls="mkacts"), cls="mk" + (" ok" if ok else " pending")))
+    table = Table(Thead(Tr(Th(T.ADMIN_COL_PHRASE), Th(T.ADMIN_COL_PLAYERS), Th(T.ADMIN_COL_STATUS), Th(""))),
+                  Tbody(*rows), cls="users stack marks")
+    return Div(H2(T.ADMIN_MARKS, Span(T.ADMIN_MARKS_PENDING.format(n=pending), cls="pill" + (" on" if pending else ""))
+                  if marks else None),
+               P(T.ADMIN_MARKS_HELP, cls="muted") if active else None,
+               table if marks else P(T.ADMIN_MARKS_NONE, cls="muted"),
+               cls="panel", id="marks-panel", **poll)
+
+
+def keyword_ids(conn, session_id: uuid.UUID) -> frozenset[int]:
+    return frozenset(k.phrase_id for k in W.keywords(conn, session_id))
+
+
+def _kw_form(action: str, session_id: uuid.UUID, token: str, *fields):
+    return Form(Input(type="hidden", name="session_id", value=str(session_id)), Input(type="hidden", name="csrf", value=token),
+                *fields, method="post", action=action, cls="kwform")
+
+
+def keyword_panel(session: S.GameSession, kws: list[W.Keyword], options: list[W.KeywordOption], log: list[W.RightLog],
+                  token: str, error: str | None = None, oob: bool = False):
+    """The secret keywords (only the admin sees them) and every card swap of the game. Plain forms: the page reloads."""
+    active = session.status == "active"
+    chosen = {k.phrase_id for k in kws}
+    items = [Li(Span("🔑 ", aria_hidden="true"), Span(k.text, cls="phrase", lang="pt-BR"), " ",
+                Small(T.ADMIN_KW_FROZEN, cls="muted") if k.frozen else
+                (_kw_form("/admin/keywords/remove", session.id, token, Input(type="hidden", name="phrase_id", value=str(k.phrase_id)),
+                          Button(T.ADMIN_KW_REMOVE, type="submit", cls="link")) if active else None))
+             for k in kws]
+    add = _kw_form("/admin/keywords/add", session.id, token,
+                   Label(T.ADMIN_KW_PICK, Select(*[Option(f"{o.text} — {T.ADMIN_KW_CARDS.format(n=o.cards)}", value=str(o.phrase_id))
+                                                  for o in options if o.phrase_id not in chosen], name="phrase_id")),
+                   Button(T.ADMIN_KW_ADD, type="submit")) if active and len(kws) < W.MAX_KEYWORDS else None
+
+    def fate(r: W.RightLog):
+        if r.used_at:
+            return T.ADMIN_KW_USED.format(target=r.target or "?", at=timefmt.hms(r.used_at))
+        return T.ADMIN_KW_DECLINED if r.declined_at else T.ADMIN_KW_OPEN
+
+    swaps = [Li(T.ADMIN_KW_EARNED.format(holder=r.holder, text=r.text), " ", Small(timefmt.hms(r.earned_at), cls="muted"),
+                " — ", fate(r)) for r in log]
+    return Div(H2(T.ADMIN_KW), P(T.ADMIN_KW_HELP, cls="muted") if active else None,
+               Div(error, cls="error", role="alert") if error else None,
+               Ul(*items, cls="kwlist") if kws else P(T.ADMIN_KW_NONE, cls="muted"), add,
+               Div(H2(T.ADMIN_KW_LOG), Ul(*swaps, cls="kwlog")) if log else None,
+               cls="panel", id="kw-panel", **({"hx_swap_oob": "true"} if oob else {}))
+
+
 def watcher(session: S.GameSession | None):
     """No game running (none yet, or the last one ended): reload the page as soon as a new Bingo game starts (a player can start it)."""
     return Div(id="bingo-watch", hx_get=f"/admin/watch?sid={session.id if session else ''}", hx_trigger=LIVE_POLL, hx_swap="none")
@@ -198,14 +302,15 @@ def watcher(session: S.GameSession | None):
 
 def admin_page(session: S.GameSession, rows: list[A_.PlayerRow], standings: list[G.Standing],
                token: str, start_token: str, sort: str = "rank", direction: str = "asc", open_uid: str = "",
-               settings=None):
+               settings=None, marks: list[M.PhraseMarks] = (), kw=None, keys: frozenset[int] = frozenset()):
     rank = {s.user_id: s.rank for s in standings}
     active = session.status == "active"
     winner = next((r for r in rows if r.user_id == session.winner_user_id), None)
     bar = status_bar(session, len(rows), None, winner.name if winner else None)
     return (Title(f"{T.TITLE} - admin"), admin_tabs("bingo"),
             Main(title_row(f"{T.TITLE} - admin"), bar,
-                 users_panel(rows, rank, sort, direction, poll=active),
+                 users_panel(rows, rank, sort, direction, poll=active, session_id=session.id, token=token),
+                 kw, marks_panel(session, list(marks), token, keys),
                  cards_panel(session, rows, token, open_uid), None if active else watcher(session),
                  settings, Script(src="/admin.js", defer=True), cls="wide"))
 
@@ -336,7 +441,7 @@ def register(rt, pool, live: livestream.LiveStream | None = None):
     _pool = pool
     live = live or livestream.LiveStream()
     @rt("/admin")
-    def admin_get(request: Request, sort: str = "rank", dir: str = "", open: str = "", err: str = ""):
+    def admin_get(request: Request, sort: str = "rank", dir: str = "", open: str = "", err: str = "", kwerr: str = ""):
         if (d := denied(request)) is not None:
             return d
         with pool.connection() as conn:
@@ -349,8 +454,14 @@ def register(rt, pool, live: livestream.LiveStream | None = None):
                             settings,
                             Div(A(T.ADMIN_PHRASES_LINK, href="/admin/phrases", cls="btn"),
                                 A(T.ADMIN_REFRESH, href="/admin", cls="btn"), cls="adminbar"), watcher(None), cls="wide"))
+            token = A_.csrf_token(pw, session.id)
+            kws = W.keywords(conn, session.id)
             return admin_page(session, A_.players(conn, session.id), G.leaderboard(conn, session.id),
-                              A_.csrf_token(pw, session.id), A_.start_token(pw), sort, dir, open, settings)
+                              token, A_.start_token(pw), sort, dir, open, settings,
+                              M.phrase_marks(conn, session.id),
+                              keyword_panel(session, kws, W.keyword_options(conn, session.id), W.session_rights(conn, session.id),
+                                            token, T.ADMIN_KW_ERRORS.get(kwerr)),
+                              frozenset(k.phrase_id for k in kws))
 
     @rt("/admin/live")
     def admin_live(request: Request, sort: str = "rank", dir: str = ""):
@@ -364,7 +475,23 @@ def register(rt, pool, live: livestream.LiveStream | None = None):
                 return Response(status_code=200, headers={"HX-Refresh": "true"})      # the game ended: show the final page
             rows = A_.players(conn, session.id)
             rank = {s.user_id: s.rank for s in G.leaderboard(conn, session.id)}
-            return (users_panel(rows, rank, sort, dir, poll=True), player_count(len(rows), oob=True))
+            return (users_panel(rows, rank, sort, dir, poll=True, session_id=session.id,
+                                token=A_.csrf_token(A_.admin_password() or "", session.id)), player_count(len(rows), oob=True))
+
+    @rt("/admin/marks")
+    def admin_marks(request: Request, sid: str = "", sig: str = ""):
+        """Polled every 5 s by the marks list: 204 while no mark changed, else the list again; another game / ended: reload."""
+        if (d := denied(request)) is not None:
+            return d
+        with pool.connection() as conn:
+            session = A_.current_session(conn)
+            if session is None or session.status != "active" or str(session.id) != sid:
+                return Response(status_code=200, headers={"HX-Refresh": "true"})
+            marks, keys = M.phrase_marks(conn, session.id), keyword_ids(conn, session.id)
+            if sig and sig == marks_signature(session, marks, keys):
+                return Response(status_code=204)
+            return Response(to_xml(marks_panel(session, marks, A_.csrf_token(A_.admin_password() or "", session.id), keys)),
+                            media_type="text/html")
 
     @rt("/admin/cards")
     def admin_cards(request: Request, sid: str = "", sig: str = ""):
@@ -496,7 +623,7 @@ def register(rt, pool, live: livestream.LiveStream | None = None):
             G.finish_session(conn, sid)        # None if already finished: harmless double click
         return RedirectResponse("/admin", status_code=303)
 
-    def _cell_action(request: Request, session_id: str, user_id: str, cell: str, csrf: str, action):
+    def _cell_action(request: Request, session_id: str, user_id: str, cell: str, csrf: str, action, marks_reply: bool = False):
         if (d := denied(request)) is not None:
             return d
         try:
@@ -513,14 +640,22 @@ def register(rt, pool, live: livestream.LiveStream | None = None):
             session = A_.current_session(conn)
             rows = A_.players(conn, session.id) if session else []
             row = next((r for r in rows if r.user_id == uid), None)
-            if session is None or row is None or session.id != sid:
+            if session is None or session.id != sid or (row is None and not marks_reply):
                 return Response("", status_code=200, headers={"HX-Redirect": "/admin"})
             q = parse_qs(urlparse(request.headers.get("hx-current-url", "")).query)      # keep the table's sort order
             rank = {s.user_id: s.rank for s in G.leaderboard(conn, session.id)}
             pw = A_.admin_password() or ""
-            return (card_panel(row, session.id, A_.csrf_token(pw, session.id), session.status == "active", True),
+            token = A_.csrf_token(pw, session.id)
+            if marks_reply:          # the review list: the list again + the users table (counts changed), out of band
+                kws = W.keywords(conn, session.id)          # a confirmation may freeze a keyword and grant swaps
+                return (marks_panel(session, M.phrase_marks(conn, session.id), token, frozenset(k.phrase_id for k in kws)),
+                        keyword_panel(session, kws, W.keyword_options(conn, session.id), W.session_rights(conn, session.id),
+                                      token, oob=True),
+                        users_panel(rows, rank, q.get("sort", ["rank"])[0], q.get("dir", [""])[0], oob=True,
+                                    poll=session.status == "active", session_id=session.id, token=token))
+            return (card_panel(row, session.id, token, session.status == "active", True),
                     users_panel(rows, rank, q.get("sort", ["rank"])[0], q.get("dir", [""])[0], oob=True,
-                              poll=session.status == "active"))
+                              poll=session.status == "active", session_id=session.id, token=token))
 
     @rt("/admin/unmark", methods=["POST"])
     def admin_unmark(request: Request, session_id: str = "", user_id: str = "", cell: str = "", csrf: str = ""):
@@ -529,3 +664,50 @@ def register(rt, pool, live: livestream.LiveStream | None = None):
     @rt("/admin/unblock", methods=["POST"])
     def admin_unblock(request: Request, session_id: str = "", user_id: str = "", cell: str = "", csrf: str = ""):
         return _cell_action(request, session_id, user_id, cell, csrf, M.lift_revoke)
+
+
+    @rt("/admin/confirm", methods=["POST"])
+    def admin_confirm(request: Request, session_id: str = "", user_id: str = "", cell: str = "", csrf: str = ""):
+        return _cell_action(request, session_id, user_id, cell, csrf, M.confirm_mark, marks_reply=True)
+
+    @rt("/admin/reject", methods=["POST"])
+    def admin_reject(request: Request, session_id: str = "", user_id: str = "", cell: str = "", csrf: str = ""):
+        return _cell_action(request, session_id, user_id, cell, csrf, M.reject_mark, marks_reply=True)
+
+    def _keyword_action(request: Request, session_id: str, phrase_id: str, csrf: str, action):
+        if (d := denied(request)) is not None:
+            return d
+        try:
+            sid, pid = uuid.UUID(session_id), int(phrase_id)
+        except ValueError:
+            return PlainTextResponse("bad request", status_code=400)
+        if not A_.csrf_ok(A_.admin_password() or "", sid, csrf):
+            return PlainTextResponse("bad csrf token", status_code=403)
+        with pool.connection() as conn:
+            try:
+                action(conn, sid, pid)
+            except W.KeywordError as e:
+                return RedirectResponse(f"/admin?kwerr={e.code}#kw-panel", status_code=303)
+        return RedirectResponse("/admin#kw-panel", status_code=303)
+
+    @rt("/admin/keywords/add", methods=["POST"])
+    def admin_keyword_add(request: Request, session_id: str = "", phrase_id: str = "", csrf: str = ""):
+        return _keyword_action(request, session_id, phrase_id, csrf, W.add_keyword)
+
+    @rt("/admin/keywords/remove", methods=["POST"])
+    def admin_keyword_remove(request: Request, session_id: str = "", phrase_id: str = "", csrf: str = ""):
+        return _keyword_action(request, session_id, phrase_id, csrf, W.remove_keyword)
+
+    @rt("/admin/kick", methods=["POST"])
+    def admin_kick(request: Request, session_id: str = "", user_id: str = "", csrf: str = ""):
+        if (d := denied(request)) is not None:
+            return d
+        try:
+            sid, uid = uuid.UUID(session_id), uuid.UUID(user_id)
+        except ValueError:
+            return PlainTextResponse("bad request", status_code=400)
+        if not A_.csrf_ok(A_.admin_password() or "", sid, csrf):
+            return PlainTextResponse("bad csrf token", status_code=403)
+        with pool.connection() as conn:
+            S.kick_player(conn, sid, uid)          # False = already gone / game over: harmless double click
+        return RedirectResponse("/admin", status_code=303)

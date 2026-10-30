@@ -8,6 +8,8 @@ import hashlib
 import logging
 import os
 import re
+import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from urllib.parse import quote
 
@@ -18,15 +20,21 @@ from fasthtml.common import (
     Button,
     Div,
     FastHTML,
+    Form,
     Iframe,
     Img,
+    Input,
+    Label,
     Li,
     Link,
     Ol,
+    Option,
     P,
     Script,
+    Select,
     Small,
     Span,
+    Strong,
     fast_app,
     to_xml,
 )
@@ -52,9 +60,10 @@ from app import cards as C
 from app import marks as M
 from app import scoring as G
 from app import sessions as S
+from app import swaps as W
 from app import texts as T
 from app.config import ROOT, database_url
-from app.lines import line_boxes
+from app.lines import is_full, line_boxes
 from app.ui import (
     NAME_ERRORS,
     URL_ERRORS,
@@ -114,14 +123,16 @@ def split_kind(text: str) -> tuple[str, str | None]:
     return (m.group(1), m.group(2)) if m else (text, None)
 
 
-def cell_button(i: int, cell: dict, marked: dict[int, datetime], revoked: frozenset[int]):
+def cell_button(i: int, cell: dict, marked: dict[int, datetime], revoked: frozenset[int],
+                locked: frozenset[int] = frozenset()):
     on = i in marked
+    lock = on and i in locked                       # confirmed by the admin: game.js never sends a tap, the server refuses one
     text, kind = split_kind(cell["text"])
-    cls = " ".join(x for x in ("cell", "revoked" if i in revoked else "", cell_size_cls(text)) if x)
+    cls = " ".join(x for x in ("cell", "revoked" if i in revoked else "", "locked" if lock else "", cell_size_cls(text)) if x)
     return Button(
         text, Small(kind, cls="kind") if kind else None, Small(timefmt.hms(marked[i]), cls="at") if on else None,
         type="button", cls=cls, id=f"cell-{i}",
-        title=T.CELL_REVOKED if i in revoked else None,
+        title=T.CELL_REVOKED if i in revoked else T.CELL_LOCKED if lock else None,
         aria_pressed="true" if on else "false",
         hx_post=f"/mark/{i}", hx_target="this", hx_swap="outerHTML")     # a tap swaps only this cell (+ count and lines, out of band);
                                                                          # game.js sends the taps one at a time (this is the no-JS-queue fallback)
@@ -138,20 +149,81 @@ def lines_view(card: C.Card, marked: dict[int, datetime], oob: bool = False):
     return Div(*line_boxes(card.cells, marked), cls="lines", id="lines", hx_swap_oob="true" if oob else None)
 
 
+def card_version(card: C.Card) -> str:
+    """Changes when the card's phrases change (a swap moves another card's content onto this card row)."""
+    return hashlib.sha1(repr([c.get("phrase_id") for c in card.cells]).encode()).hexdigest()[:10]
+
+
+def board_sig(marked, locked: frozenset[int], revoked: frozenset[int], cv: str = "", right: int | None = None) -> str:
+    """What my board shows, as game.js reads it back (marked / locked / blocked cells, the card version, the open swap offer):
+    the /myboard poll answers 204 while the screen and the DB agree."""
+    def j(xs):
+        return ",".join(str(i) for i in sorted(xs))
+    return f"m={j(marked)};l={j(set(locked) & set(marked))};r={j(revoked)};c={cv};s={right or ''}"
+
+
+@dataclass(frozen=True)
+class MyBoard:
+    """Everything my own board shows, read in one place (game page, tap answers, the /myboard poll)."""
+    marked: dict
+    revoked: frozenset
+    locked: frozenset
+    right: W.Right | None
+    targets: list
+    last_swap: tuple | None
+
+    def sig(self, card: C.Card) -> str:
+        return board_sig(self.marked, self.locked, self.revoked, card_version(card), self.right.id if self.right else None)
+
+
+def my_state(conn, card: C.Card, me: S.Player) -> MyBoard:
+    right = W.open_right(conn, me.id)
+    return MyBoard(M.marked_times(conn, card.id), M.revoked_cells(conn, card.id), M.confirmed_cells(conn, card.id),
+                   right, W.targets(conn, right) if right else [], W.last_swap(conn, me.id))
+
+
+def swap_box(right: W.Right, targets: list, max_marks: int):
+    """I earned a card swap (never says which keyword). Plain forms: the answer reloads the page with my new card."""
+    pick = Form(Input(type="hidden", name="right", value=str(right.id)),
+                Label(T.SWAP_PICK, Select(*[Option(f"{t.name} ({t.marked}/{max_marks})", value=str(t.user_id)) for t in targets],
+                                          name="target")),
+                Button(T.SWAP_BUTTON, type="submit", cls="primary"),
+                method="post", action="/swap", cls="swappick", onsubmit=f"return confirm({T.SWAP_CONFIRM!r})") if targets \
+        else P(T.SWAP_NOBODY, cls="muted")
+    return Div(Strong(T.SWAP_OFFER), P(T.SWAP_HELP, cls="muted"), pick,
+               Form(Input(type="hidden", name="right", value=str(right.id)),
+                    Button(T.SWAP_DECLINE, type="submit", cls="link"), method="post", action="/swap/decline", cls="swapno"),
+               id="swapbox", cls="swapbox", data_right=str(right.id))
+
+
+def swap_note(last: tuple | None):
+    if not last:
+        return None
+    kind, name, at = last
+    return Div((T.SWAP_DONE if kind == "made" else T.SWAP_RECEIVED).format(name=name, at=timefmt.hms(at)), cls="swapnote",
+               role="status")
+
+
+def my_board(card: C.Card, st: MyBoard, player_name: str, error: str | None = None):
+    return board(card, st.marked, player_name, st.revoked, error, st.locked,
+                 swap=swap_box(st.right, st.targets, card.max_marks) if st.right else None, note=swap_note(st.last_swap))
+
+
 def board(card: C.Card, marked: dict[int, datetime], player_name: str, revoked: frozenset[int] = frozenset(),
-          error: str | None = None):
+          error: str | None = None, locked: frozenset[int] = frozenset(), swap=None, note=None):
     cells = []
     for i, cell in enumerate(card.cells):
         if "phrase_id" not in cell:                    # the avatar free cell (5x5 cards only)
             cells.append(Div(Img(src="/center.jpg", alt=T.AVATAR_ALT, width=160, height=160),
                              cls="cell free", aria_label=T.AVATAR_ALT))
         else:
-            cells.append(cell_button(i, cell, marked, revoked))
+            cells.append(cell_button(i, cell, marked, revoked, locked))
     return Div(
         Div(Span(f"{player_name} ({T.YOU})", cls="who"), count_view(marked, card), cls="bar"),
         Div(error, cls="cellerr", role="alert") if error else None,
+        swap, note,
         Div(*cells, lines_view(card, marked), cls="board", lang="pt-BR", style=f"--cols: {card.size}"),
-        id="game-board")
+        id="game-board", data_cv=card_version(card))
 
 
 def final_board(card: C.Card, marked: dict[int, datetime], player_name: str):
@@ -250,8 +322,8 @@ def leaderboard_view(standings: list[G.Standing], me: S.Player | None, top: int 
                hx_get="/leaderboard", hx_trigger="every 5s", hx_swap="outerHTML")
 
 
-def game_page(card: C.Card, marked: dict[int, datetime], me: S.Player, others: list[M.PlayerBoard],
-              video_id: str | None, live_known: bool, host: str = "", revoked: frozenset[int] = frozenset()):
+def game_page(card: C.Card, st: MyBoard, me: S.Player, others: list[M.PlayerBoard],
+              video_id: str | None, live_known: bool, host: str = "", error: str | None = None):
     """Top row (50/50): LEFT = live stream with the chat below it, RIGHT = MY card (RED border); both columns have
     the same top and bottom. Below: everybody else, smaller. No scoreboard: their cards show who is ahead."""
     return page(
@@ -260,7 +332,7 @@ def game_page(card: C.Card, marked: dict[int, datetime], me: S.Player, others: l
                    cls="pref", data_pref="live:toggle", aria_pressed="false"),
             None if video_id else Span(T.OFFLINE_NOTE, cls="offline-note"), cls=f"gamebar{'' if video_id else ' nolive'}"),
         Div(Div(stream_panel(video_id, live_known), chat_panel(video_id, host), cls="leftcol"),
-            Div(board(card, marked, me.name, revoked), cls="cardbox mine"), cls="toprow"),
+            Div(my_board(card, st, me.name, error), cls="cardbox mine"), cls="toprow"),
         Div(Button("▦", type="button", cls="pref icon", data_pref="view:grid", aria_pressed="true",
                    title=T.VIEW_GRID, aria_label=T.VIEW_GRID),
             Button("☰", type="button", cls="pref icon", data_pref="view:list", aria_pressed="false",
@@ -268,6 +340,7 @@ def game_page(card: C.Card, marked: dict[int, datetime], me: S.Player, others: l
             cls="gamebar others"),
         Div(others_view(others, boards_version(others)), cls="cardgrid small"),
         Div(id="cardzoom", cls="cardzoom", hidden=True, aria_hidden="true"),   # game.js: hovered card at 2x
+        Script(src="/fx.js", defer=True),                                      # mark / line / full-card effects
         Script(src="/game.js", defer=True),
         cls="game", who=me.name)
 
@@ -279,6 +352,8 @@ def results_page(session: S.GameSession, me: S.Player, standings: list[G.Standin
     winner = next((s for s in standings if s.user_id == session.winner_user_id), None)
     mine = next((s for s in standings if s.user_id == me.id), None)
     others = list(others)
+    # I won with every cell marked: the full-card fireworks of the game go on here, forever (fx.js)
+    fireworks = card is not None and winner is not None and winner.user_id == me.id and is_full(card.cells, marked or {})
     return page(
         H1(T.GAME_OVER),
         Div(T.WINNER.format(name=winner.name, n=winner.marked) if winner else T.NO_WINNER,
@@ -292,6 +367,8 @@ def results_page(session: S.GameSession, me: S.Player, standings: list[G.Standin
             cls="gamebar others") if others else None,
         Div(others_view(others, "", poll=False), cls="cardgrid small") if others else None,
         Div(id="cardzoom", cls="cardzoom", hidden=True, aria_hidden="true"),
+        Div(data_fx="fireworks", hidden=True) if fireworks else None,
+        Script(src="/fx.js", defer=True) if fireworks else None,
         Script(src="/game.js", defer=True),
         cls="game ended", who=me.name)
 
@@ -357,8 +434,9 @@ def create_app(db_url: str | None = None, live: livestream.LiveStream | None = N
                 except C.NotEnoughPhrases:
                     return entry_page(S.get_active_session(conn), error="no_phrases", name=me.name)
                 others = [b for b in M.session_boards(conn, me.session_id) if b.user_id != me.id]
-                return game_page(card, M.marked_times(conn, card.id), me, others, live.current(), live.known,
-                                 request.url.hostname or "", M.revoked_cells(conn, card.id))
+                err = request.query_params.get("swap_err")
+                return game_page(card, my_state(conn, card, me), me, others, live.current(), live.known,
+                                 request.url.hostname or "", T.SWAP_ERRORS.get(err or ""))
             active = S.get_active_session(conn)
             found = S.find_player(conn, token_of(request))
             if active is None and found and found[1].status == "ended":
@@ -372,8 +450,9 @@ def create_app(db_url: str | None = None, live: livestream.LiveStream | None = N
                 return name_gate("/")
             if active is not None and S.name_taken(conn, active.id, name):
                 return name_gate("/", error="name_taken", value=name)    # tell them BEFORE the button, not after the tap
+            kicked = active is not None and S.was_kicked(conn, active.id, token_of(request))
             return entry_page(active, S.count_players(conn, active.id) if active else 0, name=name,
-                              error=url_error(request))
+                              error="kicked" if kicked else url_error(request))
 
     @rt("/start", methods=["POST"])
     def start(request: Request, name: str = ""):
@@ -393,10 +472,10 @@ def create_app(db_url: str | None = None, live: livestream.LiveStream | None = N
             ajax = request.headers.get("hx-request") == "true"
             try:
                 M.toggle_mark(conn, me.id, idx)
-            except M.CellRevoked:       # the admin removed this mark: show the board again with the reason
+            except (M.CellRevoked, M.CellLocked) as e:   # blocked / confirmed by the admin: the board again with the reason
                 assert card is not None
-                shown = board(card, M.marked_times(conn, card.id), me.name, M.revoked_cells(conn, card.id),
-                              error=T.CELL_REVOKED)
+                shown = my_board(card, my_state(conn, card, me), me.name,
+                                 T.CELL_REVOKED if isinstance(e, M.CellRevoked) else T.CELL_LOCKED)
                 if ajax:                # the button swaps only itself, so redirect this answer to the whole board
                     return Response(to_xml(shown), media_type="text/html",
                                     headers={"HX-Retarget": "#game-board", "HX-Reswap": "outerHTML"})
@@ -407,11 +486,52 @@ def create_app(db_url: str | None = None, live: livestream.LiveStream | None = N
                 return Response(status_code=409, headers={"HX-Refresh": "true"})  # game just ended
             card = C.get_card(conn, me.session_id, me.id)
             assert card is not None
-            marked, revoked = M.marked_times(conn, card.id), M.revoked_cells(conn, card.id)
+            marked, revoked, locked = M.marked_times(conn, card.id), M.revoked_cells(conn, card.id), M.confirmed_cells(conn, card.id)
             if ajax:                    # this cell + the count and the blue lines (out of band): nothing else is redrawn
-                return cell_button(idx, card.cells[idx], marked, revoked), count_view(marked, card, oob=True), \
+                return cell_button(idx, card.cells[idx], marked, revoked, locked), count_view(marked, card, oob=True), \
                     lines_view(card, marked, oob=True)
-            return board(card, marked, me.name, revoked)
+            return my_board(card, my_state(conn, card, me), me.name)
+
+    @rt("/myboard")
+    def myboard(request: Request, v: str = ""):
+        """My board as it is in the DB, polled every 5 s by game.js with `v` = what my screen shows (board_sig): 204 while they
+        agree, else the board (the admin confirmed / cleared / blocked a mark). A player who is no longer in the active game
+        (game over, kicked) reloads: the end screen or the join screen."""
+        with pool.connection() as conn:
+            me = S.resume(conn, token_of(request))
+            card = C.get_card(conn, me.session_id, me.id) if me is not None else None
+            if me is None or card is None:
+                return Response(status_code=200, headers={"HX-Refresh": "true"})
+            st = my_state(conn, card, me)
+            if v and v == st.sig(card):
+                return Response(status_code=204)
+            return my_board(card, st, me.name)
+
+    @rt("/swap", methods=["POST"])
+    def swap(request: Request, right: int = 0, target: str = ""):
+        """Use my card swap with the chosen player (they cannot refuse). Plain post -> back to the game page."""
+        with pool.connection() as conn:
+            me = S.resume(conn, token_of(request))
+            if me is None:
+                return RedirectResponse("/", status_code=303)
+            try:
+                W.use_swap(conn, right, me.id, uuid.UUID(target))
+            except ValueError:
+                return RedirectResponse("/?swap_err=not_eligible", status_code=303)
+            except W.SwapError as e:
+                return RedirectResponse(f"/?swap_err={e.code}", status_code=303)
+        return RedirectResponse("/", status_code=303)
+
+    @rt("/swap/decline", methods=["POST"])
+    def swap_decline(request: Request, right: int = 0):
+        with pool.connection() as conn:
+            me = S.resume(conn, token_of(request))
+            if me is not None:
+                try:
+                    W.decline(conn, right, me.id)
+                except W.SwapError:
+                    pass                    # already used / declined: a double click
+        return RedirectResponse("/", status_code=303)
 
     @rt("/leaderboard")
     def leaderboard(request: Request):
