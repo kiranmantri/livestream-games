@@ -1,4 +1,4 @@
-"""Task 3: menu + the two panes of "Encontre as Falácias", through the real ASGI app on a throwaway DB."""
+"""Task 3: menu + the two panes of "Falaciômetro", through the real ASGI app on a throwaway DB."""
 from __future__ import annotations
 
 import re

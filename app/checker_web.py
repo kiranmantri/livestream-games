@@ -1,4 +1,4 @@
-"""Player side of "Aponte o mentiroso!": the tab, join, the three panels (video | chat | transcript), the slide panel with a rating,
+"""Player side of "Verdade ou Lorota": the tab, join, the three panels (video | chat | transcript), the slide panel with a rating,
 "my claims" with the AI answer, the leaderboard and the end screen.
 
     GET  /checker          name gate / status + join button / the game page / the end screen
@@ -27,10 +27,10 @@ from fasthtml.common import (
     Input,
     Label,
     Li,
+    NotStr,
     Ol,
     P,
     Script,
-    Small,
     Span,
     Summary,
     Table,
@@ -113,16 +113,32 @@ def poller_view(after: int, st: str, tr: str | None = None):
     return Div(id="feedpoll", hx_get=f"/checker/feed?{q}", hx_trigger="every 2s", hx_swap="outerHTML")
 
 
+# The rating scale's icons: outlined until picked; picking a level lights every icon from the centre out to it (app.css, pure CSS).
+# The poop's tiers are drawn top first, each filled with the panel colour, so the lower tier hides the one above (no crossing lines).
+SCALE_ICONS = {
+    "poop": ('<svg class="ic poop" viewBox="0 0 24 24" aria-hidden="true">'
+             '<path d="M11 2.6c2.6.4 3.6 2.2 2.6 4.1"/><rect x="7.5" y="6.3" width="9" height="5" rx="2.5"/>'
+             '<rect x="5" y="10.2" width="14" height="5.2" rx="2.6"/><rect x="2.5" y="14.4" width="19" height="6.2" rx="3.1"/>'
+             '<circle class="eye" cx="9.6" cy="12.8" r="1"/><circle class="eye" cx="14.4" cy="12.8" r="1"/></svg>'),
+    "zero": '<svg class="ic zero" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg>',
+    "star": ('<svg class="ic star" viewBox="0 0 24 24" aria-hidden="true">'
+             '<path d="M12 2.8l2.8 5.8 6.3.8-4.6 4.4 1.2 6.3L12 17l-5.7 3.1 1.2-6.3-4.6-4.4 6.3-.8z"/></svg>'),
+}
+
+
 def picker_view():
-    """The slide panel (opened by falacias.js on any click in a pane): the text box the passage is written into, the rating, send."""
-    scale = Div(*[Label(Input(type="radio", name="guess", value=v), Span(f"{v:+d}" if v else "0"), title=rating(v), cls=f"g{'n' if v < 0 else 'p' if v > 0 else 'z'}")
+    """The slide panel (opened by falacias.js on any click in a pane): the text box the passage is written into, the rating, send.
+    The rating is ONE line: 💩 x5 (-5..-1), ⭕ (0), ⭐ x5 (1..5), the number under each icon."""
+    scale = Div(*[Label(Input(type="radio", name="guess", value=v, aria_label=str(v)),
+                        NotStr(SCALE_ICONS["poop" if v < 0 else "star" if v > 0 else "zero"]), Span(str(v), cls="n"),
+                        title=rating(v), cls=f"lv {'m' + str(-v) if v < 0 else 'p' + str(v) if v > 0 else 'z'}")
                   for v in range(-5, 6)], cls="scale", role="radiogroup", aria_label=T.CK_GUESS_LABEL)
     return Form(
         Div(Span(T.CK_PANEL_BAR, cls="who"), Button(T.FAL_CLEAR, type="button", id="pk-clear", cls="link"), cls="bar"),
         *[Input(type="hidden", name=n, id=f"pk-{n}") for n in ("kind", "start_id", "start_off", "end_id", "end_off")],
         Label(T.CK_NOTE_LABEL, Textarea(id="pk-note", name="note", maxlength=F.MAX_QUOTE, rows=4, placeholder=T.CK_NOTE_PLACEHOLDER,
                                         autocomplete="off"), cls="notefield"),
-        Div(Span(T.CK_GUESS_LABEL, cls="who"), Small("💩 -5 … +5 ⭐", cls="muted"), cls="bar"),
+        Div(Span(T.CK_GUESS_LABEL, cls="who"), cls="bar"),
         scale,
         Div(Button(T.CK_SEND, type="submit", cls="primary"), Div(id="feedback", role="status"), cls="sendrow"),
         id="picker", cls="panel picker ckpicker", hidden=True, hx_post="/checker/mark", hx_swap="none")

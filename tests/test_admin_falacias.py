@@ -1,5 +1,5 @@
 # ruff: noqa: F811
-"""Task 5b/5c: admin tab "Encontre as Falácias" (queue, verdicts, messages, board) and the player's message box."""
+"""Task 5b/5c: admin tab "Falaciômetro" (queue, verdicts, messages, board) and the player's message box."""
 from __future__ import annotations
 
 import base64

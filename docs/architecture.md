@@ -12,8 +12,8 @@ session on /admin that opens the three games together, on one video (a live stre
 | Game | URL | In one line |
 |---|---|---|
 | Bingo | `/` | A 4x4 card of phrases from past streams; players tap what they hear; most marks when the host ends the game wins. |
-| Quem é Falacioso? (`falacias`) | `/falacias` | Transcript + chat panes follow the video; players select a passage and name the fallacy; the host reviews (Correto / Errado / Spam). |
-| Aponte o mentiroso! (`checker`) | `/checker` | Players pick or type a claim and guess its score from -5 to +5; an AI fact-checker (or the host) gives the real score. |
+| Falaciômetro (`falacias`) | `/falacias` | Transcript + chat panes follow the video; players select a passage and name the fallacy; the host reviews (Correto / Errado / Spam). |
+| Verdade ou Lorota (`checker`) | `/checker` | Players pick or type a claim and guess its score from -5 to +5; an AI fact-checker (or the host) gives the real score. |
 
 ## Physical architecture
 
@@ -75,8 +75,8 @@ Migrations in `migrations/` are the truth (`\d <table>` in psql). Summary by are
 | Sessions + players | `game_sessions`, `users`, `app_settings` | one ACTIVE session per game (`game_type` bingo / falacias / checker); a player has one `users` row per session; only the sha256 of the cookie token is stored |
 | Bingo | `phrases`, `bingo_cards`, `bingo_marks` (+ `confirmed_at`), `revoked_marks`, `kicked_players`, `confirmed_phrases`, `bingo_keywords`, `swap_rights` | cards are immutable except inside a keyword card swap (`app/swaps.py`); the host reviews marks PER PHRASE for all players (Correto = locked, also later marks; Incorreto = cleared everywhere), picks up to 3 secret keywords (a confirmed keyword mark earns one card swap), can unmark + block a cell and kick a player (user + card deleted, cookie hash kept for the notice); phrase scores are relearned at each game end |
 | Feed | `replays`, `replay_events`, `stream_events` | replay = recorded video (captions + chat, text only); stream = live chat + speech-to-text lines |
-| Quem é Falacioso? | `fallacies`, `fallacy_marks`, `host_messages` | a mark = passage + fallacy; points derived from status and latency, never stored |
-| Aponte o mentiroso! | `fact_checks`, `fact_claims` | one check per distinct claim text per session; `status` = the AI pipeline (queued, running, done, needs_admin), the host's decision = `resolved_at` + `admin_score` |
+| Falaciômetro | `fallacies`, `fallacy_marks`, `host_messages` | a mark = passage + fallacy; points derived from status and latency, never stored |
+| Verdade ou Lorota | `fact_checks`, `fact_claims` | one check per distinct claim text per session; `status` = the AI pipeline (queued, running, done, needs_admin), the host's decision = `resolved_at` + `admin_score` |
 | Bookkeeping | `schema_migrations` | applied migration file names |
 
 Rules that the database enforces (CHECKs, unique and partial indexes, triggers) are listed in AGENTS.md under "Domain rules".

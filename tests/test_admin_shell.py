@@ -1,5 +1,5 @@
 # ruff: noqa: F811
-"""Admin shell v2: games named Bingo / Quem é Falacioso? / Aponte o mentiroso!, a Jogo | Conteúdo sub-menu per game, and ONE
+"""Admin shell v2: games named Bingo / Falaciômetro / Verdade ou Lorota, a Jogo | Conteúdo sub-menu per game, and ONE
 session (start / end, shared video URL) in the header that starts and ends all three games together."""
 from __future__ import annotations
 
@@ -58,22 +58,23 @@ def sub_nav(html):
 
 # ---------------------------------------------------------------- names and menus
 def test_the_games_have_the_new_names():
-    assert (T.ADMIN_TAB_BINGO, T.ADMIN_TAB_FALACIAS, T.ADMIN_TAB_CHECKER) == ("Bingo", "Quem é Falacioso?", "Aponte o mentiroso!")
-    assert (T.MENU_BINGO, T.MENU_FALACIAS, T.MENU_CHECKER) == ("Bingo", "Quem é Falacioso?", "Aponte o mentiroso!")
+    assert (T.ADMIN_TAB_BINGO, T.ADMIN_TAB_FALACIAS, T.ADMIN_TAB_CHECKER) == ("Bingo", "Falaciômetro", "Verdade ou Lorota")
+    assert (T.MENU_BINGO, T.MENU_FALACIAS, T.MENU_CHECKER) == ("Bingo", "Falaciômetro", "Verdade ou Lorota")
+    assert (T.FAL_TITLE, T.CK_TITLE) == ("Falaciômetro", "Verdade ou Lorota")                     # the player pages' headings
 
 
 @pytest.mark.parametrize("path", PAGES)
 def test_every_admin_page_lists_the_three_games_in_order(admin, path):
     labels = re.findall(r'class="lbl">(.*?)</span>', games_nav(admin.get(path, headers=basic()).text))
-    assert labels == ["Bingo", "Quem é Falacioso?", "Aponte o mentiroso!"]
+    assert labels == ["Bingo", "Falaciômetro", "Verdade ou Lorota"]
 
 
 @pytest.mark.parametrize(("path", "game", "hrefs"), [
     ("/admin", "Bingo", ["/admin", "/admin/phrases"]),
     ("/admin/phrases", "Bingo", ["/admin", "/admin/phrases"]),
-    ("/admin/falacias", "Quem é Falacioso?", ["/admin/falacias", "/admin/fallacies"]),
-    ("/admin/fallacies", "Quem é Falacioso?", ["/admin/falacias", "/admin/fallacies"]),
-    ("/admin/checker", "Aponte o mentiroso!", ["/admin/checker"]),
+    ("/admin/falacias", "Falaciômetro", ["/admin/falacias", "/admin/fallacies"]),
+    ("/admin/fallacies", "Falaciômetro", ["/admin/falacias", "/admin/fallacies"]),
+    ("/admin/checker", "Verdade ou Lorota", ["/admin/checker"]),
 ])
 def test_each_game_has_its_own_sub_menu(admin, path, game, hrefs):
     html = admin.get(path, headers=basic()).text

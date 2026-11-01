@@ -94,7 +94,7 @@
   });
 })();
 
-// Browser tab title shows how many pairs wait for a verdict, e.g. "(3) Encontre as Falácias - admin": visible from another window.
+// Browser tab title shows how many pairs wait for a verdict, e.g. "(3) Falaciômetro - admin": visible from another window.
 (function () {
   var base = document.title.replace(/^\(\d+\)\s*/, '');
   function setTitle() {

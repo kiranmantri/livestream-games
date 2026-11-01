@@ -1,4 +1,4 @@
-"""Services of "Encontre as Falácias": fallacy list, feed rows, selection -> quote, pairs (marks), review, leaderboard.
+"""Services of "Falaciômetro": fallacy list, feed rows, selection -> quote, pairs (marks), review, leaderboard.
 
 Framework-free functions over a psycopg AUTOCOMMIT connection (see app.db.connect). Points are never stored: they are
 derived from (status, latency_ms, counts) by `points()`, the single place with the scoring constants, in hundredths of a

@@ -1,5 +1,5 @@
 # ruff: noqa: F811
-"""FC4: the player side of "Aponte o mentiroso!": join, the three panels (video | chat | transcript), the slide panel with a rating,
+"""FC4: the player side of "Verdade ou Lorota": join, the three panels (video | chat | transcript), the slide panel with a rating,
 "my claims" with the AI answer, the leaderboard, the end screen, and the feed that a checker session shares with Falácias."""
 from __future__ import annotations
 
@@ -106,6 +106,33 @@ def test_a_player_sees_panes_a_hidden_panel_and_the_rating_scale(app, conn):
     assert values == list(range(-5, 6)), values
     assert 'name="note"' in picker and 'maxlength="500"' in picker and 'id="pk-quote"' not in picker
     assert "/falacias" not in picker
+
+
+def test_the_rating_scale_is_one_line_of_outlined_icons_with_the_numbers_below(app, conn):
+    """💩 x5, ⭕ (0), ⭐ x5 in ONE row, numbers -5..5 under them (no '+'); outlined until picked."""
+    picker = re.search(r'<form[^>]*id="picker".*?</form>', play(app, conn).get("/checker").text, re.DOTALL).group(0)
+    scale = re.search(r'<div[^>]*class="scale"[^>]*>.*?</div>\s*<div[^>]*class="sendrow"', picker, re.DOTALL).group(0)
+    labels = re.findall(r'<label[^>]*class="(lv[^"]*)"[^>]*>(.*?)</label>', scale, re.DOTALL)
+    assert [c for c, _ in labels] == [f"lv m{-v}" for v in range(-5, 0)] + ["lv z"] + [f"lv p{v}" for v in range(1, 6)]
+    kinds = [re.search(r'<svg[^>]*class="ic (\w+)"', body).group(1) for _, body in labels]
+    assert kinds == ["poop"] * 5 + ["zero"] + ["star"] * 5
+    nums = [re.search(r'<span class="n">([^<]+)</span>', body).group(1) for _, body in labels]
+    assert nums == [str(v) for v in range(-5, 6)]
+    assert "…" not in picker                                        # the old "💩 -5 … +5 ⭐" hint is gone
+
+
+def test_picking_a_level_lights_the_icons_from_the_centre_out_to_it():
+    css = (Path(__file__).resolve().parents[1] / "app" / "static" / "app.css").read_text()
+    block = css.split("/* Verdade ou Lorota: rating scale */", 1)[1].split("/* end rating scale */", 1)[0]
+    assert re.search(r"\.scale \{[^}]*grid-template-columns: repeat\(11,", block)            # one straight line
+    assert re.search(r"\.ckpicker \.scale \.ic \{[^}]*fill: none", block)                    # outlined by default
+    for n in range(1, 6):
+        lit = ", ".join(f".m{i} .ic" for i in range(1, n + 1))
+        assert f'.ckpicker .scale:has(input[value="-{n}"]:checked) :is({lit})' in block, n
+        lit = ", ".join(f".p{i} .ic" for i in range(1, n + 1))
+        assert f'.ckpicker .scale:has(input[value="{n}"]:checked) :is({lit})' in block, n
+    assert '.ckpicker .scale:has(input[value="0"]:checked) .z .ic' in block
+    assert re.search(r"\.ckpicker \.scale input \{[^}]*opacity: 0", block)                     # radio hidden, still focusable
 
 
 def test_the_page_loads_the_shared_panel_script_which_closes_the_panel_after_a_send(app, conn):

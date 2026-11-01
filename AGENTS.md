@@ -41,7 +41,7 @@ https://www.youtube.com/@O_Poligrafo/streams (Portuguese, pt-BR). Design: `docs/
   on `game_type`, migration 0007); one Bingo and one Falácias session can be active together. A person playing both has two
   `users` rows (one per session, same name) and two cookies: `lg_token` (Bingo) and `lg_token_falacias`; `users.token_hash` stays
   globally unique. `app.sessions` functions take `game_type` (default 'bingo').
-  A third game 'checker' (Aponte o mentiroso!, cookie `lg_token_checker`, migration 0013) follows the same rule; the admin's
+  A third game 'checker' (Verdade ou Lorota, cookie `lg_token_checker`, migration 0013) follows the same rule; the admin's
   ONE global session starts all three together (docs/validation/ui-admin.md, "admin shell v2").
 - First visitor starts the session, OR the admin starts it from /admin (then `created_by` is NULL and nobody is
   the starter); others join it. Nobody can create a second session of the same game while one is active.
@@ -106,9 +106,9 @@ create a new area file only for a genuinely new area and add it to this list):
     docs/validation/deploy.md     Fly.io release CHECKLIST (top), Docker/compose smoke, Fly setup gotchas, secrets scripts, STT on Fly
     docs/validation/bingo.md      Bingo: schema/migrations, sessions + identity, cards, scoring, player + admin pages, phrases CRUD, 4x4
     docs/validation/corpus.md     yt-dlp fetch, phrase extraction, cliches, rescore
-    docs/validation/falacias.md   Quem é Falacioso?: schema, replay feed, chat worker, replays R1-R4, start dialog, slide panel, fallacy admin
+    docs/validation/falacias.md   Falaciômetro: schema, replay feed, chat worker, replays R1-R4, start dialog, slide panel, fallacy admin
     docs/validation/stt.md        speech-to-text worker (S1/S2, hosted Groq/xAI, "STT down" diagnosis)
-    docs/validation/checker.md    Aponte o mentiroso!: FC0 spike .. FC5, /admin/checker table (plan: docs/fact-checker-plan.md)
+    docs/validation/checker.md    Verdade ou Lorota: FC0 spike .. FC5, /admin/checker table (plan: docs/fact-checker-plan.md)
     docs/validation/ui-admin.md   shared UI: adversarial fixes, backlog groups 1-3, visual refresh, personal link, admin shell v2
 
 Architecture (diagram, workers, tables, env): docs/architecture.md. Operations (backup, restore, deploy): docs/operations.md.

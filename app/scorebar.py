@@ -1,6 +1,6 @@
 """The small score line at the top of a player page ("Kiran (você) · 5 pontos · Placar atual") and the modal behind its link.
 
-Shared by Quem é Falacioso? and Aponte o mentiroso!. The line re-reads itself every 5 s from `<game>/score`; the modal's body is loaded from
+Shared by Falaciômetro and Verdade ou Lorota. The line re-reads itself every 5 s from `<game>/score`; the modal's body is loaded from
 `<game>/board` when the link is clicked (so it is always fresh, and the 5 s redraw never closes it: the dialog lives outside the polled element).
 Without JS the link simply opens `<game>/board` as a page.
 """

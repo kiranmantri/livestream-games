@@ -244,3 +244,21 @@ How to test: `uv run ruff check . && uv run pytest -q` -> 1928 passed, 1 skipped
 `test_others_tab_says_so_when_nobody_else_sent_anything`). By hand: admin starts a session, two browsers join /checker, each sends a phrase;
 click "Outros participantes" in one: the other's card appears with the name; wait > 5 s: the tab and any opened card stay.
 Not checked in a real browser by the agent: tab switching, layout at 390/900/1280 px.
+
+
+## Games renamed + rating scale as one line of icons
+
+What changed: "Quem é Falacioso?" -> "Falaciômetro", "Aponte o mentiroso!" -> "Verdade ou Lorota" (app/texts.py: menu, page
+titles, admin tabs, end-session confirm; internal keys `falacias` / `checker`, routes and cookies unchanged). The rating
+scale of the Verdade ou Lorota slide panel is ONE line of 11 outlined SVG icons (💩 x5, ⭕, ⭐ x5) with -5..5 under them;
+picking a level lights every icon from the centre out to it (-3 -> -1..-3 brown with eyes; 4 -> 1..4 yellow; 0 -> the red
+circle). Pure CSS (`:has(input:checked)`), the radios stay for keyboard / screen readers (arrow keys move the level).
+Code: app/checker_web.py SCALE_ICONS + picker_view, app/static/app.css "Verdade ou Lorota: rating scale".
+
+    uv run pytest -q tests/test_checker_play.py tests/test_admin_shell.py    # expected: all passed
+    uv run pytest -q                                                         # expected: 1993 passed, 1 skipped
+
+By hand: start a session from /admin, open /checker, join, click any chat/transcript line (the slide panel opens).
+Expected: "Sua nota" shows one row 💩💩💩💩💩 ⭕ ⭐⭐⭐⭐⭐ in outline with -5 … 5 below; click -3 -> three poops light up
+(-1, -2, -3), click 4 -> four stars light up, click 0 -> only the circle (red). Same single row on a phone (390 px: ~30 px per icon).
+The menu and admin tabs read "Falaciômetro" and "Verdade ou Lorota".

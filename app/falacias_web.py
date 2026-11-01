@@ -1,4 +1,4 @@
-"""Web layer of "Encontre as Falácias": the menu fragment, entry/join, the two panes and their live feed.
+"""Web layer of "Falaciômetro": the menu fragment, entry/join, the two panes and their live feed.
 
     GET  /falacias          entry button / the game page / the end screen
     POST /falacias/start    first visitor starts the session (refused when the feed is not ready)

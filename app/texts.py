@@ -193,16 +193,16 @@ PH_DEACTIVATE_SELECTED = "Desativar selecionadas"
 PH_ACTIVATED_N = "{n} frase(s) ativada(s)."
 PH_DEACTIVATED_N = "{n} frase(s) desativada(s)."
 
-# --- Encontre as Falácias
+# --- Falaciômetro
 MENU_LABEL = "Jogos"
 MENU_BINGO = "Bingo"
-MENU_FALACIAS = "Quem é Falacioso?"
+MENU_FALACIAS = "Falaciômetro"
 MENU_BINGO_SUB = "Marque o que ouvir"
 MENU_FALACIAS_SUB = "Aponte a falácia"
 USER_CHANGE = "Trocar nome"
 MENU_RUNNING = "Partida em andamento"
 
-FAL_TITLE = "Quem é Falacioso?"
+FAL_TITLE = "Falaciômetro"
 FAL_TAGLINE = "Acompanhe a transcrição e o chat e aponte as falácias lógicas!"
 FAL_HOW_TO = "Acompanhe a transcrição (esquerda) e o chat (direita). As linhas novas aparecem sozinhas."
 FAL_REPLAY = "Transmissão gravada (replay): as falas aparecem na mesma velocidade da gravação."
@@ -247,9 +247,9 @@ AF_NOTE = "Mensagem do jogador"
 
 # ---- admin: Falácias tab
 ADMIN_TAB_BINGO = "Bingo"
-ADMIN_TAB_FALACIAS = "Quem é Falacioso?"
+ADMIN_TAB_FALACIAS = "Falaciômetro"
 ADMIN_TAB_PHRASES = "Frases do Bingo"
-AF_TITLE = "Quem é Falacioso? - admin"
+AF_TITLE = "Falaciômetro - admin"
 AF_NO_SESSION = "Nenhuma partida de Falácias em andamento."
 AF_START = ADMIN_START
 AF_URL_LABEL = "Ou cole o link de um vídeo ou live do YouTube (qualquer canal)"
@@ -396,21 +396,21 @@ FA_ATTRIBUTION = "Descrições das falácias da Wikipédia: colaboradores da Wik
 
 OR = "ou"
 
-# --- Aponte o mentiroso! (fact-checking game)
-MENU_CHECKER = "Aponte o mentiroso!"
+# --- Verdade ou Lorota (fact-checking game)
+MENU_CHECKER = "Verdade ou Lorota"
 MENU_CHECKER_SUB = "Dê nota à frase"
-CK_TITLE = "Aponte o mentiroso!"
+CK_TITLE = "Verdade ou Lorota"
 CK_TAGLINE = "Alguém disse algo na live. É verdade ou é lorota? Dê o seu palpite, de -5 (💩) a +5 (⭐), e veja quem chega mais perto da nota certa."
 CK_NONE_HEADING = "Nenhuma partida agora"
 CK_NONE_HELP = "Quando o apresentador iniciar uma partida, ela aparece aqui. Deixe esta página aberta."
 CK_RUNNING_HEADING = "Tem uma partida rolando!"
-ADMIN_TAB_CHECKER = "Aponte o mentiroso!"
-CK_ADMIN_TITLE = "Aponte o mentiroso! - admin"
-CK_NO_SESSION = "Nenhuma partida de “Aponte o mentiroso!” em andamento."
+ADMIN_TAB_CHECKER = "Verdade ou Lorota"
+CK_ADMIN_TITLE = "Verdade ou Lorota - admin"
+CK_NO_SESSION = "Nenhuma partida de “Verdade ou Lorota” em andamento."
 CK_URL_LABEL = "Link do vídeo ou da live do YouTube (opcional)"
-CK_URL_HELP = "Em branco: partida sem vídeo (você pode dar as notas na mesma). Live horizontal: acompanha a live. Vídeo encerrado: precisa ter o replay já coletado (aba Encontre as Falácias)."
+CK_URL_HELP = "Em branco: partida sem vídeo (você pode dar as notas na mesma). Live horizontal: acompanha a live. Vídeo encerrado: precisa ter o replay já coletado (aba Falaciômetro)."
 CK_URL_ERRORS = AF_URL_ERRORS | {
-    "not_imported": "Esse vídeo já terminou e o replay ainda não foi coletado. Colete-o primeiro, na aba Encontre as Falácias.",
+    "not_imported": "Esse vídeo já terminou e o replay ainda não foi coletado. Colete-o primeiro, na aba Falaciômetro.",
 }
 CK_AUTO_ON = "Verificação automática ligada: {model}"
 CK_AUTO_OFF = "Verificação automática desligada ({reason}). As frases ficam na fila e você dá as notas."
@@ -439,14 +439,14 @@ CK_COL_POINTS = "Pontos"
 # --- admin shell v2: one session for the three games
 ADMIN_SESSION_START = "Iniciar sessão"
 ADMIN_SESSION_END = "Finalizar sessão"
-ADMIN_SESSION_END_CONFIRM = "Finalizar a sessão agora? Os três jogos em andamento (Bingo, Quem é Falacioso? e Aponte o mentiroso!) terminam juntos."
+ADMIN_SESSION_END_CONFIRM = "Finalizar a sessão agora? Os três jogos em andamento (Bingo, Falaciômetro e Verdade ou Lorota) terminam juntos."
 ADMIN_SESSION_VIDEO = "Vídeo"
 ADMIN_SUB_GAME = "Jogo"
 ADMIN_SUB_CONTENT = "Conteúdo"
 SESSION_NONE_HINT = "Nenhuma partida em andamento. Use “Iniciar sessão”, no alto da página, para começar os três jogos de uma vez."
 SESSION_DIALOG_HELP = "Um só vídeo vale para os três jogos. Live horizontal: acompanha a live. Vídeo já encerrado: o replay é coletado e guardado; quando ficar pronto, escolha-o na lista."
 
-# ---- Aponte o mentiroso!: the player's game page (FC4)
+# ---- Verdade ou Lorota: the player's game page (FC4)
 CK_JOIN_HEADING = "Entrar na partida"
 CK_HOW_TO = ("Clique numa frase do chat ou da transcrição (ou escreva uma). Escolha a sua nota, de -5 (💩 mentira feia) a +5 (⭐ verdade "
              "de ponta a ponta), e envie. A IA confere na internet e quem chegar mais perto da nota certa ganha mais pontos.")

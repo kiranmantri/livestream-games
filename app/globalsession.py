@@ -1,7 +1,7 @@
-"""ONE session for the three games: the admin starts and ends Bingo, Quem é Falacioso? and Aponte o mentiroso! together, on one video.
+"""ONE session for the three games: the admin starts and ends Bingo, Falaciômetro and Verdade ou Lorota together, on one video.
 
 A game that is already running is kept (start skips it); finish ends only what is running. The video belongs to the two games that follow one
-(Falácias, Aponte o mentiroso!); Bingo has none."""
+(Falácias, Verdade ou Lorota); Bingo has none."""
 from __future__ import annotations
 
 import psycopg

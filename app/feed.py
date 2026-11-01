@@ -1,4 +1,4 @@
-"""The feed of "Encontre as Falácias": what the two panes (transcript, chat) show, and when.
+"""The feed of "Falaciômetro": what the two panes (transcript, chat) show, and when.
 
 A StreamSource decides which lines a session has "heard" so far. The only source for now is a REPLAY of a recorded
 video (rows in `replay_events`, see corpus/replay.py): the session clock starts at the session's creation time and a line

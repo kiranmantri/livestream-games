@@ -1,4 +1,4 @@
-// Aponte o mentiroso!: the claim cards (<details class=ckcard|ckfold data-id>; ckfold = the admin table's folds) stay open while "Minhas frases" is re-drawn by the 5 s poll or after a send.
+// Verdade ou Lorota: the claim cards (<details class=ckcard|ckfold data-id>; ckfold = the admin table's folds) stay open while "Minhas frases" is re-drawn by the 5 s poll or after a send.
 (function () {
   var open = {};
   document.addEventListener('toggle', function (e) {            // `toggle` does not bubble: listen in the capture phase

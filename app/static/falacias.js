@@ -133,7 +133,7 @@
   }
   document.getElementById('pk-clear').addEventListener('click', closeAll);
   document.body.addEventListener('fal:sent', closeAll);            // sent by the server (HX-Trigger) after anything was stored
-  document.body.addEventListener('ck:sent', closeAll);             // the same for Aponte o mentiroso!
+  document.body.addEventListener('ck:sent', closeAll);             // the same for Verdade ou Lorota
 
   // ---------------------------------------------------------------- click a line = select / deselect it
   // Faster than dragging. Lines of one pane stay contiguous: a click next to the current selection extends it, a click on its first or
@@ -182,7 +182,7 @@
   // ---------------------------------------------------------------- fallacy filter (accent/case-insensitive)
   function fold(s) { return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
   function filter() {
-    if (!field('filter')) return;                    // Aponte o mentiroso! has no fallacy list
+    if (!field('filter')) return;                    // Verdade ou Lorota has no fallacy list
     var q = fold(field('filter').value.trim());
     picker.querySelectorAll('.grp').forEach(function (g) {
       var any = false;

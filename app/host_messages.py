@@ -1,4 +1,4 @@
-"""Host messages of "Encontre as Falácias": a player sends a short text to the live host; the admin relays it by hand.
+"""Host messages of "Falaciômetro": a player sends a short text to the live host; the admin relays it by hand.
 
 Framework-free functions over a psycopg AUTOCOMMIT connection (see app.db.connect). Text is plain text, never HTML
 (views escape it). Anti-spam: 1 message per 30 s and at most 5 per player and session (hidden/handled ones still count).

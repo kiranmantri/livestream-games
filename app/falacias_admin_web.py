@@ -1,4 +1,4 @@
-"""Admin tab "Encontre as Falácias": start/finish, the live queue of pairs (Correto / Errado / Spam), host messages, leaderboard.
+"""Admin tab "Falaciômetro": start/finish, the live queue of pairs (Correto / Errado / Spam), host messages, leaderboard.
 
     GET  /admin/falacias            the page (HTTP Basic, same as /admin)
     POST /admin/falacias/start      start a session (same feed-readiness check as for players)

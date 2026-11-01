@@ -1,4 +1,4 @@
-"""Admin tab "Aponte o mentiroso!": the checks waiting for a decision (score by hand, dismiss), the board.
+"""Admin tab "Verdade ou Lorota": the checks waiting for a decision (score by hand, dismiss), the board.
 
     GET  /admin/checker            the page (HTTP Basic, same as /admin); ?all=1 also lists the checks already decided
     GET  /admin/checker/panel      polled every 3 s with the page's signature: 204 while nothing changed, else the redrawn panel

@@ -1,5 +1,5 @@
 # ruff: noqa: F811
-"""Player pages of Quem é Falacioso? and Aponte o mentiroso!: no "Placar" panel at the bottom; a small line at the top instead
+"""Player pages of Falaciômetro and Verdade ou Lorota: no "Placar" panel at the bottom; a small line at the top instead
 ("Kiran (você) · 5 pontos · Placar atual") whose link opens a modal with everybody's points."""
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ def bar_of(html):
     return m.group(0)
 
 
-# ---------------------------------------------------------------- Quem é Falacioso?
+# ---------------------------------------------------------------- Falaciômetro
 def test_falacias_page_has_no_scoreboard_panel_and_a_bar_with_the_link(web, conn, fal, game):
     html = game["ana"].get("/falacias").text
     assert f"<h2>{T.LEADERBOARD}</h2>" not in html and 'class="lb"' not in html
@@ -61,7 +61,7 @@ def test_falacias_score_and_board_need_a_player(web, conn, fal, game):
         assert web(IP_B).get(path).headers.get("hx-refresh") == "true"
 
 
-# ---------------------------------------------------------------- Aponte o mentiroso!
+# ---------------------------------------------------------------- Verdade ou Lorota
 def test_checker_page_has_no_scoreboard_panel_and_a_bar_with_the_link(app, conn):
     c = play(app, conn)
     html = c.get("/checker").text

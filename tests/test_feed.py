@@ -1,4 +1,4 @@
-"""Task 2b: the replay feed of "Encontre as Falácias" (app/feed.py): config, readiness, session clock, health, seed."""
+"""Task 2b: the replay feed of "Falaciômetro" (app/feed.py): config, readiness, session clock, health, seed."""
 from __future__ import annotations
 
 import threading

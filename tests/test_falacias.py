@@ -1,4 +1,4 @@
-"""Task 1b: schema (migration 0008) + services of "Encontre as Falácias" (app/falacias.py)."""
+"""Task 1b: schema (migration 0008) + services of "Falaciômetro" (app/falacias.py)."""
 from __future__ import annotations
 
 import threading

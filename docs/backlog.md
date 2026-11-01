@@ -5,9 +5,9 @@ Open items, newest first. Remove an item when done.
 ## On hold (decided 2026-10-26: keep, not now)
 - Delete `data/backup/fly_admin_password.txt` AFTER the admin password has been stored in a password manager
   (rotate it any time with `fly secrets set ADMIN_PASSWORD=...`). The local dev dumps and old cloud backups are already deleted.
-- "Aponte o mentiroso!" in the cloud with real players: a whole game with claims sent from the page, and the real cost of a ~3 h game
+- "Verdade ou Lorota" in the cloud with real players: a whole game with claims sent from the page, and the real cost of a ~3 h game
   (so far only the worker and direct checker calls were run on Fly; ~11-22k input tokens and 45-106 s per claim).
-- Real-device QA: touch phones, Safari, Firefox on every page; the Falacioso and Aponte o mentiroso! game pages on phones (panes, slide panel);
+- Real-device QA: touch phones, Safari, Firefox on every page; the Falaciômetro and Verdade ou Lorota game pages on phones (panes, slide panel);
   the admin header while a session runs (video link + "Finalizar sessão").
 
 ## UX / bugs found by the adversarial test (2026-10-22, local dev; not browser-verified on touch, Safari, Firefox)
@@ -32,7 +32,7 @@ Admin (left over after group 3)
   (max 300 chars, no context for the admin). Needs an audio source (yt-dlp audio of the live), an STT engine (cost/latency/pt-BR quality
   to be measured) and a spoiler-free delay policy. The replay transcript feed (Task 2) stays for tests/demos.
 
-## Aponte o mentiroso!
+## Verdade ou Lorota
 - Web search is the free DuckDuckGo (ddgs): bursts of searches get "no results" or DDGSException (seen in the stance evaluation). Failed checks are
   retried by the worker (3 runs, then the admin queue). If real games show it, switch to a paid search API (e.g. Brave Search / Tavily; compare price).
 
