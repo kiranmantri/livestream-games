@@ -179,7 +179,7 @@ later blocks supersede earlier ones where they disagree. Expected test counts ar
     uv run migrate                                             # YOU: dev DB must have 0008 (see Task 1b)
     uv run corpus replay-import _nVWPIFCUzQ                    # expect: replay rows: {'chat': 2725, 'transcript': 13535}  (again: "skipped"; --force replaces)
     docker compose exec db psql -U livegames -c "select kind, count(*), min(offset_ms), max(offset_ms) from replay_events group by 1"
-    uv run corpus replay-seed _nVWPIFCUzQ                      # rewrites deploy/seed/replay__nVWPIFCUzQ.sql (16260 rows, ~1.4 MB; tracked: the Fly image needs it)
+    uv run corpus replay-seed _nVWPIFCUzQ                      # rewrites deploy/seed/replay__nVWPIFCUzQ.sql (16260 rows, ~1.4 MB; NOT tracked: gitignored, it holds third-party chat names)
     uv run corpus replay-load                                  # expect: replay: {'skipped': '_nVWPIFCUzQ already has 16260 replay rows'}
     # Rules: the session clock starts at game_sessions.created_at ("start from zero"); a line with video offset o appears at created_at + (o - START_AT)/SPEED.
     #   Env: FALACIAS_VIDEO_ID (default _nVWPIFCUzQ), FALACIAS_SPEED (default 1; >1 = demos only, the speed bonus becomes meaningless),

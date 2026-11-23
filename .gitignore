@@ -236,3 +236,6 @@ data/backup/
 data/spike/
 mlx_models/
 some-api-keys.txt
+
+# replay seeds hold third-party chat names: local only, never commit (regenerate: uv run corpus replay-seed <id>)
+deploy/seed/replay_*.sql

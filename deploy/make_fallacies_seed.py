@@ -26,7 +26,7 @@ from app.falacias import FALLACY_NAMES, TOP_FALLACIES
 OLDID = 70610117
 API = "https://pt.wikipedia.org/w/api.php"
 WIKI = "https://pt.wikipedia.org"
-USER_AGENT = "live-games-seed/1.0 ()"
+USER_AGENT = "live-games-seed/1.0"
 OUT = Path("deploy/seed/fallacies_seed.sql")
 FORMAL_H2 = "Falácias formais"
 INFORMAL_H2 = "Falácias informais"

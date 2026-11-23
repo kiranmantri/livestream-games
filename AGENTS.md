@@ -123,4 +123,4 @@ Open work: docs/backlog.md. Plans: docs/fact-checker-plan.md, .hermes/plans/.
   connection hides uncommitted data).
 - Mutation-check new logic on a COPY of the repo in the scratch dir (never edit real code/migrations
   to break them): every mutant must make the suite fail.
-- Azure resources, if ever created: tag `owner=<owner-email>`.
+
